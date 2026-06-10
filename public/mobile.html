@@ -1,0 +1,2618 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Orion">
+<meta name="theme-color" content="#0b0f1a">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png?v=2">
+<link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png?v=2">
+<link rel="apple-touch-icon" href="/icon-192.png?v=2">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<title>Orion</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#0b0f1a;--bg2:#111827;--bg3:#1a2235;--border:rgba(255,255,255,.08);--accent:#2563eb;--green:#059669;--red:#dc2626;--amber:#d97706;--purple:#7c3aed;--text:#f1f5f9;--text2:#94a3b8;--text3:#475569;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;--safe-top:env(safe-area-inset-top);--safe-bottom:env(safe-area-inset-bottom)}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
+
+/* LOGIN */
+#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;z-index:999;
+  background-image:url('https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_d9mqaud9mqaud9mq.jpeg');
+  background-size:cover;background-position:center}
+.login-box{background:rgba(11,15,26,.92);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:36px 28px;width:100%;max-width:340px}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo img{width:160px;height:auto;filter:drop-shadow(0 0 16px rgba(37,99,235,.5))}
+.login-logo p{color:rgba(255,255,255,.35);font-size:11px;margin-top:6px;letter-spacing:1px}
+.inp{width:100%;padding:13px 14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;color:#fff;font-size:16px;font-family:var(--font);outline:none;margin-bottom:12px;-webkit-appearance:none}
+.inp:focus{border-color:rgba(37,99,235,.6)}
+.inp::placeholder{color:rgba(255,255,255,.25)}
+.login-btn{width:100%;padding:14px;background:var(--accent);color:#fff;font-weight:700;font-size:15px;border:none;border-radius:12px;cursor:pointer;font-family:var(--font);margin-top:4px;-webkit-appearance:none}
+.login-err{color:#f87171;font-size:12px;text-align:center;margin-top:8px;display:none}
+
+/* TOPBAR */
+.topbar{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
+.tb-logo{height:28px;width:auto;filter:drop-shadow(0 0 6px rgba(37,99,235,.4))}
+.tb-right{display:flex;align-items:center;gap:10px}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 5px rgba(16,185,129,.5);animation:pulse 2s infinite}
+.conn-dot.off{background:#dc2626;box-shadow:none;animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.notif-btn{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);position:relative}
+.notif-btn svg{width:16px;height:16px}
+.notif-btn:active{background:rgba(255,255,255,.1)}
+.notif-badge{position:absolute;top:-3px;right:-3px;width:14px;height:14px;background:#dc2626;border-radius:50%;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;color:#fff;display:none}
+
+/* NAV */
+.bottom-nav{display:flex;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0;padding-bottom:var(--safe-bottom)}
+.nav-btn{flex:1;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;border:none;background:none;color:var(--text3);font-size:9px;font-family:var(--font);font-weight:600;text-transform:uppercase;letter-spacing:.4px;transition:color .15s}
+.nav-btn.active{color:var(--accent)}
+.nav-btn svg{width:20px;height:20px;flex-shrink:0}
+.nav-btn.active svg{filter:drop-shadow(0 0 4px rgba(37,99,235,.6))}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+.page{display:none;padding:16px}
+.page.active{display:block}
+
+/* CARDS */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+.mc{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px;position:relative;overflow:hidden}
+.mc::after{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.mc-blue::after{background:linear-gradient(90deg,#2563eb,#60a5fa)}
+.mc-green::after{background:linear-gradient(90deg,#059669,#34d399)}
+.mc-red::after{background:linear-gradient(90deg,#dc2626,#f87171)}
+.mc-purple::after{background:linear-gradient(90deg,#7c3aed,#a78bfa)}
+.mc-amber::after{background:linear-gradient(90deg,#d97706,#fbbf24)}
+.mc-teal::after{background:linear-gradient(90deg,#0891b2,#22d3ee)}
+.mc-lbl{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.mc-val{font-size:24px;font-weight:800;letter-spacing:-1px;line-height:1}
+.mc-blue .mc-val{color:#60a5fa}.mc-green .mc-val{color:#34d399}.mc-red .mc-val{color:#f87171}
+.mc-purple .mc-val{color:#a78bfa}.mc-amber .mc-val{color:#fbbf24}.mc-teal .mc-val{color:#22d3ee}
+.mc-sub{font-size:10px;color:var(--text3);margin-top:4px}
+.mc-trend{font-size:10px;margin-top:3px;font-weight:600}
+.mc-trend.up{color:#34d399}.mc-trend.dn{color:#f87171}
+
+/* SECTION */
+.sec{background:var(--bg2);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden}
+.sec-h{padding:12px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between}
+.sec-sub{font-size:10px;color:var(--text3);font-weight:400}
+
+/* FEED */
+.feed-item{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px;position:relative}
+.feed-item:last-child{border-bottom:none}
+.feed-item.female{background:linear-gradient(90deg,rgba(220,38,38,.18) 0%,rgba(220,38,38,.06) 60%,transparent 100%);border-left:3px solid #dc2626;padding-left:11px}
+.feed-item.high-value{background:linear-gradient(90deg,rgba(217,119,6,.16) 0%,rgba(217,119,6,.04) 60%,transparent 100%);border-left:3px solid #fbbf24;padding-left:11px}
+.feed-ico{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.fi-pix{background:rgba(37,99,235,.15)}
+.fi-pay{background:rgba(5,150,105,.15)}
+.fi-err{background:rgba(220,38,38,.15)}
+.fi-info{background:rgba(100,116,139,.1)}
+.fi-female{background:rgba(220,38,38,.2);border:1px solid rgba(220,38,38,.4)}
+.feed-body{flex:1;min-width:0}
+.feed-title{font-size:12px;font-weight:600;color:var(--text);line-height:1.3}
+.feed-meta{font-size:10px;color:var(--text3);margin-top:2px}
+.feed-val{font-size:13px;font-weight:700;margin-top:2px}
+.fv-green{color:#34d399}.fv-blue{color:#60a5fa}.fv-red{color:#f87171}
+.feed-time{font-size:9px;color:var(--text3);flex-shrink:0;margin-top:2px}
+.female-badge{display:inline-block;font-size:8px;font-weight:800;color:#fff;background:#dc2626;padding:2px 6px;border-radius:8px;letter-spacing:.4px;margin-left:6px;vertical-align:middle;text-transform:uppercase;box-shadow:0 0 6px rgba(220,38,38,.4)}
+.high-badge{display:inline-block;font-size:8px;font-weight:800;color:#0a0d18;background:#fbbf24;padding:2px 6px;border-radius:8px;letter-spacing:.4px;margin-left:6px;vertical-align:middle;text-transform:uppercase;box-shadow:0 0 6px rgba(251,191,36,.5)}
+
+/* ROI HERO CARD */
+.roi-hero{background:linear-gradient(135deg,rgba(79,70,229,.18) 0%,rgba(124,58,237,.12) 50%,rgba(168,85,247,.08) 100%);border:1px solid rgba(124,58,237,.3);border-radius:16px;padding:16px;margin-bottom:14px;position:relative;overflow:hidden}
+.roi-hero::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:radial-gradient(circle,rgba(124,58,237,.3) 0%,transparent 60%);pointer-events:none}
+.roi-h-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.roi-h-lbl{font-size:9px;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:.6px}
+.roi-h-status{font-size:8px;font-weight:700;padding:2px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.3px}
+.roi-h-status.up{background:rgba(34,197,94,.15);color:#34d399;border:1px solid rgba(34,197,94,.3)}
+.roi-h-status.dn{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+.roi-h-status.neutral{background:rgba(148,163,184,.1);color:#94a3b8;border:1px solid rgba(148,163,184,.2)}
+.roi-h-roi{font-size:36px;font-weight:800;letter-spacing:-1.5px;line-height:1;background:linear-gradient(135deg,#818cf8 0%,#c084fc 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.roi-h-roi-sub{font-size:11px;color:var(--text2);margin-top:2px;font-weight:500}
+.roi-h-numbers{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(124,58,237,.18)}
+.roi-h-num{text-align:center}
+.roi-h-num-lbl{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:3px}
+.roi-h-num-val{font-size:14px;font-weight:800;letter-spacing:-.5px;font-family:var(--mono)}
+.roi-h-num-val.rev{color:#34d399}
+.roi-h-num-val.spend{color:#fbbf24}
+.roi-h-num-val.profit{color:#a78bfa}
+.roi-h-empty{font-size:11px;color:var(--text3);padding:8px 0;text-align:center;font-style:italic}
+.roi-add-btn{margin-top:10px;width:100%;padding:9px 12px;background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.4);border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:6px}
+.roi-add-btn:active{background:rgba(124,58,237,.35)}
+
+/* MODAL OVERLAY (gasto FB, futuras ações) */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);z-index:9998;display:flex;align-items:flex-end;justify-content:center;padding:0;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-sheet{background:var(--bg2);border-top:1px solid var(--border);border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:20px 18px calc(28px + var(--safe-bottom));animation:slideUp .25s ease}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-title{font-size:15px;font-weight:800;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.modal-sub{font-size:11px;color:var(--text3);margin-bottom:18px}
+.modal-input{width:100%;padding:14px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;color:#fff;font-size:22px;font-family:var(--mono);font-weight:700;letter-spacing:.5px;outline:none;text-align:center;-webkit-appearance:none}
+.modal-input:focus{border-color:rgba(124,58,237,.6);box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+.modal-quick{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-top:10px}
+.modal-quick-btn{padding:8px 0;background:rgba(124,58,237,.12);color:#a78bfa;border:1px solid rgba(124,58,237,.25);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.modal-confirm-info{background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:11px;color:var(--text2);line-height:1.5}
+.modal-actions{display:flex;gap:8px;margin-top:18px}
+.modal-btn{flex:1;padding:13px;border:none;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);letter-spacing:.2px}
+.modal-btn.cancel{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.modal-btn.primary{background:linear-gradient(135deg,#6366f1 0%,#7c3aed 100%);color:#fff;box-shadow:0 4px 16px rgba(124,58,237,.3)}
+.modal-btn:active{transform:scale(.98)}
+.modal-btn.primary:disabled{opacity:.5;cursor:not-allowed}
+
+/* BIOMETRIC LOCK SCREEN */
+#bio-lock{position:fixed;inset:0;background:radial-gradient(at 30% 20%,rgba(79,70,229,.12) 0%,transparent 50%),radial-gradient(at 70% 80%,rgba(124,58,237,.08) 0%,transparent 50%),#0a0d18;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9997;padding:32px;text-align:center}
+#bio-lock img{width:100px;height:100px;margin-bottom:24px;filter:drop-shadow(0 0 24px rgba(124,58,237,.4))}
+.bio-title{font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px;letter-spacing:-.3px}
+.bio-sub{font-size:13px;color:var(--text2);margin-bottom:32px;max-width:280px;line-height:1.5}
+.bio-btn{padding:14px 28px;background:linear-gradient(135deg,#6366f1 0%,#7c3aed 100%);color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);box-shadow:0 8px 24px rgba(124,58,237,.4);display:flex;align-items:center;gap:10px}
+.bio-btn:active{transform:scale(.97)}
+.bio-btn svg{width:18px;height:18px}
+.bio-fail{font-size:12px;color:#f87171;margin-top:14px;font-weight:600;display:none}
+.bio-logout{margin-top:20px;background:none;border:none;color:var(--text3);font-size:12px;font-family:var(--font);cursor:pointer;padding:8px 14px;text-decoration:underline}
+
+/* ==================== UPGRADES VISUAIS ==================== */
+
+/* GLASS EFFECT (reuso) */
+.glass{backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%);background:rgba(17,22,42,.7);border:1px solid rgba(255,255,255,.06)}
+
+/* TOPBAR PREMIUM */
+.topbar{padding:11px 14px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:rgba(11,15,26,.85);border-bottom:1px solid rgba(255,255,255,.05)}
+.tb-left{display:flex;align-items:center;gap:10px}
+.tb-logo{width:30px;height:30px;border-radius:8px;flex-shrink:0}
+.tb-greeting{display:flex;flex-direction:column;line-height:1.1}
+.tb-greet{font-size:12px;font-weight:700;color:var(--text);letter-spacing:-.1px}
+.tb-time{font-size:9px;color:var(--text3);font-family:var(--mono);font-weight:600;margin-top:2px;letter-spacing:.3px}
+
+/* HERO FATURAMENTO */
+.hero-fat{background:linear-gradient(135deg,rgba(5,150,105,.16) 0%,rgba(34,197,94,.08) 50%,rgba(124,58,237,.05) 100%);border:1px solid rgba(34,197,94,.22);border-radius:18px;padding:18px;margin-bottom:14px;position:relative;overflow:hidden}
+.hero-fat::before{content:'';position:absolute;top:-30px;right:-30px;width:140px;height:140px;background:radial-gradient(circle,rgba(34,197,94,.22) 0%,transparent 60%);pointer-events:none}
+.hero-fat::after{content:'';position:absolute;bottom:-40px;left:-30px;width:120px;height:120px;background:radial-gradient(circle,rgba(124,58,237,.12) 0%,transparent 60%);pointer-events:none}
+.hero-fat-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;position:relative;z-index:1}
+.hero-fat-lbl{font-size:10px;font-weight:800;color:#34d399;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px}
+.hero-fat-val{font-size:42px;font-weight:800;letter-spacing:-2px;line-height:1;color:#34d399;font-family:var(--font);position:relative;z-index:1}
+.hero-fat-meta{display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px;position:relative;z-index:1}
+.hero-fat-sub{font-size:11px;color:var(--text2);font-weight:500}
+.hero-fat-trend{font-size:11px;font-weight:800;padding:4px 9px;border-radius:8px;display:inline-flex;align-items:center;gap:4px;font-family:var(--mono)}
+.hero-fat-trend.up{background:rgba(34,197,94,.18);color:#34d399;border:1px solid rgba(34,197,94,.3)}
+.hero-fat-trend.dn{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+.hero-fat-trend.neutral{background:rgba(148,163,184,.1);color:var(--text3);border:1px solid var(--border)}
+
+/* HERO DUPLO (15/05): Faturamento + Lucro lado a lado, mesmo peso visual */
+.hero-dual{display:grid;grid-template-columns:1fr 1px 1fr;gap:12px;background:linear-gradient(135deg,rgba(5,150,105,.16) 0%,rgba(34,197,94,.08) 50%,rgba(124,58,237,.05) 100%);border:1px solid rgba(34,197,94,.22);border-radius:18px;padding:16px 14px;margin-bottom:14px;position:relative;overflow:hidden;animation:cardIn .35s ease both}
+.hero-dual::before{content:'';position:absolute;top:-30px;right:-30px;width:140px;height:140px;background:radial-gradient(circle,rgba(34,197,94,.18) 0%,transparent 60%);pointer-events:none}
+.hero-dual-top{grid-column:1 / -1;display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;position:relative;z-index:1}
+.hero-dual-side{min-width:0;position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center}
+.hero-dual-divider{background:rgba(255,255,255,.08);align-self:stretch}
+.hero-dual-lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:4px;margin-bottom:6px}
+.hero-dual-lbl.rev{color:#34d399}
+.hero-dual-lbl.profit{color:#34d399}
+.hero-dual-lbl.profit.warn{color:#fbbf24}
+.hero-dual-lbl.profit.danger{color:#fb923c}
+.hero-dual-lbl.profit.loss{color:#f87171}
+.hero-dual-val{font-size:30px;font-weight:800;letter-spacing:-1.5px;line-height:1;font-family:var(--font)}
+.hero-dual-val.rev{color:#34d399}
+.hero-dual-val.profit.good{color:#34d399}
+.hero-dual-val.profit.warn{color:#fbbf24}
+.hero-dual-val.profit.danger{color:#fb923c}
+.hero-dual-val.profit.loss{color:#f87171}
+.hero-dual-val.profit.neutral{color:#94a3b8}
+.hero-dual-sub{font-size:10px;color:var(--text2);font-weight:500;margin-top:6px;line-height:1.3}
+.hero-dual-trend{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;padding:2px 7px;border-radius:6px;margin-top:4px;font-family:var(--mono)}
+.hero-dual-trend.up{background:rgba(34,197,94,.18);color:#34d399}
+.hero-dual-trend.dn{background:rgba(239,68,68,.15);color:#f87171}
+.hero-dual-trend.neutral{background:rgba(148,163,184,.1);color:var(--text3)}
+
+/* ABANDONO CONTROL CARD (15/05) */
+.aban-card{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:14px;border-radius:14px;border:1px solid var(--border);background:rgba(255,255,255,.02);animation:cardIn .35s ease both}
+.aban-card.on{border-color:rgba(34,197,94,.25);background:linear-gradient(135deg,rgba(34,197,94,.06) 0%,rgba(34,197,94,.02) 100%)}
+.aban-card.off{border-color:rgba(239,68,68,.3);background:linear-gradient(135deg,rgba(239,68,68,.08) 0%,rgba(239,68,68,.02) 100%)}
+.aban-card.alert{border-color:rgba(251,191,36,.4);background:linear-gradient(135deg,rgba(251,191,36,.1) 0%,rgba(251,191,36,.03) 100%);box-shadow:0 0 0 1px rgba(251,191,36,.15)}
+.aban-icon{font-size:22px;flex-shrink:0}
+.aban-body{flex:1;min-width:0}
+.aban-title{font-size:13px;font-weight:700;color:var(--text);line-height:1.2}
+.aban-sub{font-size:11px;color:var(--text3);margin-top:2px;line-height:1.3}
+.aban-sw{position:relative;width:42px;height:24px;border-radius:24px;background:rgba(239,68,68,.3);transition:all .2s;flex-shrink:0;cursor:pointer;border:1px solid rgba(239,68,68,.4)}
+.aban-sw.on{background:rgba(34,197,94,.4);border-color:rgba(34,197,94,.5)}
+.aban-sw::after{content:'';position:absolute;top:1px;left:1px;width:20px;height:20px;border-radius:50%;background:#fff;transition:all .2s;box-shadow:0 2px 4px rgba(0,0,0,.3)}
+.aban-sw.on::after{left:19px}
+.aban-act{display:inline-flex;align-items:center;gap:4px;background:rgba(251,191,36,.2);color:#fbbf24;border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:5px 11px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer;flex-shrink:0}
+.aban-act:active{transform:scale(.95)}
+
+/* ABANDONO PENDING DRAWER */
+.aban-drawer-list{max-height:50vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.aban-pending-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border);font-size:12px}
+.aban-pending-name{font-weight:600;color:var(--text);font-size:13px}
+.aban-pending-meta{font-size:10px;color:var(--text3);margin-top:2px;font-family:var(--mono)}
+.aban-pending-val{font-size:12px;font-weight:700;color:#fbbf24;font-family:var(--mono)}
+.aban-btn-row{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border)}
+.aban-btn{flex:1;padding:11px;border-radius:10px;font-size:12px;font-weight:700;font-family:var(--font);border:none;cursor:pointer;transition:all .15s}
+.aban-btn:active{transform:scale(.97)}
+.aban-btn-fire{background:linear-gradient(135deg,#10b981,#059669);color:#fff}
+.aban-btn-clear{background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.35)}
+
+/* INSTANCE DETAIL DRAWER */
+.inst-card{cursor:pointer;transition:transform .15s,background .15s}
+.inst-card:active{transform:scale(.985);background:rgba(255,255,255,.04)}
+.inst-detail-stat{display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px}
+.inst-detail-stat-lbl{color:var(--text3);font-size:12px}
+.inst-detail-stat-val{color:var(--text);font-weight:700;font-family:var(--mono)}
+.inst-detail-toggle{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+.inst-detail-toggle-info{flex:1;min-width:0}
+.inst-detail-toggle-lbl{font-size:13px;font-weight:600;color:var(--text)}
+.inst-detail-toggle-sub{font-size:10px;color:var(--text3);margin-top:2px}
+
+/* LAST ACTIVITY */
+.last-act{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);padding:3px 9px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:20px;font-weight:600}
+.last-act-dot{width:6px;height:6px;border-radius:50%;background:#10b981;box-shadow:0 0 5px rgba(16,185,129,.6);animation:pulse 2s infinite;flex-shrink:0}
+
+/* SKELETON LOADER */
+.skel{background:linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.03) 75%);background-size:200% 100%;animation:skel 1.5s ease-in-out infinite;border-radius:6px;color:transparent;display:inline-block;min-width:30px}
+@keyframes skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* FEED — chevron + swipe actions */
+.feed-item-wrap{position:relative;overflow:hidden}
+.feed-chevron{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text3);opacity:.4;font-size:14px;pointer-events:none;transition:opacity .2s,transform .2s}
+.feed-item:active .feed-chevron{opacity:.9;transform:translateY(-50%) translateX(2px)}
+.feed-swipe-actions{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:stretch;width:140px;transform:translateX(100%);transition:transform .25s ease;border-radius:0 8px 8px 0;overflow:hidden}
+.feed-swipe-actions.revealed{transform:translateX(0)}
+.swipe-act{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:.4px;gap:3px}
+.swipe-act svg{width:18px;height:18px}
+.swipe-act.block{background:#dc2626}
+.swipe-act.cancel{background:#d97706}
+.swipe-act:active{filter:brightness(1.15)}
+
+/* PULL TO REFRESH */
+#ptr{position:absolute;top:0;left:0;right:0;height:60px;display:flex;align-items:center;justify-content:center;color:var(--text2);font-size:11px;font-weight:600;letter-spacing:.3px;pointer-events:none;opacity:0;transition:opacity .2s ease;z-index:10}
+#ptr.visible{opacity:1}
+#ptr svg{width:18px;height:18px;margin-right:8px;transition:transform .2s}
+#ptr.refreshing svg{animation:spin 0.9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* HEALTH CARD (Instâncias) */
+.health-card{border-radius:18px;padding:18px;margin-bottom:14px;display:flex;align-items:center;gap:16px;position:relative;overflow:hidden;transition:all .3s ease}
+.health-card::before{content:'';position:absolute;top:-50px;right:-50px;width:180px;height:180px;border-radius:50%;pointer-events:none;opacity:.6}
+.health-card.good{background:linear-gradient(135deg,rgba(5,150,105,.16) 0%,rgba(34,197,94,.06) 100%);border:1px solid rgba(34,197,94,.25)}
+.health-card.good::before{background:radial-gradient(circle,rgba(34,197,94,.22) 0%,transparent 60%)}
+.health-card.warn{background:linear-gradient(135deg,rgba(217,119,6,.16) 0%,rgba(251,191,36,.06) 100%);border:1px solid rgba(251,191,36,.3)}
+.health-card.warn::before{background:radial-gradient(circle,rgba(251,191,36,.22) 0%,transparent 60%)}
+.health-card.bad{background:linear-gradient(135deg,rgba(220,38,38,.18) 0%,rgba(239,68,68,.06) 100%);border:1px solid rgba(220,38,38,.3)}
+.health-card.bad::before{background:radial-gradient(circle,rgba(220,38,38,.22) 0%,transparent 60%)}
+.health-gauge{position:relative;width:84px;height:84px;flex-shrink:0;z-index:1}
+.health-gauge svg{width:84px;height:84px;transform:rotate(-90deg)}
+.health-gauge-track{stroke:rgba(255,255,255,.06);stroke-width:8;fill:none}
+.health-gauge-fill{stroke-width:8;stroke-linecap:round;fill:none;transition:stroke-dashoffset .6s ease}
+.health-gauge-text{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono)}
+.health-gauge-val{font-size:20px;font-weight:800;color:var(--text);letter-spacing:-1px;line-height:1}
+.health-gauge-lbl{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:800;margin-top:2px}
+.health-info{flex:1;z-index:1;position:relative;min-width:0}
+.health-title{font-size:14px;font-weight:800;color:var(--text);letter-spacing:-.2px;margin-bottom:3px}
+.health-sub{font-size:10px;color:var(--text2);font-weight:600;line-height:1.5}
+.health-bars{display:flex;gap:3px;margin-top:10px}
+.health-bar{flex:1;height:5px;border-radius:2px;background:var(--bg3);position:relative}
+.health-bar.online{background:#10b981;box-shadow:0 0 4px rgba(16,185,129,.4)}
+.health-bar.offline{background:#dc2626}
+.health-bar.paused{background:#d97706}
+
+/* INSTANCE CARD — sparkline */
+.inst-spark{display:inline-block;height:14px;width:50px;margin-left:6px;vertical-align:middle;color:#3b82f6}
+.inst-spark path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.inst-spark.offline{color:rgba(220,38,38,.4)}
+
+/* PERIOD PILLS (filtro Hoje/Ontem/7d/30d) */
+.period-pills{display:flex;gap:6px;margin-bottom:12px;padding:4px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
+.pill{flex:1;padding:8px 6px;background:none;border:none;color:var(--text3);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);border-radius:8px;transition:all .15s;text-transform:uppercase;letter-spacing:.3px}
+.pill.active{background:rgba(124,58,237,.2);color:#c4b5fd;box-shadow:inset 0 0 0 1px rgba(124,58,237,.3)}
+.pill:active{transform:scale(.96)}
+
+/* GROUP DIVIDER */
+.inst-divider{display:flex;align-items:center;gap:8px;padding:14px 14px 8px;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:800}
+.inst-divider-line{flex:1;height:1px;background:var(--border)}
+
+/* SPARKLINE GENÉRICO */
+.spark{display:inline-block;height:16px;width:44px;vertical-align:middle;color:var(--text2)}
+.spark path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.spark.up{color:#34d399}.spark.dn{color:#f87171}
+
+/* MODO FOCO */
+#focus-mode{position:fixed;inset:0;background:radial-gradient(at 30% 20%,rgba(79,70,229,.18) 0%,transparent 50%),radial-gradient(at 70% 80%,rgba(124,58,237,.12) 0%,transparent 50%),#0a0d18;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:9996;padding:32px;text-align:center}
+#focus-mode.active{display:flex;animation:fadeIn .25s ease}
+.focus-block{margin-bottom:32px;text-align:center}
+.focus-num{font-size:60px;font-weight:800;letter-spacing:-2.5px;line-height:1;margin-bottom:6px;font-family:var(--font)}
+.focus-num.rev{color:#34d399}.focus-num.sales{color:#60a5fa}
+.focus-num.roi{background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.focus-num.roi.dn{background:linear-gradient(135deg,#f87171,#fb923c);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.focus-lbl{font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px}
+.focus-close{position:absolute;top:max(24px,calc(env(safe-area-inset-top) + 16px));right:24px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.focus-time{position:absolute;bottom:max(32px,calc(env(safe-area-inset-bottom) + 24px));left:0;right:0;text-align:center;font-size:11px;color:var(--text3);font-weight:600;font-family:var(--mono)}
+
+/* CARD ANIMATION */
+.mc, .sec, .hero-fat, .roi-hero{animation:cardIn .35s ease both}
+@keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* LEAD DRAWER */
+.feed-item{cursor:pointer}
+.feed-item:active{background:rgba(255,255,255,.03)}
+.lead-info{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:12px;line-height:1.5}
+.lead-info-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:2px}
+.lead-info-val{color:var(--text)}
+.lead-info-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0}
+.lead-info-row + .lead-info-row{border-top:1px solid var(--border)}
+.lead-action-btn{width:100%;padding:14px 16px;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.lead-action-btn:active{transform:scale(.98)}
+.lead-action-btn svg{width:18px;height:18px;flex-shrink:0}
+.lab-block{background:linear-gradient(135deg,#dc2626 0%,#991b1b 100%);color:#fff;box-shadow:0 4px 14px rgba(220,38,38,.25)}
+.lab-cancel{background:rgba(217,119,6,.15);color:#fbbf24;border:1px solid rgba(217,119,6,.3)}
+.lab-pause{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.lab-status{padding:8px 12px;border-radius:8px;font-size:11px;font-weight:600;margin-bottom:14px;text-align:center}
+.lab-status.in-funnel{background:rgba(37,99,235,.12);color:#60a5fa;border:1px solid rgba(37,99,235,.25)}
+.lab-status.paused{background:rgba(217,119,6,.12);color:#fbbf24;border:1px solid rgba(217,119,6,.25)}
+.lab-status.blocked{background:rgba(220,38,38,.12);color:#f87171;border:1px solid rgba(220,38,38,.25)}
+.lab-status.idle{background:rgba(100,116,139,.1);color:var(--text3);border:1px solid var(--border)}
+
+/* INSTÂNCIAS */
+.inst-card{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.inst-card.down{border-color:rgba(220,38,38,.3);background:rgba(220,38,38,.05)}
+.inst-card.paused{opacity:.6}
+.inst-dot-big{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.inst-dot-big.online{background:#10b981;box-shadow:0 0 6px rgba(16,185,129,.5);animation:pulse 2s infinite}
+.inst-dot-big.offline{background:#dc2626}
+.inst-dot-big.paused{background:#d97706}
+.inst-body{flex:1}
+.inst-name{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)}
+.inst-label{font-size:10px;color:var(--text3);margin-top:1px}
+.inst-stats{font-size:10px;color:var(--text2);margin-top:3px;font-family:var(--mono)}
+.inst-status{font-size:11px;font-weight:600;text-align:right}
+.inst-status.online{color:#34d399}
+.inst-status.offline{color:#f87171}
+.inst-status.paused{color:#fbbf24}
+
+/* ANÁLISES MOBILE */
+.bar-row{display:flex;align-items:flex-end;gap:4px;height:80px;margin:12px 14px 4px}
+.bar-m{flex:1;border-radius:3px 3px 0 0;min-height:2px;transition:height .3s}
+.bar-m.bm-pix{background:#3b82f6}
+.bar-m.bm-paid{background:#10b981}
+.bar-m.bm-rev{background:#8b5cf6}
+.bar-labels{display:flex;gap:4px;padding:0 14px 12px}
+.bar-lbl-m{flex:1;text-align:center;font-size:8px;color:var(--text3)}
+.chart-legend-m{display:flex;gap:12px;padding:0 14px 10px;font-size:10px;color:var(--text3)}
+.leg-dot-m{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+
+/* RESUMO FINANCEIRO 7 DIAS */
+.dsum-row{display:grid;grid-template-columns:62px 1fr 1fr 1fr 50px;gap:6px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);font-size:11px}
+.dsum-row:last-child{border-bottom:none}
+.dsum-row.today{background:rgba(124,58,237,.08)}
+.dsum-date{font-weight:700;color:var(--text2);font-family:var(--mono);font-size:11px}
+.dsum-date.today-lbl{color:#a78bfa}
+.dsum-num{font-family:var(--mono);font-weight:700;text-align:right;font-size:11px}
+.dsum-rev{color:#34d399}.dsum-spend{color:#fbbf24}.dsum-profit{color:#a78bfa}
+.dsum-profit.neg{color:#f87171}
+.dsum-roi{font-weight:800;text-align:right;font-size:12px;font-family:var(--mono)}
+.dsum-roi.up{color:#34d399}.dsum-roi.neutral{color:var(--text3)}.dsum-roi.dn{color:#f87171}
+.dsum-header{display:grid;grid-template-columns:62px 1fr 1fr 1fr 50px;gap:6px;padding:6px 12px;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;border-bottom:1px solid var(--border)}
+.dsum-header div:not(:first-child){text-align:right}
+
+/* TOP CIDADES */
+.city-row{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border)}
+.city-row:last-child{border-bottom:none}
+.city-rank{width:18px;font-size:10px;font-weight:700;color:var(--text3);text-align:center}
+.city-name{flex:1;font-size:12px;color:var(--text)}
+.city-bar-wrap{width:60px;height:4px;background:var(--bg3);border-radius:2px}
+.city-bar{height:100%;border-radius:2px;background:var(--accent)}
+.city-count{font-size:11px;font-weight:700;color:var(--accent);font-family:var(--mono);min-width:24px;text-align:right}
+
+/* NOTIF TOAST (glass effect) */
+.toast-m{position:fixed;top:calc(var(--safe-top) + 60px);left:12px;right:12px;padding:13px 16px;border-radius:14px;font-size:13px;font-weight:600;z-index:9999;animation:tin .25s ease;pointer-events:none;box-shadow:0 12px 36px rgba(0,0,0,.5);display:flex;align-items:center;gap:10px;backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%);letter-spacing:-.1px}
+.toast-m.success{background:rgba(5,150,105,.35);border:1px solid rgba(34,197,94,.45);color:#a7f3d0}
+.toast-m.error{background:rgba(220,38,38,.35);border:1px solid rgba(248,113,113,.45);color:#fecaca}
+.toast-m.info{background:rgba(37,99,235,.35);border:1px solid rgba(96,165,250,.45);color:#bfdbfe}
+@keyframes tin{from{opacity:0;transform:translateY(-12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+/* BADGE */
+.badge-m{display:inline-flex;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase}
+.bm-wait{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
+.bm-send{background:rgba(37,99,235,.12);color:#60a5fa;border:1px solid rgba(37,99,235,.2)}
+.bm-done{background:rgba(5,150,105,.12);color:#34d399;border:1px solid rgba(5,150,105,.2)}
+
+/* NOTIF PERMISSION BANNER */
+.notif-banner{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.nb-text{flex:1;font-size:12px;color:var(--text2)}
+.nb-btn{padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);white-space:nowrap}
+
+/* AJUSTES (settings sheet) */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid var(--border)}
+.set-row-info{flex:1;min-width:0;padding-right:12px}
+.set-row-lbl{font-size:13px;font-weight:600;color:var(--text)}
+.set-row-sub{font-size:10px;color:var(--text3);margin-top:2px;line-height:1.4}
+.set-group-title{padding:14px 18px 6px;font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px}
+.set-logout{margin:14px 18px 0;width:calc(100% - 36px);padding:12px;background:rgba(220,38,38,.12);color:#f87171;border:1px solid rgba(220,38,38,.25);border-radius:11px;font-size:13px;font-weight:700;font-family:var(--font);cursor:pointer}
+
+/* EFETIVIDADE DOS FUNIS */
+.eff-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.eff-row:last-child{border-bottom:none}
+.eff-info{flex:1;min-width:0}
+.eff-lbl{font-size:12px;font-weight:600;color:var(--text)}
+.eff-sub{font-size:10px;color:var(--text3);margin-top:2px}
+.eff-rate{font-size:16px;font-weight:800;font-family:var(--mono);letter-spacing:-.5px;min-width:54px;text-align:right}
+.eff-bar-wrap{width:64px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.eff-bar{height:100%;border-radius:3px;transition:width .4s ease}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="login-box">
+    <div class="login-logo">
+      <img src="/icon.svg" alt="ORION">
+      <p>Automação WhatsApp</p>
+    </div>
+    <input class="inp" id="lg-u" placeholder="Usuário" autocomplete="username">
+    <input class="inp" type="password" id="lg-p" placeholder="Senha" autocomplete="current-password">
+    <button class="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-err" id="lg-err">Usuário ou senha incorretos</div>
+  </div>
+</div>
+
+<!-- BIOMETRIC LOCK -->
+<div id="bio-lock" style="display:none">
+  <img src="/icon.svg" alt="Orion">
+  <div class="bio-title">Orion travada</div>
+  <div class="bio-sub">Use Face ID ou Touch ID pra destravar o app</div>
+  <button class="bio-btn" onclick="tryBiometricUnlock()">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="10" r=".5" fill="currentColor"/><circle cx="15" cy="10" r=".5" fill="currentColor"/></svg>
+    Destravar com Face ID
+  </button>
+  <div class="bio-fail" id="bio-fail">Biometria falhou — tente de novo</div>
+  <button class="bio-logout" onclick="biometricLogout()">Sair da conta</button>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none;flex:1;flex-direction:column;overflow:hidden;display:none">
+
+  <div class="topbar">
+    <div class="tb-left">
+      <img class="tb-logo" src="/icon-192.png?v=2" alt="Orion">
+      <div class="tb-greeting">
+        <div class="tb-greet" id="tb-greet">Olá, Danilo</div>
+        <div class="tb-time" id="tb-time">--:--</div>
+      </div>
+    </div>
+    <div class="tb-right">
+      <div class="conn-dot" id="conn-dot" title="Conectado"></div>
+      <div class="notif-btn" onclick="openFocusMode()" title="Modo Foco">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>
+      </div>
+      <div class="notif-btn" id="settings-btn" onclick="openSettings()" title="Ajustes">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <div class="notif-badge" id="notif-badge"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content" id="content" style="position:relative">
+
+    <!-- PULL TO REFRESH -->
+    <div id="ptr">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      <span id="ptr-text">Solte para atualizar</span>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="pg-dash" class="page active">
+      <div id="notif-banner-wrap"></div>
+
+      <!-- HERO FATURAMENTO -->
+      <!-- HERO DUPLO (15/05): Faturamento + Lucro com mesmo peso visual, cor adaptativa no Lucro -->
+      <div class="hero-dual">
+        <div class="hero-dual-top">
+          <div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Performance de hoje</div>
+          <div class="last-act" id="last-act"><span class="last-act-dot"></span><span id="last-act-text">agora</span></div>
+        </div>
+        <div class="hero-dual-side">
+          <div class="hero-dual-lbl rev">Faturei</div>
+          <div class="hero-dual-val rev" id="hero-rev">R$ 0</div>
+          <div class="hero-dual-sub" id="hero-rev-sub"><span class="skel" style="width:60px;height:10px"></span></div>
+          <div class="hero-dual-trend neutral" id="hero-rev-trend">— vs ontem</div>
+        </div>
+        <div class="hero-dual-divider"></div>
+        <div class="hero-dual-side">
+          <div class="hero-dual-lbl profit" id="hero-profit-lbl">Lucro</div>
+          <div class="hero-dual-val profit neutral" id="hero-profit">R$ —</div>
+          <div class="hero-dual-sub" id="hero-profit-sub">ROI —</div>
+          <div class="hero-dual-trend neutral" id="hero-profit-trend">— vs ontem</div>
+        </div>
+      </div>
+
+      <!-- ROI HERO -->
+      <div id="roi-hero-wrap"></div>
+
+      <!-- ABANDONO CONTROL (15/05): toggle global + alerta de fila pendente -->
+      <div id="abandono-control"></div>
+
+      <div class="grid2">
+        <div class="mc mc-blue"><div class="mc-lbl">PIX Pendentes</div><div class="mc-val" id="m-pix">0</div></div>
+        <div class="mc mc-green"><div class="mc-lbl">Pagamentos Hoje</div><div class="mc-val" id="m-paid">0</div><div class="mc-sub" id="m-paid-s">PIX 0 · Cartão 0</div><div class="mc-trend" id="m-paid-trend"></div></div>
+        <div class="mc mc-purple"><div class="mc-lbl">PIX Gerados</div><div class="mc-val" id="m-pixg">0</div><div class="mc-trend" id="m-conv">0% conv.</div><div class="mc-trend" id="m-pixg-trend"></div></div>
+        <div class="mc mc-teal"><div class="mc-lbl">Conv. Ativas</div><div class="mc-val" id="m-active">0</div></div>
+        <div class="mc mc-amber"><div class="mc-lbl">Aguardando</div><div class="mc-val" id="m-wait">0</div></div>
+        <div class="mc mc-red"><div class="mc-lbl">Saúde Chips</div><div class="mc-val" id="m-health">—</div><div class="mc-sub" id="m-health-s">— online</div></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-h">
+          <span>Feed ao Vivo <span class="sec-sub" id="feed-count"></span></span>
+          <button id="female-filter-btn" onclick="toggleFemaleFilter()" style="background:rgba(220,38,38,.15);color:#f87171;border:1px solid rgba(220,38,38,.3);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:700;font-family:var(--font);cursor:pointer">Só femininos</button>
+        </div>
+        <div id="feed-list"></div>
+      </div>
+    </div>
+
+    <!-- INSTÂNCIAS -->
+    <div id="pg-inst" class="page">
+      <div id="health-card-wrap"></div>
+      <div class="period-pills" id="inst-pills">
+        <button class="pill active" data-period="today" onclick="setInstancesPeriod('today')">Hoje</button>
+        <button class="pill" data-period="yesterday" onclick="setInstancesPeriod('yesterday')">Ontem</button>
+        <button class="pill" data-period="7d" onclick="setInstancesPeriod('7d')">7 dias</button>
+        <button class="pill" data-period="30d" onclick="setInstancesPeriod('30d')">30 dias</button>
+      </div>
+      <div class="sec">
+        <div class="sec-h">Instâncias WhatsApp <button onclick="loadInstances()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;font-family:var(--font)">Atualizar</button></div>
+        <div id="inst-list" style="padding:10px 0"></div>
+      </div>
+    </div>
+
+    <!-- ANÁLISES -->
+    <div id="pg-analytics" class="page">
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding:0 2px">Hoje</div>
+      <div class="grid3" style="margin-bottom:8px">
+        <div class="mc mc-teal"><div class="mc-lbl">PIX</div><div class="mc-val" id="ma-pix" style="font-size:20px">—</div></div>
+        <div class="mc mc-green"><div class="mc-lbl">Pagos</div><div class="mc-val" id="ma-paid" style="font-size:20px">—</div></div>
+        <div class="mc mc-purple"><div class="mc-lbl">Conv.</div><div class="mc-val" id="ma-conv" style="font-size:20px">—</div></div>
+      </div>
+      <div class="mc mc-green" style="margin-bottom:14px"><div class="mc-lbl">Faturamento Hoje</div><div class="mc-val" id="ma-rev" style="font-size:24px">—</div></div>
+
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:14px 2px 8px">Últimos 7 dias</div>
+      <div class="sec" style="margin-bottom:12px">
+        <div class="sec-h" style="border-top:none">PIX Gerados vs Pagos · 7d
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text3)">
+            <div style="display:flex;align-items:center;gap:3px"><div style="width:7px;height:7px;border-radius:2px;background:#3b82f6"></div>Gerados</div>
+            <div style="display:flex;align-items:center;gap:3px"><div style="width:7px;height:7px;border-radius:2px;background:#10b981"></div>Pagos</div>
+          </div>
+        </div>
+        <div class="bar-row" id="ma-chart"></div>
+        <div class="bar-labels" id="ma-labels"></div>
+      </div>
+      <div class="sec" style="margin-bottom:12px">
+        <div class="sec-h">Resumo Financeiro <span id="sum-period-label" style="font-weight:500;color:var(--text3);font-size:11px"> · 7 dias</span></div>
+        <div class="period-pills" id="sum-pills" style="padding:8px 12px 4px;flex-wrap:wrap">
+          <button class="pill" data-sp="today" onclick="setSummaryPeriod('today')">Hoje</button>
+          <button class="pill" data-sp="yesterday" onclick="setSummaryPeriod('yesterday')">Ontem</button>
+          <button class="pill active" data-sp="7d" onclick="setSummaryPeriod('7d')">7d</button>
+          <button class="pill" data-sp="30d" onclick="setSummaryPeriod('30d')">30d</button>
+          <button class="pill" data-sp="month" onclick="setSummaryPeriod('month')">Mês</button>
+          <button class="pill" data-sp="custom" onclick="setSummaryPeriod('custom')">Outro</button>
+        </div>
+        <div id="ma-summary" style="padding:6px 0"></div>
+        <div id="meta-bm-status" style="padding:0 14px"></div>
+        <div id="meta-autosync-status" style="padding:0 14px;font-size:10px;color:var(--text3);text-align:center;line-height:1.4"></div>
+        <div style="padding:10px 14px 4px;display:flex;gap:8px">
+          <button id="sum-sync-btn" onclick="syncMetaForSummary()" style="flex:1;padding:9px;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:9px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer">Sincronizar gastos Facebook</button>
+        </div>
+      </div>
+
+      <div class="sec" style="margin-bottom:12px">
+        <div class="sec-h">Conversão pós-funil <span class="sec-sub" id="eff-period">7 dias</span></div>
+        <div id="ma-effectiveness"><div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Carregando...</div></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-h">Top Cidades</div>
+        <div id="ma-cities"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" id="nb-dash" onclick="showPage('dash',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-btn" id="nb-inst" onclick="showPage('inst',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="10" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="17" width="20" height="4" rx="1" stroke-width="2"/></svg>
+      Instâncias
+    </button>
+    <button class="nav-btn" id="nb-analytics" onclick="showPage('analytics',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline stroke-width="2" points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Análises
+    </button>
+  </nav>
+</div>
+
+<!-- MODO FOCO -->
+<div id="focus-mode">
+  <button class="focus-close" onclick="closeFocusMode()">✕</button>
+  <div class="focus-block">
+    <div class="focus-num sales" id="focus-sales">0</div>
+    <div class="focus-lbl">Vendas hoje</div>
+  </div>
+  <div class="focus-block">
+    <div class="focus-num rev" id="focus-rev">R$ 0</div>
+    <div class="focus-lbl">Faturamento líquido</div>
+  </div>
+  <!-- LUCRO no Modo Foco (15/05): cor adaptativa baseada em ROI -->
+  <div class="focus-block">
+    <div class="focus-num" id="focus-profit" style="color:#94a3b8">R$ —</div>
+    <div class="focus-lbl" id="focus-profit-lbl">Lucro hoje</div>
+  </div>
+  <div class="focus-block">
+    <div class="focus-num roi" id="focus-roi">—</div>
+    <div class="focus-lbl">ROI hoje</div>
+  </div>
+  <div class="focus-time" id="focus-time">--:--</div>
+</div>
+
+<script>
+let token = localStorage.getItem('orion_token');
+let feedItems = [];
+let notifPerm = 'default';
+let pendingPix = 0;
+
+// Sons reais
+const SOUNDS = {
+  pix: new Audio('https://e-volutionn.com/wp-content/uploads/2026/04/ding-sound-effect_2_Sfdd45L.mp3'),
+  pay: new Audio('https://e-volutionn.com/wp-content/uploads/2026/04/u_byub5wd934-cashier-quotka-chingquot-sound-effect-129698.mp3')
+};
+SOUNDS.pix.preload = 'auto';
+SOUNDS.pay.preload = 'auto';
+
+function playSound(type, opts = {}) {
+  try {
+    let audio;
+    if(type === 'pix') audio = SOUNDS.pix;
+    else if(type === 'pay') audio = SOUNDS.pay;
+    if (!audio) return;
+    audio.currentTime = 0;
+    // PIX alto valor → toca o som de pagamento (mais "celebrativo") pra Danilo identificar de longe
+    if (opts.highValue && type === 'pix') {
+      SOUNDS.pay.currentTime = 0;
+      SOUNDS.pay.play().catch(()=>{});
+      setTimeout(() => { try { SOUNDS.pix.currentTime = 0; SOUNDS.pix.play().catch(()=>{}); } catch(e){} }, 400);
+    } else {
+      audio.play().catch(()=>{});
+    }
+  } catch(e){}
+}
+
+// ============ PWA / WEB PUSH ============
+let swReg = null;
+
+async function initSW() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    swReg = await navigator.serviceWorker.register('/sw.js');
+    console.log('SW registrado');
+    notifPerm = Notification.permission;
+    checkNotifBanner();
+    // Se já tem permissão, subscreve automaticamente
+    if (notifPerm === 'granted') subscribeWebPush();
+  } catch(e) { console.log('SW erro:', e); }
+}
+
+function checkNotifBanner() {
+  const wrap = document.getElementById('notif-banner-wrap');
+  if (!wrap) return;
+  if (Notification.permission === 'default') {
+    wrap.innerHTML = '<div class="notif-banner"><div class="nb-text">Ative as notificações para receber os eventos de venda mesmo com o app fechado</div><button class="nb-btn" onclick="requestNotifPermission()">Ativar</button></div>';
+  } else {
+    wrap.innerHTML = '';
+  }
+}
+
+async function requestNotifPermission() {
+  const perm = await Notification.requestPermission();
+  notifPerm = perm;
+  checkNotifBanner();
+  if (perm === 'granted') {
+    await subscribeWebPush();
+    showToast('Notificações ativadas', 'success');
+  } else {
+    showToast('Notificações negadas pelo sistema', 'error');
+  }
+}
+
+async function subscribeWebPush() {
+  if (!swReg || Notification.permission !== 'granted') return;
+  try {
+    // Pega chave pública VAPID do servidor
+    const keyResp = await fetch('/api/push/vapid-key');
+    const { publicKey } = await keyResp.json();
+    
+    // Converte chave para Uint8Array
+    const vapidKey = urlBase64ToUint8Array(publicKey);
+    
+    // Subscreve no servidor push do navegador
+    const subscription = await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidKey
+    });
+    
+    // Envia assinatura para o servidor Orion
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription })
+    });
+    
+    console.log('✅ Web Push subscrito com sucesso');
+  } catch(e) {
+    console.log('Push subscribe erro:', e);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+// ============ AJUSTES ============
+let _notifPrefs = null;
+
+async function openSettings() {
+  haptic(10);
+  const permState = Notification.permission;
+  let permHtml;
+  if (permState === 'granted') {
+    permHtml = '<div class="set-row-sub" style="color:#34d399">Permissão do sistema ativa</div>';
+  } else if (permState === 'default') {
+    permHtml = '<button class="nb-btn" onclick="requestNotifPermission().then(()=>{closeDrawer();openSettings()})" style="margin-top:6px">Ativar notificações</button>';
+  } else {
+    permHtml = '<div class="set-row-sub" style="color:#f87171">Bloqueadas pelo sistema — libere nos ajustes do celular</div>';
+  }
+
+  const bioOn = isBiometricEnabled();
+  const content = `
+    <div class="set-group-title">Notificações</div>
+    <div style="padding:0 18px 8px">${permHtml}</div>
+    <div id="notif-prefs-list"><div style="padding:14px;text-align:center;color:var(--text3);font-size:11px">Carregando...</div></div>
+    <div class="set-group-title">Segurança</div>
+    <div class="set-row">
+      <div class="set-row-info">
+        <div class="set-row-lbl">Face ID / Touch ID</div>
+        <div class="set-row-sub">Exige biometria pra abrir o app</div>
+      </div>
+      <div class="aban-sw ${bioOn?'on':''}" onclick="toggleBioFromSettings(this)"></div>
+    </div>
+    <button class="set-logout" onclick="logout()">Sair da conta</button>
+  `;
+  openDrawer('Ajustes', content);
+  loadNotifPrefs();
+}
+
+async function loadNotifPrefs() {
+  const el = document.getElementById('notif-prefs-list');
+  if (!el) return;
+  try {
+    const r = await api('/api/notification-prefs');
+    if (!r.success) { el.innerHTML = ''; return; }
+    _notifPrefs = r.prefs;
+    const subs = {
+      notif_pix_generated: 'Cliente gerou um PIX no checkout',
+      notif_payment: 'PIX pago ou cartão aprovado',
+      notif_cart_abandoned: 'Cliente abandonou o carrinho',
+      notif_card_refused: 'Tentativa de cartão recusada',
+      notif_morning_summary: 'Como o dia começou, todo dia às 9h',
+      notif_daily_summary: 'Fechamento financeiro às 23:59'
+    };
+    el.innerHTML = r.prefs.map(p => `
+      <div class="set-row">
+        <div class="set-row-info">
+          <div class="set-row-lbl">${_escapeHtml(p.label)}</div>
+          <div class="set-row-sub">${subs[p.key] || ''}</div>
+        </div>
+        <div class="aban-sw ${p.enabled?'on':''}" onclick="toggleNotifPref('${p.key}', this)"></div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = ''; }
+}
+
+async function toggleNotifPref(key, swEl) {
+  haptic(12);
+  const turnOn = !swEl.classList.contains('on');
+  swEl.classList.toggle('on', turnOn);
+  try {
+    const r = await api('/api/notification-prefs', { method: 'POST', body: JSON.stringify({ [key]: turnOn }) });
+    if (!r.success) swEl.classList.toggle('on', !turnOn);
+  } catch(e) { swEl.classList.toggle('on', !turnOn); }
+}
+
+async function toggleBioFromSettings(swEl) {
+  haptic(12);
+  if (isBiometricEnabled()) {
+    disableBiometric();
+    swEl.classList.remove('on');
+  } else {
+    const ok = await enableBiometric();
+    swEl.classList.toggle('on', ok);
+  }
+}
+
+// ============ EFETIVIDADE DOS FUNIS ============
+async function loadFunnelEffectiveness() {
+  const el = document.getElementById('ma-effectiveness');
+  if (!el) return;
+  try {
+    const r = await api('/api/analytics/funnel-effectiveness?days=7');
+    if (!r.success) { el.innerHTML = ''; return; }
+    const d = r.data;
+    const labels = {
+      PIX: { lbl: 'PIX gerado', sub: 'pagaram depois de receber o funil' },
+      ABANDONO: { lbl: 'Carrinho abandonado', sub: 'compraram depois do funil' },
+      CARTAO_RECUSADO: { lbl: 'Cartão recusado', sub: 'pagaram depois do funil' },
+      RECUPERACAO: { lbl: 'Recuperação 24h', sub: 'voltaram e pagaram' }
+    };
+    const rateColor = rate => rate >= 15 ? '#34d399' : rate >= 5 ? '#fbbf24' : 'var(--text2)';
+    let html = '';
+    for (const [type, info] of Object.entries(labels)) {
+      const s = d[type] || { leads_received: 0, converted: 0, rate: 0 };
+      if (s.leads_received === 0) continue;
+      html += `
+        <div class="eff-row">
+          <div class="eff-info">
+            <div class="eff-lbl">${info.lbl}</div>
+            <div class="eff-sub">${s.converted} de ${s.leads_received} ${info.sub}</div>
+          </div>
+          <div class="eff-bar-wrap"><div class="eff-bar" style="width:${Math.min(100, s.rate)}%;background:${rateColor(s.rate)}"></div></div>
+          <div class="eff-rate" style="color:${rateColor(s.rate)}">${s.rate}%</div>
+        </div>`;
+    }
+    const m = d.messages || {};
+    if (m.sent > 0) {
+      html += `
+        <div class="eff-row" style="background:rgba(255,255,255,.015)">
+          <div class="eff-info">
+            <div class="eff-lbl">Mensagens enviadas</div>
+            <div class="eff-sub">${m.leads_messaged} leads alcançados · ${m.leads_replied} responderam</div>
+          </div>
+          <div class="eff-bar-wrap"><div class="eff-bar" style="width:${Math.min(100, m.reply_rate)}%;background:#60a5fa"></div></div>
+          <div class="eff-rate" style="color:#60a5fa">${m.reply_rate}%</div>
+        </div>
+        <div style="padding:8px 14px;font-size:10px;color:var(--text3)">${m.sent} mensagens no total nos últimos 7 dias</div>`;
+    }
+    el.innerHTML = html || '<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Sem dados de funil nos últimos 7 dias</div>';
+  } catch(e) { el.innerHTML = ''; }
+}
+
+// AUTH
+function api(p, o={}) {
+  return fetch(p, {...o, headers:{...o.headers,'Authorization':'Bearer '+token,'Content-Type':'application/json'}})
+    .then(r => { if(r.status===401){logout();throw new Error('unauth');} return r.json(); });
+}
+
+async function doLogin() {
+  const u = document.getElementById('lg-u').value;
+  const p = document.getElementById('lg-p').value;
+  try {
+    const r = await fetch('/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login:u,password:p})});
+    const d = await r.json();
+    if(d.success) {
+      token = d.token;
+      localStorage.setItem('orion_token', token);
+      showApp();
+    } else {
+      document.getElementById('lg-err').style.display = 'block';
+    }
+  } catch {
+    document.getElementById('lg-err').style.display = 'block';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'Enter' && document.getElementById('login').style.display !== 'none') doLogin();
+});
+
+function logout() { localStorage.removeItem('orion_token'); location.reload(); }
+
+function showApp() {
+  document.getElementById('login').style.display = 'none';
+  const app = document.getElementById('app');
+  app.style.display = 'flex';
+  app.style.flexDirection = 'column';
+  app.style.height = '100%';
+  initApp();
+}
+
+// ============ BIOMETRIA (Face ID / Touch ID via WebAuthn) ============
+const BIO_KEY = 'orion_bio_credential_v1';
+const BIO_ENABLED_KEY = 'orion_bio_enabled_v1';
+
+async function isBiometricAvailable() {
+  try {
+    if (!window.PublicKeyCredential) return false;
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch(e) { return false; }
+}
+
+function _b64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function _b64decode(s) {
+  const b64 = s.replace(/-/g,'+').replace(/_/g,'/');
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i=0;i<raw.length;i++) arr[i] = raw.charCodeAt(i);
+  return arr.buffer;
+}
+
+async function enableBiometric() {
+  try {
+    if (!await isBiometricAvailable()) {
+      showToast('Biometria não disponível neste dispositivo', 'error');
+      return false;
+    }
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const userId = crypto.getRandomValues(new Uint8Array(16));
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: 'Orion', id: window.location.hostname },
+        user: { id: userId, name: 'orion-user', displayName: 'Orion' },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+        authenticatorSelection: {
+          authenticatorAttachment: 'platform',
+          userVerification: 'required',
+          residentKey: 'preferred'
+        },
+        timeout: 60000,
+        attestation: 'none'
+      }
+    });
+    if (!cred) return false;
+    localStorage.setItem(BIO_KEY, _b64url(cred.rawId));
+    localStorage.setItem(BIO_ENABLED_KEY, '1');
+    showToast('Face ID ativado — o app vai pedir biometria na próxima abertura', 'success');
+    return true;
+  } catch(e) {
+    if (e.name === 'NotAllowedError') showToast('Você cancelou — sem problema', 'info');
+    else showToast('Erro: ' + e.message, 'error');
+    return false;
+  }
+}
+
+function disableBiometric() {
+  localStorage.removeItem(BIO_KEY);
+  localStorage.removeItem(BIO_ENABLED_KEY);
+  showToast('Face ID desativado', 'info');
+}
+
+function isBiometricEnabled() {
+  return localStorage.getItem(BIO_ENABLED_KEY) === '1' && !!localStorage.getItem(BIO_KEY);
+}
+
+async function tryBiometricUnlock() {
+  const failEl = document.getElementById('bio-fail');
+  if (failEl) failEl.style.display = 'none';
+  try {
+    const credId = localStorage.getItem(BIO_KEY);
+    if (!credId) {
+      showBioLock(false);
+      return;
+    }
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        allowCredentials: [{ id: _b64decode(credId), type: 'public-key', transports: ['internal'] }],
+        userVerification: 'required',
+        timeout: 60000
+      }
+    });
+    if (assertion) {
+      showBioLock(false);
+      const lock = document.getElementById('bio-lock');
+      if (lock) lock.style.display = 'none';
+      const app = document.getElementById('app');
+      if (app && app.style.display === 'none') {
+        showApp();
+      }
+    }
+  } catch(e) {
+    if (failEl) {
+      failEl.textContent = e.name === 'NotAllowedError' ? 'Cancelado — toque pra tentar de novo' : ('Erro: ' + e.message);
+      failEl.style.display = 'block';
+    }
+  }
+}
+
+function showBioLock(show) {
+  const lock = document.getElementById('bio-lock');
+  if (lock) lock.style.display = show ? 'flex' : 'none';
+}
+
+function biometricLogout() {
+  disableBiometric();
+  logout();
+}
+
+async function toggleBiometricMenu() {
+  const enabled = isBiometricEnabled();
+  const available = await isBiometricAvailable();
+  if (!available) {
+    showToast('Face ID/Touch ID não disponível neste dispositivo', 'error');
+    return;
+  }
+  if (enabled) {
+    if (confirm('Desativar Face ID? Você vai ter que digitar usuário/senha pra entrar.')) {
+      disableBiometric();
+    }
+  } else {
+    await enableBiometric();
+  }
+}
+
+function initApp() {
+  initSW();
+  connectSSE();
+  loadDashboard();
+  loadRoiHero();
+  loadAbandonoStatus();
+  setInterval(loadDashboard, 20000);
+  setInterval(loadRoiHero, 30000);
+  setInterval(loadAbandonoStatus, 25000);
+  // Topbar greeting + clock
+  updateGreeting();
+  setInterval(updateGreeting, 30000);
+  // Last activity timer
+  setInterval(updateLastActivity, 5000);
+  // Pull to refresh
+  setupPullToRefresh();
+}
+
+// ============ TOPBAR: SAUDAÇÃO + RELÓGIO ============
+function updateGreeting() {
+  const now = new Date();
+  const h = now.getHours();
+  let greet;
+  if (h < 5) greet = 'Boa madrugada, Danilo';
+  else if (h < 12) greet = 'Bom dia, Danilo';
+  else if (h < 18) greet = 'Boa tarde, Danilo';
+  else greet = 'Boa noite, Danilo';
+  const gEl = document.getElementById('tb-greet');
+  if (gEl) gEl.textContent = greet;
+  const tEl = document.getElementById('tb-time');
+  if (tEl) {
+    const time = now.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    const date = now.toLocaleDateString('pt-BR', {day:'2-digit',month:'short'}).replace('.','');
+    tEl.textContent = `${time} · ${date}`;
+  }
+  const fT = document.getElementById('focus-time');
+  if (fT) fT.textContent = now.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'}) + ' · hoje';
+}
+
+// ============ LAST ACTIVITY ============
+let lastEventAt = Date.now();
+function markActivity() { lastEventAt = Date.now(); updateLastActivity(); }
+function updateLastActivity() {
+  const el = document.getElementById('last-act-text');
+  if (!el) return;
+  const diff = Math.round((Date.now() - lastEventAt) / 1000);
+  if (diff < 5) el.textContent = 'agora';
+  else if (diff < 60) el.textContent = `há ${diff}s`;
+  else if (diff < 3600) el.textContent = `há ${Math.round(diff/60)}min`;
+  else el.textContent = `há ${Math.round(diff/3600)}h`;
+}
+
+// ============ HAPTIC FEEDBACK ============
+function haptic(pattern) {
+  try {
+    if (navigator.vibrate) navigator.vibrate(pattern || 8);
+  } catch(e) {}
+}
+
+// ============ ANIMATED NUMBER COUNTER ============
+const _numAnim = new WeakMap();
+function animateNumber(el, target, opts = {}) {
+  if (!el) return;
+  const isMoney = opts.money === true;
+  const decimals = opts.decimals || 0;
+  const fromAttr = parseFloat(el.dataset.curVal) || 0;
+  const start = fromAttr;
+  const end = parseFloat(target) || 0;
+  if (Math.abs(end - start) < 0.5 && !opts.force) {
+    el.textContent = formatNum(end, isMoney, decimals);
+    return;
+  }
+  el.dataset.curVal = end;
+  const prev = _numAnim.get(el);
+  if (prev) cancelAnimationFrame(prev);
+  const t0 = performance.now();
+  const dur = opts.duration || 700;
+  function step(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const cur = start + (end - start) * eased;
+    el.textContent = formatNum(cur, isMoney, decimals);
+    if (p < 1) _numAnim.set(el, requestAnimationFrame(step));
+  }
+  _numAnim.set(el, requestAnimationFrame(step));
+}
+function formatNum(v, money, decimals) {
+  if (money) return 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+  if (decimals > 0) return v.toFixed(decimals);
+  return Math.round(v).toLocaleString('pt-BR');
+}
+
+// ============ SPARKLINE GENERATOR ============
+function sparklinePath(values, w = 44, h = 16) {
+  if (!values || !values.length) return '';
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = (max - min) || 1;
+  const step = values.length > 1 ? w / (values.length - 1) : w;
+  return values.map((v, i) => {
+    const x = i * step;
+    const y = h - ((v - min) / range) * h;
+    return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+  }).join(' ');
+}
+function sparklineSVG(values, opts = {}) {
+  const w = opts.w || 44, h = opts.h || 16;
+  const cls = opts.class || 'spark';
+  return `<svg class="${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${sparklinePath(values, w, h)}"/></svg>`;
+}
+
+// ============ PULL TO REFRESH ============
+function setupPullToRefresh() {
+  const content = document.getElementById('content');
+  const ptr = document.getElementById('ptr');
+  const ptrText = document.getElementById('ptr-text');
+  if (!content || !ptr) return;
+  let startY = 0, pulling = false, dist = 0;
+  content.addEventListener('touchstart', (e) => {
+    if (content.scrollTop <= 0) {
+      startY = e.touches[0].clientY;
+      pulling = true;
+      dist = 0;
+    }
+  }, { passive: true });
+  content.addEventListener('touchmove', (e) => {
+    if (!pulling) return;
+    dist = e.touches[0].clientY - startY;
+    if (dist > 0 && content.scrollTop <= 0) {
+      const d = Math.min(80, dist * 0.5);
+      ptr.style.transform = `translateY(${d - 60}px)`;
+      ptr.classList.add('visible');
+      ptrText.textContent = d > 50 ? 'Solte para atualizar' : 'Puxe para atualizar';
+    }
+  }, { passive: true });
+  content.addEventListener('touchend', () => {
+    if (!pulling) return;
+    pulling = false;
+    if (dist > 100) {
+      ptr.classList.add('refreshing');
+      ptr.style.transform = 'translateY(0)';
+      ptrText.textContent = 'Atualizando...';
+      haptic(15);
+      Promise.all([loadDashboard(), loadRoiHero()]).finally(() => {
+        setTimeout(() => {
+          ptr.classList.remove('refreshing','visible');
+          ptr.style.transform = '';
+        }, 400);
+      });
+    } else {
+      ptr.classList.remove('visible');
+      ptr.style.transform = '';
+    }
+    dist = 0;
+  });
+}
+
+// ============ MODO FOCO ============
+async function openFocusMode() {
+  haptic(10);
+  document.getElementById('focus-mode').classList.add('active');
+  await refreshFocusMode();
+}
+function closeFocusMode() {
+  haptic(5);
+  document.getElementById('focus-mode').classList.remove('active');
+}
+// ⭐ 15/05: Cor adaptativa baseada em ROI — operador vê saúde do dia DE LONGE sem ler número
+function getRoiHealth(roi, hasSpend) {
+  if (!hasSpend) return { color: '#94a3b8', tone: 'neutral', label: 'sem dados', short: '—' };
+  if (roi >= 1.5) return { color: '#34d399', tone: 'good',    label: 'saudável',  short: '' };
+  if (roi >= 1.2) return { color: '#fbbf24', tone: 'warn',    label: 'atenção',   short: '' };
+  if (roi >= 1.0) return { color: '#fb923c', tone: 'danger',  label: 'apertado',  short: '' };
+  return                  { color: '#f87171', tone: 'loss',    label: 'prejuízo', short: '' };
+}
+
+async function refreshFocusMode() {
+  try {
+    const r = await api('/api/roi-live');
+    if (!r.success) return;
+    const d = r.data;
+    const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+    animateNumber(document.getElementById('focus-sales'), d.paid, { duration: 800 });
+    document.getElementById('focus-rev').textContent = fmt(d.net_revenue);
+    const roiEl = document.getElementById('focus-roi');
+    const profitEl = document.getElementById('focus-profit');
+    const profitLblEl = document.getElementById('focus-profit-lbl');
+    if (d.has_spend_data) {
+      const h = getRoiHealth(d.roi, true);
+      roiEl.textContent = d.roi.toFixed(2) + 'x';
+      roiEl.style.color = h.color;
+      roiEl.classList.toggle('dn', d.roi < 1);
+      profitEl.textContent = fmt(d.net_profit);
+      profitEl.style.color = h.color;
+      profitLblEl.textContent = 'Lucro · ' + h.label;
+    } else {
+      roiEl.textContent = '—';
+      roiEl.classList.remove('dn');
+      roiEl.style.color = '';
+      profitEl.textContent = 'R$ —';
+      profitEl.style.color = '#94a3b8';
+      profitLblEl.textContent = 'Lucro hoje · sem dados FB';
+    }
+  } catch(e) {}
+}
+
+// ============ ROI AO VIVO ============
+async function loadRoiHero() {
+  const wrap = document.getElementById('roi-hero-wrap');
+  if (!wrap) return;
+  try {
+    const r = await api('/api/roi-live');
+    if (!r.success) return;
+    const d = r.data;
+    const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+    // ⭐ 15/05: Lucro vira protagonista no card ROI (antes era o multiplicador)
+    const h = getRoiHealth(d.roi || 0, d.has_spend_data);
+    let statusClass, statusLabel;
+    if (!d.has_spend_data) { statusClass = 'neutral'; statusLabel = 'sem dados FB'; }
+    else if (d.roi >= 2.0) { statusClass = 'up'; statusLabel = 'forte'; }
+    else if (d.roi >= 1.5) { statusClass = 'up'; statusLabel = 'saudável'; }
+    else if (d.roi >= 1.2) { statusClass = 'neutral'; statusLabel = 'atenção'; }
+    else if (d.roi >= 1.0) { statusClass = 'dn'; statusLabel = 'apertado'; }
+    else                   { statusClass = 'dn'; statusLabel = 'prejuízo'; }
+
+    const margem = d.has_spend_data && d.net_revenue > 0 ? (d.net_profit / d.net_revenue * 100) : 0;
+    const lucroDisplay = d.has_spend_data ? fmt(d.net_profit) : 'R$ —';
+    const subline = d.has_spend_data
+      ? `ROI ${d.roi.toFixed(2)}x · margem ${margem.toFixed(0)}% · ${d.paid} vendas`
+      : 'Atualize o gasto Facebook pra calcular';
+
+    wrap.innerHTML = `
+      <div class="roi-hero" onclick="loadRoiHero()" style="cursor:pointer">
+        <div class="roi-h-top">
+          <div class="roi-h-lbl">Lucro · Hoje</div>
+          <div class="roi-h-status ${statusClass}">${statusLabel}</div>
+        </div>
+        <div class="roi-h-roi" style="color:${h.color}">${lucroDisplay}</div>
+        <div class="roi-h-roi-sub">${subline}</div>
+        <div class="roi-h-numbers">
+          <div class="roi-h-num">
+            <div class="roi-h-num-lbl">Faturei</div>
+            <div class="roi-h-num-val rev">${fmt(d.net_revenue)}</div>
+          </div>
+          <div class="roi-h-num">
+            <div class="roi-h-num-lbl">Gastei FB</div>
+            <div class="roi-h-num-val spend">${d.has_spend_data ? fmt(d.facebook_spend) : '—'}</div>
+          </div>
+          <div class="roi-h-num">
+            <div class="roi-h-num-lbl">ROI</div>
+            <div class="roi-h-num-val" style="color:${h.color}">${d.has_spend_data ? d.roi.toFixed(2)+'x' : '—'}</div>
+          </div>
+        </div>
+        <button class="roi-add-btn" onclick="event.stopPropagation(); openAddSpendModal()">+ Adicionar gasto Facebook de hoje</button>
+      </div>`;
+  } catch(e) { /* silencioso */ }
+}
+
+// ============ MODAL: ADICIONAR GASTO FACEBOOK ============
+function openAddSpendModal() {
+  // Evita abrir 2x
+  if (document.getElementById('add-spend-overlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'add-spend-overlay';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet" onclick="event.stopPropagation()">
+      <div class="modal-title">Adicionar gasto Facebook</div>
+      <div class="modal-sub">Valor que você gastou agora — vai SOMAR ao gasto de hoje</div>
+      <input id="add-spend-input" class="modal-input" type="number" inputmode="decimal" placeholder="0,00" min="0.01" max="100000" step="0.01" autocomplete="off">
+      <div class="modal-quick">
+        <button class="modal-quick-btn" onclick="setSpendAmount(50)">+R$ 50</button>
+        <button class="modal-quick-btn" onclick="setSpendAmount(100)">+R$ 100</button>
+        <button class="modal-quick-btn" onclick="setSpendAmount(200)">+R$ 200</button>
+        <button class="modal-quick-btn" onclick="setSpendAmount(500)">+R$ 500</button>
+      </div>
+      <div id="add-spend-confirm" class="modal-confirm-info" style="display:none"></div>
+      <div class="modal-actions">
+        <button class="modal-btn cancel" onclick="closeAddSpendModal()">Cancelar</button>
+        <button id="add-spend-save" class="modal-btn primary" onclick="confirmAddSpend()" disabled>Adicionar</button>
+      </div>
+    </div>`;
+  overlay.onclick = (e) => { if (e.target === overlay) closeAddSpendModal(); };
+  document.body.appendChild(overlay);
+  const inp = document.getElementById('add-spend-input');
+  inp.addEventListener('input', updateSpendPreview);
+  setTimeout(() => inp.focus(), 100);
+}
+
+function closeAddSpendModal() {
+  const ov = document.getElementById('add-spend-overlay');
+  if (ov) ov.remove();
+}
+
+function setSpendAmount(v) {
+  const inp = document.getElementById('add-spend-input');
+  if (!inp) return;
+  inp.value = v;
+  updateSpendPreview();
+}
+
+function updateSpendPreview() {
+  const v = parseFloat(document.getElementById('add-spend-input').value);
+  const btn = document.getElementById('add-spend-save');
+  const info = document.getElementById('add-spend-confirm');
+  if (Number.isFinite(v) && v > 0 && v <= 100000) {
+    btn.disabled = false;
+    info.style.display = 'block';
+    info.innerHTML = `Vai somar <strong style="color:#a78bfa">R$ ${v.toFixed(2).replace('.',',')}</strong> ao gasto Facebook de hoje. Tem certeza?`;
+  } else {
+    btn.disabled = true;
+    info.style.display = 'none';
+  }
+}
+
+async function confirmAddSpend() {
+  const inp = document.getElementById('add-spend-input');
+  const v = parseFloat(inp.value);
+  if (!Number.isFinite(v) || v <= 0) return;
+  const btn = document.getElementById('add-spend-save');
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+  try {
+    const r = await api('/api/investment-add-spend', {
+      method: 'POST',
+      body: JSON.stringify({ amount: v })
+    });
+    if (r.success) {
+      showToast(`+R$ ${v.toFixed(2).replace('.',',')} adicionado · total R$ ${r.total.toFixed(2).replace('.',',')}`, 'success');
+      closeAddSpendModal();
+      loadRoiHero();
+    } else {
+      showToast('Erro: ' + (r.error || 'falha ao salvar'), 'error');
+      btn.disabled = false;
+      btn.textContent = 'Adicionar';
+    }
+  } catch(e) {
+    showToast('Erro de conexão', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Adicionar';
+  }
+}
+
+// NAV
+function showPage(page, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('pg-' + page).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(page === 'inst') loadInstances();
+  if(page === 'analytics') { loadAnalytics(); loadDailySummary(); loadMetaBMStatus(); loadMetaAutoSyncStatus(); loadFunnelEffectiveness(); }
+  document.getElementById('content').scrollTop = 0;
+}
+
+// SSE
+let sse;
+function connectSSE() {
+  if(sse) sse.close();
+  sse = new EventSource('/api/events-public?t=' + encodeURIComponent(token));
+
+  sse.addEventListener('pix_generated', e => {
+    const d = JSON.parse(e.data);
+    // ⭐ FIX 15/05: PIX bloqueado por cooldown (mesmo cliente/produto recente) NÃO entra no feed.
+    // O server ainda registra em events (auditoria), mas não polui o feed e não vibra/toca.
+    if (d.skipped) {
+      loadDashboard();
+      return;
+    }
+    markActivity();
+    haptic(d.isFemale ? [40, 50, 40] : (d.highValue ? [25, 30, 25] : 10));
+    playSound('pix', { highValue: d.highValue });
+    addFeed('pix', 'PIX Gerado', d.customerName, d.amount, d.productName, { isFemale: d.isFemale, highValue: d.highValue, phoneKey: d.phoneKey });
+    pendingPix++;
+    loadDashboard();
+    showToast('PIX Gerado — ' + d.customerName, d.isFemale ? 'error' : 'info');
+  });
+
+  sse.addEventListener('payment_approved', e => {
+    const d = JSON.parse(e.data);
+    markActivity();
+    haptic([30, 40, 30, 40, 60]);
+    playSound('pay', { highValue: d.highValue });
+    const method = d.paymentMethod === 'CREDIT_CARD' ? 'Cartão' : 'PIX';
+    addFeed('pay', 'Pago via ' + method, d.customerName, d.amount, d.productName, { isFemale: d.isFemale, highValue: d.highValue, phoneKey: d.phoneKey });
+    loadDashboard();
+    showToast('Venda — ' + d.customerName + ' (' + d.amount + ')', d.isFemale ? 'error' : 'success');
+  });
+
+  // ⭐ 12/05: handler novo pra cart_abandoned (já existia no servidor mas o app não escutava)
+  sse.addEventListener('cart_abandoned', e => {
+    const d = JSON.parse(e.data);
+    markActivity();
+    haptic(d.isFemale ? [40, 50, 40] : 12);
+    addFeed('pix', 'Carrinho Abandonado', d.customerName, d.amount, d.productName, { isFemale: d.isFemale, highValue: d.highValue, phoneKey: d.phoneKey });
+    showToast('Carrinho — ' + d.customerName, d.isFemale ? 'error' : 'info');
+  });
+
+  // Instância caiu/voltou: atualização silenciosa do status (sem alerta — decisão de 06/26)
+  sse.addEventListener('instance_down', () => {
+    if(document.getElementById('pg-inst').classList.contains('active')) loadInstances();
+    loadDashboard();
+  });
+
+  sse.addEventListener('instance_up', () => {
+    if(document.getElementById('pg-inst').classList.contains('active')) loadInstances();
+    loadDashboard();
+  });
+
+  sse.onerror = () => {
+    document.getElementById('conn-dot').className = 'conn-dot off';
+    setTimeout(connectSSE, 5000);
+  };
+  sse.onopen = () => {
+    document.getElementById('conn-dot').className = 'conn-dot';
+  };
+}
+
+// FEED
+function addFeed(type, title, name, value, meta, extras = {}) {
+  feedItems.unshift({
+    type, title, name, value, meta,
+    time: new Date(),
+    isFemale: !!extras.isFemale,
+    highValue: !!extras.highValue,
+    phoneKey: extras.phoneKey || null
+  });
+  if(feedItems.length > 30) feedItems.pop();
+  renderFeed();
+}
+
+function _escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderFeed() {
+  const el = document.getElementById('feed-list');
+  if(!el) return;
+  const onlyFemale = window.__feedFilterFemale === true;
+  const list = onlyFemale ? feedItems.filter(f => f.isFemale) : feedItems;
+  if(!list.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">' +
+      (onlyFemale ? 'Nenhum lead feminino no momento' : 'Aguardando eventos...') + '</div>';
+    document.getElementById('feed-count').textContent = '';
+    return;
+  }
+  const femaleTotal = feedItems.filter(f => f.isFemale).length;
+  document.getElementById('feed-count').textContent = list.length + ' eventos' + (femaleTotal ? ` · ${femaleTotal} fem` : '');
+  el.innerHTML = list.slice(0,15).map((f, idx) => {
+    const t = f.time.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    const icoClass = f.isFemale ? 'fi-female' : (f.type==='pix'?'fi-pix':f.type==='pay'?'fi-pay':f.type==='err'?'fi-err':'fi-info');
+    const valClass = f.type==='pay'?'fv-green':f.type==='pix'?'fv-blue':f.type==='err'?'fv-red':'';
+    const itemClass = 'feed-item' + (f.isFemale ? ' female' : (f.highValue ? ' high-value' : ''));
+    const ICO_SVG = {
+      pix: '<svg fill="none" stroke="#60a5fa" stroke-width="2" viewBox="0 0 24 24" width="15" height="15"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+      pay: '<svg fill="none" stroke="#34d399" stroke-width="2.4" viewBox="0 0 24 24" width="15" height="15"><polyline points="20 6 9 17 4 12"/></svg>',
+      err: '<svg fill="none" stroke="#f87171" stroke-width="2" viewBox="0 0 24 24" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+      info: '<svg fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+      female: '<svg fill="none" stroke="#f87171" stroke-width="2" viewBox="0 0 24 24" width="15" height="15"><circle cx="12" cy="8" r="5"/><line x1="12" y1="13" x2="12" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/></svg>'
+    };
+    const icon = f.isFemale ? ICO_SVG.female : (ICO_SVG[f.type] || ICO_SVG.info);
+    const femBadge = f.isFemale ? '<span class="female-badge">Feminino</span>' : '';
+    const highBadge = (f.highValue && !f.isFemale) ? '<span class="high-badge">Alto Valor</span>' : '';
+    const hasActions = !!f.phoneKey;
+    const chevron = hasActions ? '<div class="feed-chevron">›</div>' : '';
+    const swipeActions = hasActions ? `
+      <div class="feed-swipe-actions" data-idx="${idx}">
+        <div class="swipe-act cancel" onclick="event.stopPropagation(); swipeCancel(${idx})">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+          Cancelar
+        </div>
+        <div class="swipe-act block" onclick="event.stopPropagation(); swipeBlock(${idx})">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          Bloquear
+        </div>
+      </div>` : '';
+    const clickAttr = hasActions ? `onclick="openLeadDrawer(${idx})"` : '';
+    return `<div class="feed-item-wrap">
+      <div class="${itemClass}" ${clickAttr} data-idx="${idx}" ${hasActions ? 'data-swipeable="1"' : ''}>
+        <div class="feed-ico ${icoClass}">${icon}</div>
+        <div class="feed-body">
+          <div class="feed-title">${_escapeHtml(f.title)}${femBadge}${highBadge}</div>
+          <div class="feed-meta">${_escapeHtml(f.name)}${f.meta?' · '+_escapeHtml(f.meta):''}</div>
+          ${f.value?`<div class="feed-val ${valClass}">${_escapeHtml(f.value)}</div>`:''}
+        </div>
+        <div class="feed-time">${t}</div>
+        ${chevron}
+      </div>
+      ${swipeActions}
+    </div>`;
+  }).join('');
+  // Setup swipe gestures nos itens recém renderizados
+  setupFeedSwipe();
+}
+
+// ============ DRAWER DO LEAD ============
+async function openLeadDrawer(feedIdx) {
+  // Pega item filtrado equivalente ao que renderFeed mostrou
+  const onlyFemale = window.__feedFilterFemale === true;
+  const list = onlyFemale ? feedItems.filter(f => f.isFemale) : feedItems;
+  const f = list[feedIdx];
+  if (!f || !f.phoneKey) return;
+  if (document.getElementById('lead-drawer-overlay')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'lead-drawer-overlay';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet" onclick="event.stopPropagation()">
+      <div class="modal-title">${_escapeHtml(f.name)}</div>
+      <div class="modal-sub">${_escapeHtml(f.title)} · ${f.time.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+      <div id="lead-status-wrap"><div class="lab-status idle">Carregando estado...</div></div>
+      <div class="lead-info">
+        <div class="lead-info-row"><div><div class="lead-info-lbl">Produto</div><div class="lead-info-val">${_escapeHtml(f.meta||'—')}</div></div></div>
+        ${f.value?`<div class="lead-info-row"><div><div class="lead-info-lbl">Valor</div><div class="lead-info-val">${_escapeHtml(f.value)}</div></div></div>`:''}
+        <div class="lead-info-row"><div><div class="lead-info-lbl">Phone Key</div><div class="lead-info-val" style="font-family:var(--mono);font-size:11px">${_escapeHtml(f.phoneKey)}</div></div></div>
+      </div>
+      <div id="lead-actions"></div>
+      <div class="modal-actions" style="margin-top:8px">
+        <button class="modal-btn cancel" onclick="closeLeadDrawer()">Fechar</button>
+      </div>
+    </div>`;
+  overlay.onclick = (e) => { if (e.target === overlay) closeLeadDrawer(); };
+  document.body.appendChild(overlay);
+  // Carrega estado real do lead
+  await refreshLeadState(f.phoneKey);
+}
+
+function closeLeadDrawer() {
+  const ov = document.getElementById('lead-drawer-overlay');
+  if (ov) ov.remove();
+}
+
+// Drawer genérico (15/05): título + conteúdo HTML livre + botão fechar
+function openDrawer(title, contentHtml, contentClass) {
+  closeDrawer();
+  const overlay = document.createElement('div');
+  overlay.id = 'generic-drawer-overlay';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet" onclick="event.stopPropagation()" style="padding:18px 0 calc(20px + var(--safe-bottom))">
+      <div class="modal-title" style="padding:0 18px">${title}</div>
+      <div style="margin-top:10px" class="${contentClass||''}">${contentHtml}</div>
+      <div style="padding:14px 18px 0">
+        <button class="modal-btn cancel" style="width:100%" onclick="closeDrawer()">Fechar</button>
+      </div>
+    </div>`;
+  overlay.onclick = (e) => { if (e.target === overlay) closeDrawer(); };
+  document.body.appendChild(overlay);
+}
+
+function closeDrawer() {
+  const ov = document.getElementById('generic-drawer-overlay');
+  if (ov) ov.remove();
+}
+
+async function refreshLeadState(phoneKey) {
+  const statusWrap = document.getElementById('lead-status-wrap');
+  const actionsWrap = document.getElementById('lead-actions');
+  if (!statusWrap || !actionsWrap) return;
+  try {
+    const r = await api('/api/lead/' + encodeURIComponent(phoneKey));
+    if (!r.success) {
+      statusWrap.innerHTML = '<div class="lab-status idle">Não consegui carregar o estado</div>';
+      return;
+    }
+    const d = r.data;
+    // Status visual
+    let statusHtml;
+    if (d.blacklisted) statusHtml = '<div class="lab-status blocked">Bloqueado · não recebe mais mensagens</div>';
+    else if (d.paused) statusHtml = '<div class="lab-status paused">Funil pausado · ' + d.scheduledPending + ' envio(s) agendado(s)</div>';
+    else if (d.inFunnel) statusHtml = '<div class="lab-status in-funnel">Em funil ativo · passo ' + d.stepIndex + (d.scheduledPending ? ' · ' + d.scheduledPending + ' pendente(s)' : '') + '</div>';
+    else if (d.pixWaiting) statusHtml = '<div class="lab-status in-funnel">PIX aguardando · funil ainda não começou</div>';
+    else statusHtml = '<div class="lab-status idle">Sem funil ativo' + (d.scheduledPending ? ' · ' + d.scheduledPending + ' agendado(s)' : '') + '</div>';
+    statusWrap.innerHTML = statusHtml;
+    // Ações
+    let actionsHtml = '';
+    if (!d.blacklisted) {
+      actionsHtml += `<button class="lead-action-btn lab-block" onclick="actBlockLead('${_escapeHtml(phoneKey)}')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        Bloquear lead · todas instâncias
+      </button>`;
+    } else {
+      actionsHtml += `<button class="lead-action-btn lab-pause" onclick="actUnblockLead('${_escapeHtml(phoneKey)}')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m-8-8h16"/></svg>
+        Desbloquear lead
+      </button>`;
+    }
+    if (d.scheduledPending > 0 || d.inFunnel || d.pixWaiting) {
+      actionsHtml += `<button class="lead-action-btn lab-cancel" onclick="actCancelNext('${_escapeHtml(phoneKey)}')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+        Cancelar envio agendado
+      </button>`;
+    }
+    if (d.inFunnel) {
+      const lbl = d.paused ? 'Retomar funil' : 'Pausar funil';
+      actionsHtml += `<button class="lead-action-btn lab-pause" onclick="actTogglePause('${_escapeHtml(phoneKey)}')">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        ${lbl}
+      </button>`;
+    }
+    if (!actionsHtml) actionsHtml = '<div style="text-align:center;padding:14px;color:var(--text3);font-size:12px">Nenhuma ação disponível pra este lead</div>';
+    actionsWrap.innerHTML = actionsHtml;
+  } catch(e) {
+    statusWrap.innerHTML = '<div class="lab-status idle">Erro: ' + (e.message||'') + '</div>';
+  }
+}
+
+async function actBlockLead(phoneKey) {
+  if (!confirm('Bloquear este lead? Ele vai parar de receber qualquer mensagem de todas as instâncias.')) return;
+  try {
+    const r = await api('/api/lead/' + encodeURIComponent(phoneKey) + '/block', { method: 'POST', body: JSON.stringify({ reason: 'bloqueado_pelo_app' }) });
+    if (r.success) {
+      showToast(r.message || 'Lead bloqueado', 'success');
+      await refreshLeadState(phoneKey);
+    } else showToast(r.error || 'Falha', 'error');
+  } catch(e) { showToast('Erro de conexão', 'error'); }
+}
+
+async function actUnblockLead(phoneKey) {
+  if (!confirm('Desbloquear lead?')) return;
+  try {
+    const r = await api('/api/blacklist/' + encodeURIComponent(phoneKey) + '/remove', { method: 'POST' });
+    if (r.success) {
+      showToast('Lead desbloqueado', 'success');
+      await refreshLeadState(phoneKey);
+    } else showToast(r.error || 'Falha', 'error');
+  } catch(e) { showToast('Erro de conexão', 'error'); }
+}
+
+async function actCancelNext(phoneKey) {
+  if (!confirm('Cancelar próximos envios agendados? O lead vai parar de receber mensagens deste funil, mas NÃO fica bloqueado.')) return;
+  try {
+    const r = await api('/api/lead/' + encodeURIComponent(phoneKey) + '/cancel-next', { method: 'POST' });
+    if (r.success) {
+      showToast(r.message || 'Envios cancelados', 'success');
+      await refreshLeadState(phoneKey);
+    } else showToast(r.error || 'Falha', 'error');
+  } catch(e) { showToast('Erro de conexão', 'error'); }
+}
+
+async function actTogglePause(phoneKey) {
+  try {
+    const r = await api('/api/lead/' + encodeURIComponent(phoneKey) + '/pause', { method: 'POST' });
+    if (r.success) {
+      showToast(r.paused ? 'Funil pausado' : 'Funil retomado', 'success');
+      await refreshLeadState(phoneKey);
+    } else showToast(r.error || 'Falha', 'error');
+  } catch(e) { showToast('Erro de conexão', 'error'); }
+}
+
+// ============ SWIPE PRA AÇÕES NO FEED ============
+let _activeSwipe = null;
+function setupFeedSwipe() {
+  document.querySelectorAll('.feed-item[data-swipeable="1"]').forEach(item => {
+    if (item.dataset.swipeBound === '1') return;
+    item.dataset.swipeBound = '1';
+    let startX = 0, currentX = 0, swiping = false;
+    item.addEventListener('touchstart', (e) => {
+      // Fecha outro swipe aberto
+      if (_activeSwipe && _activeSwipe !== item) closeSwipe(_activeSwipe);
+      startX = e.touches[0].clientX;
+      swiping = true;
+    }, { passive: true });
+    item.addEventListener('touchmove', (e) => {
+      if (!swiping) return;
+      const dx = e.touches[0].clientX - startX;
+      if (dx < 0 && dx > -150) {
+        item.style.transform = `translateX(${dx}px)`;
+        item.style.transition = 'none';
+        currentX = dx;
+      }
+    }, { passive: true });
+    item.addEventListener('touchend', () => {
+      swiping = false;
+      item.style.transition = 'transform .25s ease';
+      if (currentX < -60) {
+        item.style.transform = 'translateX(-140px)';
+        const actions = item.nextElementSibling;
+        if (actions && actions.classList.contains('feed-swipe-actions')) actions.classList.add('revealed');
+        _activeSwipe = item;
+        haptic(8);
+      } else {
+        closeSwipe(item);
+      }
+      currentX = 0;
+    });
+  });
+}
+function closeSwipe(item) {
+  if (!item) return;
+  item.style.transform = '';
+  const actions = item.nextElementSibling;
+  if (actions && actions.classList.contains('feed-swipe-actions')) actions.classList.remove('revealed');
+  if (_activeSwipe === item) _activeSwipe = null;
+}
+async function swipeBlock(idx) {
+  const onlyFemale = window.__feedFilterFemale === true;
+  const list = onlyFemale ? feedItems.filter(f => f.isFemale) : feedItems;
+  const f = list[idx];
+  if (!f || !f.phoneKey) return;
+  if (!confirm(`Bloquear "${f.name}"?\n\nVai parar de receber qualquer mensagem de TODAS as instâncias.`)) {
+    closeSwipe(document.querySelector(`.feed-item[data-idx="${idx}"]`));
+    return;
+  }
+  haptic([20, 30, 20]);
+  try {
+    const r = await api('/api/lead/' + encodeURIComponent(f.phoneKey) + '/block', { method: 'POST', body: JSON.stringify({ reason: 'swipe_feed' }) });
+    if (r.success) showToast(r.message || 'Lead bloqueado', 'success');
+    else showToast(r.error || 'Falha', 'error');
+  } catch(e) { showToast('Erro de conexão', 'error'); }
+  closeSwipe(document.querySelector(`.feed-item[data-idx="${idx}"]`));
+}
+async function swipeCancel(idx) {
+  const onlyFemale = window.__feedFilterFemale === true;
+  const list = onlyFemale ? feedItems.filter(f => f.isFemale) : feedItems;
+  const f = list[idx];
+  if (!f || !f.phoneKey) return;
+  if (!confirm(`Cancelar próximas mensagens pra "${f.name}"?\n\nNão bloqueia o lead, só interrompe o funil.`)) {
+    closeSwipe(document.querySelector(`.feed-item[data-idx="${idx}"]`));
+    return;
+  }
+  haptic(10);
+  try {
+    const r = await api('/api/lead/' + encodeURIComponent(f.phoneKey) + '/cancel-next', { method: 'POST' });
+    if (r.success) showToast(r.message || 'Envios cancelados', 'success');
+    else showToast(r.error || 'Falha', 'error');
+  } catch(e) { showToast('Erro de conexão', 'error'); }
+  closeSwipe(document.querySelector(`.feed-item[data-idx="${idx}"]`));
+}
+
+function toggleFemaleFilter() {
+  window.__feedFilterFemale = !window.__feedFilterFemale;
+  const btn = document.getElementById('female-filter-btn');
+  if (btn) {
+    btn.style.background = window.__feedFilterFemale ? '#dc2626' : 'rgba(220,38,38,.15)';
+    btn.style.color = window.__feedFilterFemale ? '#fff' : '#f87171';
+    btn.textContent = window.__feedFilterFemale ? 'Mostrar tudo' : 'Só femininos';
+  }
+  renderFeed();
+}
+
+// DASHBOARD
+let _yesterdayStats = null; // { net_revenue, paid, pix_generated }
+
+function renderTrend(elId, todayVal, yesterdayVal, opts = {}) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (yesterdayVal == null) { el.textContent = ''; el.className = 'mc-trend'; return; }
+  const diff = todayVal - yesterdayVal;
+  const pct = yesterdayVal > 0 ? (diff / yesterdayVal) * 100 : (todayVal > 0 ? 100 : 0);
+  const arrow = diff >= 0 ? '▲' : '▼';
+  const sign = diff >= 0 ? '+' : '';
+  el.className = 'mc-trend ' + (diff > 0 ? 'up' : diff < 0 ? 'dn' : '');
+  if (opts.showPercent) {
+    el.textContent = `${arrow} ${sign}${pct.toFixed(0)}% vs ontem`;
+  } else {
+    el.textContent = `${arrow} ${sign}${diff} vs ontem (${yesterdayVal})`;
+  }
+}
+
+// ===== ABANDONO CONTROL (15/05) =====
+let _abanState = { enabled: true, pending: 0, inFlight: 0 };
+
+async function loadAbandonoStatus() {
+  try {
+    const r = await api('/api/abandono/status');
+    if (!r.success) return;
+    _abanState = { enabled: !!r.enabled, pending: r.pending || 0, inFlight: r.inFlight || 0 };
+    renderAbandonoCard();
+  } catch(e) {}
+}
+
+function renderAbandonoCard() {
+  const wrap = document.getElementById('abandono-control');
+  if (!wrap) return;
+  const { enabled, pending, inFlight } = _abanState;
+  let cls, dotColor, title, sub, actionBtn = '';
+  if (pending > 0) {
+    cls = 'alert';
+    dotColor = '#fbbf24';
+    title = `${pending} abandono${pending>1?'s':''} esperando disparo`;
+    sub = `${inFlight} em andamento · janela 2h`;
+    actionBtn = `<button class="aban-act" onclick="openAbandonoQueue()">Ver fila</button>`;
+  } else if (enabled) {
+    cls = 'on';
+    dotColor = '#34d399';
+    title = 'Carrinho Abandonado · Ativo';
+    sub = inFlight > 0 ? `${inFlight} em andamento` : 'Nenhum pendente';
+  } else {
+    cls = 'off';
+    dotColor = '#f87171';
+    title = 'Carrinho Abandonado · Desligado';
+    sub = 'Webhooks novos não disparam funil';
+  }
+  wrap.innerHTML = `
+    <div class="aban-card ${cls}">
+      <div style="width:10px;height:10px;border-radius:50%;background:${dotColor};box-shadow:0 0 8px ${dotColor};flex-shrink:0"></div>
+      <div class="aban-body">
+        <div class="aban-title">${title}</div>
+        <div class="aban-sub">${sub}</div>
+      </div>
+      ${actionBtn}
+      <div class="aban-sw ${enabled?'on':''}" onclick="toggleAbandono()" title="${enabled?'Desligar':'Ligar'} funil de abandono"></div>
+    </div>`;
+}
+
+async function toggleAbandono() {
+  const newState = !_abanState.enabled;
+  // Confirma desligamento
+  if (!newState) {
+    if (!confirm('Desligar funil de Carrinho Abandonado?\n\nFunis já em andamento continuam normalmente. Novos webhooks de abandono serão ignorados.')) return;
+  }
+  if (navigator.vibrate) navigator.vibrate(20);
+  try {
+    const r = await api('/api/abandono/toggle', { method: 'POST', body: JSON.stringify({ active: newState }) });
+    if (r.success) {
+      _abanState.enabled = !!r.active;
+      renderAbandonoCard();
+    }
+  } catch(e) { alert('Erro ao alternar: ' + e.message); }
+}
+
+async function openAbandonoQueue() {
+  if (navigator.vibrate) navigator.vibrate(15);
+  try {
+    const r = await api('/api/abandono/pending');
+    if (!r.success) return;
+    const items = r.pending || [];
+    const listHtml = items.length === 0
+      ? '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Nenhum abandono pendente.</div>'
+      : items.map(it => {
+          const val = (it.amount || 0).toFixed(2).replace('.', ',');
+          const minLabel = it.minutesAgo < 1 ? 'agora' : it.minutesAgo === 1 ? '1min' : `${it.minutesAgo}min`;
+          return `<div class="aban-pending-item">
+            <div style="min-width:0;flex:1">
+              <div class="aban-pending-name">${_escapeHtml(it.customerName)}</div>
+              <div class="aban-pending-meta">há ${minLabel} · ${_escapeHtml(it.productName || '—')}</div>
+            </div>
+            <div class="aban-pending-val">R$ ${val}</div>
+          </div>`;
+        }).join('');
+    const btnsHtml = items.length > 0 ? `
+      <div class="aban-btn-row">
+        <button class="aban-btn aban-btn-clear" onclick="clearAbandonoQueue()">Limpar tudo</button>
+        <button class="aban-btn aban-btn-fire" onclick="fireAbandonoQueue()">Disparar agora</button>
+      </div>` : '';
+    openDrawer(`Abandonos pendentes (${items.length})`, listHtml + btnsHtml, 'aban-drawer-list');
+  } catch(e) {}
+}
+
+async function fireAbandonoQueue() {
+  if (!confirm(`Disparar TODOS os abandonos pendentes agora?\n\nVai mandar 1 a cada 30s pra não sobrecarregar.\n\nConfirma?`)) return;
+  if (navigator.vibrate) navigator.vibrate(30);
+  try {
+    const r = await api('/api/abandono/fire', { method: 'POST' });
+    if (r.success) {
+      alert(`${r.fired} abandono(s) disparado(s) · duração estimada ${r.durationMin}min`);
+      closeDrawer();
+      loadAbandonoStatus();
+    }
+  } catch(e) { alert('Erro: ' + e.message); }
+}
+
+async function clearAbandonoQueue() {
+  if (!confirm(`Limpar fila SEM disparar?\n\nVai cancelar todos os abandonos pendentes (nenhuma mensagem é enviada).\n\nConfirma?`)) return;
+  if (navigator.vibrate) navigator.vibrate(30);
+  try {
+    const r = await api('/api/abandono/clear', { method: 'POST' });
+    if (r.success) {
+      alert(`${r.cleared} abandono(s) limpo(s).`);
+      closeDrawer();
+      loadAbandonoStatus();
+    }
+  } catch(e) { alert('Erro: ' + e.message); }
+}
+
+async function loadDashboard() {
+  try {
+    const r = await api('/api/dashboard');
+    if(!r.success) return;
+    const d = r.data;
+    animateNumber(document.getElementById('m-pix'), d.pending_pix);
+    animateNumber(document.getElementById('m-paid'), d.completed_today);
+    document.getElementById('m-paid-s').textContent = 'PIX ' + (d.pix_paid_today||0) + ' · Cartão ' + (d.card_paid_today||0);
+
+    // HERO DUPLO (15/05): FATUREI à esquerda + LUCRO à direita (cor adaptativa)
+    const heroEl = document.getElementById('hero-rev');
+    heroEl.dataset.curVal = heroEl.dataset.curVal || 0;
+    animateNumber(heroEl, d.revenue_today || 0, { money: true, duration: 900 });
+    const conv = d.conversion_rate || 0;
+    document.getElementById('hero-rev-sub').innerHTML = `<strong>${d.completed_today||0}</strong> vendas · conv. ${conv}%`;
+
+    // Pega ontem (cacha 1 vez por boot — invalida se mudou o dia)
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (_yesterdayStats == null || _yesterdayStats._cachedFor !== todayStr) {
+      try {
+        const sum = await api('/api/daily-summary?days=2');
+        if (sum.success && sum.data && sum.data.length >= 2) {
+          _yesterdayStats = {
+            net_revenue: sum.data[1].net_revenue || 0,
+            net_profit: sum.data[1].net_profit || 0,
+            facebook_spend: sum.data[1].facebook_spend || 0,
+            has_spend_data: sum.data[1].has_spend_data || false,
+            paid: sum.data[1].paid || 0,
+            pix_generated: sum.data[1].pix_generated || 0,
+            _cachedFor: todayStr
+          };
+        }
+      } catch(e) {}
+    }
+
+    // Trend Faturamento vs Ontem
+    const revTrendEl = document.getElementById('hero-rev-trend');
+    if (_yesterdayStats && _yesterdayStats.net_revenue > 0) {
+      const pct = ((d.revenue_today - _yesterdayStats.net_revenue) / _yesterdayStats.net_revenue) * 100;
+      const sign = pct >= 0 ? '+' : '';
+      revTrendEl.className = 'hero-dual-trend ' + (pct >= 5 ? 'up' : pct <= -5 ? 'dn' : 'neutral');
+      revTrendEl.innerHTML = (pct >= 0 ? '▲' : '▼') + ' ' + sign + pct.toFixed(0) + '% vs ontem';
+    } else {
+      revTrendEl.className = 'hero-dual-trend neutral';
+      revTrendEl.textContent = 'sem comparação';
+    }
+
+    // LADO LUCRO — busca ROI live + cor adaptativa
+    try {
+      const roiData = await api('/api/roi-live');
+      if (roiData.success) {
+        const rd = roiData.data;
+        const profitEl = document.getElementById('hero-profit');
+        const profitLblEl = document.getElementById('hero-profit-lbl');
+        const profitSubEl = document.getElementById('hero-profit-sub');
+        const profitTrendEl = document.getElementById('hero-profit-trend');
+        const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+
+        if (rd.has_spend_data) {
+          const h = getRoiHealth(rd.roi, true);
+          profitEl.textContent = fmt(rd.net_profit);
+          profitEl.className = 'hero-dual-val profit ' + h.tone;
+          profitLblEl.className = 'hero-dual-lbl profit ' + (h.tone === 'good' ? '' : h.tone);
+          profitLblEl.innerHTML = 'Lucro · ' + h.label;
+          // Margem % = lucro / faturamento
+          const margem = rd.net_revenue > 0 ? (rd.net_profit / rd.net_revenue * 100) : 0;
+          profitSubEl.textContent = `ROI ${rd.roi.toFixed(2)}x · margem ${margem.toFixed(0)}%`;
+
+          // Trend Lucro vs ontem (em VALOR ABSOLUTO, mais útil que %)
+          if (_yesterdayStats && _yesterdayStats.has_spend_data) {
+            const diff = rd.net_profit - _yesterdayStats.net_profit;
+            const sign = diff >= 0 ? '+' : '';
+            profitTrendEl.className = 'hero-dual-trend ' + (diff >= 0 ? 'up' : 'dn');
+            profitTrendEl.innerHTML = (diff >= 0 ? '▲' : '▼') + ' ' + sign + 'R$ ' + Math.abs(Math.round(diff)) + ' vs ontem';
+          } else {
+            profitTrendEl.className = 'hero-dual-trend neutral';
+            profitTrendEl.textContent = 'sem comparação';
+          }
+        } else {
+          profitEl.textContent = 'R$ —';
+          profitEl.className = 'hero-dual-val profit neutral';
+          profitLblEl.className = 'hero-dual-lbl profit';
+          profitLblEl.innerHTML = 'Lucro';
+          profitSubEl.textContent = 'Adicione gasto FB pra ver';
+          profitTrendEl.className = 'hero-dual-trend neutral';
+          profitTrendEl.textContent = '—';
+        }
+      }
+    } catch(e) {}
+    // Trends nos cards (Pagamentos + PIX Gerados — métricas cumulativas do dia)
+    if (_yesterdayStats) {
+      renderTrend('m-paid-trend', d.completed_today || 0, _yesterdayStats.paid);
+      renderTrend('m-pixg-trend', d.pix_generated_today || 0, _yesterdayStats.pix_generated);
+    }
+
+    const convEl = document.getElementById('m-conv');
+    convEl.textContent = conv + '% conv.';
+    convEl.className = 'mc-trend ' + (conv >= 20 ? 'up' : conv > 0 ? '' : 'dn');
+    animateNumber(document.getElementById('m-pixg'), d.pix_generated_today);
+    animateNumber(document.getElementById('m-active'), d.active_conversations);
+    animateNumber(document.getElementById('m-wait'), d.waiting_responses);
+
+    // Saúde dos chips no Dashboard
+    try {
+      const ins = await api('/api/instances');
+      if (ins.success) {
+        const nonNotif = ins.data.filter(i => !i.is_notification);
+        const online = nonNotif.filter(i => i.connected && !i.paused).length;
+        const total = nonNotif.length;
+        const healthEl = document.getElementById('m-health');
+        const healthSubEl = document.getElementById('m-health-s');
+        if (healthEl && total > 0) {
+          const pct = Math.round((online / total) * 100);
+          healthEl.textContent = pct + '%';
+          if (healthSubEl) healthSubEl.textContent = online + '/' + total + ' online';
+        }
+      }
+    } catch(e) {}
+
+    // Badge de PIX pendentes no ícone
+    if(d.pending_pix > 0 && 'setAppBadge' in navigator) {
+      navigator.setAppBadge(d.pending_pix).catch(()=>{});
+    } else if ('setAppBadge' in navigator) {
+      navigator.clearAppBadge().catch(()=>{});
+    }
+  } catch(e) {}
+}
+
+// INSTÂNCIAS
+let _instPeriod = 'today'; // today | yesterday | 7d | 30d
+function setInstancesPeriod(p) {
+  _instPeriod = p;
+  document.querySelectorAll('#inst-pills .pill').forEach(b => b.classList.toggle('active', b.dataset.period === p));
+  haptic(6);
+  loadInstances();
+}
+function _statusRank(i) {
+  if (i.paused) return 1;
+  if (i.connected) return 0;
+  return 2;
+}
+async function loadInstances() {
+  try {
+    // Hoje/Ontem: days=2 (suficiente). 7d=7. 30d=30
+    const days = _instPeriod === '30d' ? 30 : _instPeriod === '7d' ? 7 : 2;
+    const r = await api('/api/instances?days=' + days);
+    if(!r.success) return;
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const nonNotif = r.data.filter(i => !i.is_notification);
+    // ORDENAÇÃO: ONLINE → PAUSED → OFFLINE, alfabético dentro de cada grupo
+    nonNotif.sort((a, b) => {
+      const rankDiff = _statusRank(a) - _statusRank(b);
+      if (rankDiff !== 0) return rankDiff;
+      return String(a.name).localeCompare(String(b.name), 'pt-BR', { numeric: true });
+    });
+    const total = nonNotif.length;
+    const online = nonNotif.filter(i => i.connected && !i.paused).length;
+    const offline = nonNotif.filter(i => !i.connected && !i.paused).length;
+    const paused = nonNotif.filter(i => i.paused).length;
+
+    // CARD DE SAÚDE GERAL
+    const healthPct = total > 0 ? Math.round((online / total) * 100) : 0;
+    const healthClass = healthPct >= 75 ? 'good' : healthPct >= 50 ? 'warn' : 'bad';
+    const healthLabel = healthPct >= 75 ? 'Saudável' : healthPct >= 50 ? 'Atenção' : 'Crítico';
+    const healthSubMsg = offline > 0 ? `${offline} offline · ${paused} pausada${paused!==1?'s':''}` : (paused > 0 ? `${paused} pausada${paused!==1?'s':''}` : 'Todas operando normalmente');
+    const dashOffset = 2 * Math.PI * 36 * (1 - healthPct / 100);
+    const strokeColor = healthPct >= 75 ? '#10b981' : healthPct >= 50 ? '#fbbf24' : '#dc2626';
+    const barsHtml = nonNotif.map(i => {
+      const c = i.paused ? 'paused' : i.connected ? 'online' : 'offline';
+      return `<div class="health-bar ${c}" title="${_escapeHtml(i.name)} · ${c}"></div>`;
+    }).join('');
+    document.getElementById('health-card-wrap').innerHTML = `
+      <div class="health-card ${healthClass}">
+        <div class="health-gauge">
+          <svg viewBox="0 0 84 84">
+            <circle class="health-gauge-track" cx="42" cy="42" r="36"/>
+            <circle class="health-gauge-fill" cx="42" cy="42" r="36" stroke="${strokeColor}" stroke-dasharray="${(2*Math.PI*36).toFixed(2)}" stroke-dashoffset="${dashOffset.toFixed(2)}"/>
+          </svg>
+          <div class="health-gauge-text">
+            <div class="health-gauge-val">${healthPct}%</div>
+            <div class="health-gauge-lbl">saúde</div>
+          </div>
+        </div>
+        <div class="health-info">
+          <div class="health-title">${online}/${total} online · ${healthLabel}</div>
+          <div class="health-sub">${healthSubMsg}</div>
+          <div class="health-bars">${barsHtml}</div>
+        </div>
+      </div>`;
+
+    const el = document.getElementById('inst-list');
+    if(!nonNotif.length) {
+      el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma instância configurada</div>';
+      return;
+    }
+    const periodLabel = _instPeriod === 'today' ? 'hoje' : _instPeriod === 'yesterday' ? 'ontem' : _instPeriod;
+    const periodDays = _instPeriod === '30d' ? 30 : _instPeriod === '7d' ? 7 : 1;
+    // Render: agrupado por status com divisores
+    const groups = {
+      online: nonNotif.filter(i => i.connected && !i.paused),
+      paused: nonNotif.filter(i => i.paused),
+      offline: nonNotif.filter(i => !i.connected && !i.paused)
+    };
+    const renderCard = (inst) => {
+      const st = inst.paused?'paused':inst.connected?'online':'offline';
+      const stLabel = inst.paused?'Pausada':inst.connected?'Online':'Offline';
+      const label = inst.label || '';
+      const device = inst.device || '';
+      // Stats do período selecionado
+      let periodMsgs = 0;
+      let series = [];
+      if (_instPeriod === 'today') {
+        const ts = r.stats.find(s => s.instance === inst.name && s.date === today);
+        periodMsgs = ts?.messages_sent || 0;
+      } else if (_instPeriod === 'yesterday') {
+        const ts = r.stats.find(s => s.instance === inst.name && s.date === yesterday);
+        periodMsgs = ts?.messages_sent || 0;
+      } else {
+        for (let i = periodDays - 1; i >= 0; i--) {
+          const dStr = new Date(Date.now() - i*86400000).toISOString().split('T')[0];
+          const dayStat = r.stats.find(s => s.instance === inst.name && s.date === dStr);
+          const v = dayStat?.messages_sent || 0;
+          series.push(v);
+          periodMsgs += v;
+        }
+      }
+      const sparkCls = 'inst-spark' + (st === 'offline' ? ' offline' : '');
+      const sparkSvg = (series.length > 1 && series.some(v => v > 0)) ? `<svg class="${sparkCls}" viewBox="0 0 50 14" preserveAspectRatio="none"><path d="${sparklinePath(series, 50, 14)}"/></svg>` : '';
+      // Stats line: período principal + comparativo do dia (se não estiver mostrando hoje, mostra "hoje X" pra contexto)
+      const todayStat = r.stats.find(s => s.instance === inst.name && s.date === today);
+      const todayMsgs = todayStat?.messages_sent || 0;
+      let statsLine = `${periodMsgs} msgs ${periodLabel}`;
+      if (_instPeriod !== 'today' && todayMsgs > 0) statsLine += ` · hoje ${todayMsgs}`;
+      const abanFlag = inst.is_abandono ? ' <span style="font-size:8px;font-weight:800;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.25);padding:1px 5px;border-radius:6px;vertical-align:middle;letter-spacing:.3px">ABANDONO</span>' : (inst.block_abandono ? ' <span style="font-size:8px;font-weight:800;color:#34d399;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);padding:1px 5px;border-radius:6px;vertical-align:middle;letter-spacing:.3px">PROTEGIDA</span>' : '');
+      return `<div class="inst-card ${st==='offline'?'down':st==='paused'?'paused':''}" style="padding:12px 14px;margin:0 10px 8px" onclick="openInstanceDetail('${_escapeHtml(inst.name).replace(/'/g,'&#39;')}')">
+        <div class="inst-dot-big ${st}"></div>
+        <div class="inst-body">
+          <div class="inst-name">${_escapeHtml(inst.name)}${abanFlag}${sparkSvg}</div>
+          ${label?`<div class="inst-label">${_escapeHtml(label)}${device?' · '+_escapeHtml(device):''}</div>`:''}
+          <div class="inst-stats">${statsLine}</div>
+        </div>
+        <div class="inst-status ${st}">${stLabel}</div>
+      </div>`;
+    };
+    let html = '';
+    if (groups.online.length) {
+      html += `<div class="inst-divider"><span style="color:#34d399">Online · ${groups.online.length}</span><div class="inst-divider-line"></div></div>`;
+      html += groups.online.map(renderCard).join('');
+    }
+    if (groups.paused.length) {
+      html += `<div class="inst-divider"><span style="color:#fbbf24">Pausadas · ${groups.paused.length}</span><div class="inst-divider-line"></div></div>`;
+      html += groups.paused.map(renderCard).join('');
+    }
+    if (groups.offline.length) {
+      html += `<div class="inst-divider"><span style="color:#f87171">Offline · ${groups.offline.length}</span><div class="inst-divider-line"></div></div>`;
+      html += groups.offline.map(renderCard).join('');
+    }
+    el.innerHTML = html;
+  } catch(e) {}
+}
+
+// INSTANCE DETAIL DRAWER (15/05)
+async function openInstanceDetail(name) {
+  if (navigator.vibrate) navigator.vibrate(12);
+  try {
+    const r = await api('/api/instances/' + encodeURIComponent(name) + '/detail');
+    if (!r.success) return;
+    const inst = r.instance, today = r.today;
+    const stStr = inst.paused ? 'Pausada' : (inst.connected ? 'Online' : 'Offline');
+    const stColor = inst.paused ? '#fbbf24' : (inst.connected ? '#34d399' : '#f87171');
+    const phoneStr = inst.phone_number ? _escapeHtml(inst.phone_number) : '—';
+    const deviceStr = inst.device_name ? `${_escapeHtml(inst.device_name)}${inst.device_slot?' · '+_escapeHtml(inst.device_slot):''}` : '';
+    const avgWarn = today.messages_sent > r.avg7d_messages * 2 && today.messages_sent > 20 ? ' <span style="color:#fbbf24">(acima da média)</span>' : '';
+
+    const dropsHtml = r.drops_recent && r.drops_recent.length
+      ? r.drops_recent.map(d => {
+          const dt = new Date(d.at).toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+          const tag = d.recovered_at ? '<span style="color:#34d399">recuperada</span>' : '<span style="color:#f87171">ativa</span>';
+          return `<div class="inst-detail-stat"><span class="inst-detail-stat-lbl">${tag} ${dt}</span><span class="inst-detail-stat-val" style="font-size:10px;color:var(--text3)">${d.type||'UNKNOWN'}</span></div>`;
+        }).join('')
+      : '<div style="padding:14px;text-align:center;color:var(--text3);font-size:11px">Sem quedas nos últimos 7 dias</div>';
+
+    const content = `
+      <div style="padding:0 18px 4px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <div style="width:10px;height:10px;border-radius:50%;background:${stColor};box-shadow:0 0 8px ${stColor}"></div>
+          <div style="font-size:14px;font-weight:700;color:${stColor}">${stStr}</div>
+        </div>
+        ${phoneStr !== '—' || deviceStr ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">${phoneStr}${deviceStr?' · '+deviceStr:''}</div>` : ''}
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:6px"></div>
+      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Mensagens hoje</span><span class="inst-detail-stat-val">${today.messages_sent}${avgWarn}</span></div>
+      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Média 7 dias</span><span class="inst-detail-stat-val">${r.avg7d_messages}</span></div>
+      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Leads atendidos hoje</span><span class="inst-detail-stat-val">${today.leads_attended}</span></div>
+      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Quedas (7d)</span><span class="inst-detail-stat-val">${r.drops7d}</span></div>
+
+      <div style="padding:14px 18px 6px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Controles</div>
+
+      <div class="inst-detail-toggle">
+        <div class="inst-detail-toggle-info">
+          <div class="inst-detail-toggle-lbl">Pausar instância</div>
+          <div class="inst-detail-toggle-sub">Não envia mensagens enquanto pausada</div>
+        </div>
+        <div class="aban-sw ${inst.paused?'on':''}" onclick="toggleInstFlag('${_escapeHtml(name).replace(/'/g,'&#39;')}','pause',${!inst.paused})"></div>
+      </div>
+      <div class="inst-detail-toggle">
+        <div class="inst-detail-toggle-info">
+          <div class="inst-detail-toggle-lbl">Dedicada a abandono</div>
+          <div class="inst-detail-toggle-sub">Se LIGADO, esta instância vira pool exclusivo de abandono</div>
+        </div>
+        <div class="aban-sw ${inst.is_abandono?'on':''}" onclick="toggleInstFlag('${_escapeHtml(name).replace(/'/g,'&#39;')}','abandono',${!inst.is_abandono})"></div>
+      </div>
+      <div class="inst-detail-toggle">
+        <div class="inst-detail-toggle-info">
+          <div class="inst-detail-toggle-lbl">Proteger de abandono</div>
+          <div class="inst-detail-toggle-sub">Nunca recebe carrinho abandonado (protege número principal)</div>
+        </div>
+        <div class="aban-sw ${inst.block_abandono?'on':''}" onclick="toggleInstFlag('${_escapeHtml(name).replace(/'/g,'&#39;')}','block-abandono',${!inst.block_abandono})"></div>
+      </div>
+
+      <div style="padding:14px 18px 6px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Quedas recentes</div>
+      ${dropsHtml}
+    `;
+    openDrawer(`${_escapeHtml(inst.name)}`, content);
+  } catch(e) { console.error('openInstanceDetail:', e); }
+}
+
+async function toggleInstFlag(name, kind, newVal) {
+  if (navigator.vibrate) navigator.vibrate(15);
+  try {
+    let url, body;
+    if (kind === 'pause') {
+      url = '/api/instances/' + encodeURIComponent(name) + '/pause';
+      body = { paused: newVal };
+    } else if (kind === 'abandono') {
+      url = '/api/instances/' + encodeURIComponent(name) + '/abandono';
+      body = { is_abandono: newVal };
+    } else if (kind === 'block-abandono') {
+      url = '/api/instances/' + encodeURIComponent(name) + '/block-abandono';
+      body = { block_abandono: newVal };
+    } else return;
+    const r = await api(url, { method: 'POST', body: JSON.stringify(body) });
+    if (r.success) {
+      closeDrawer();
+      openInstanceDetail(name); // reabre com estado atualizado
+      loadInstances(); // refresh do grid
+    } else {
+      alert('Erro: ' + (r.error || 'falhou'));
+    }
+  } catch(e) { alert('Erro: ' + e.message); }
+}
+
+// RESUMO FINANCEIRO 7 DIAS
+// ===== RESUMO FINANCEIRO COM FILTRO DE PERÍODO (15/05) =====
+let _summaryPeriod = '7d'; // today | yesterday | 7d | 30d | month | custom
+let _summaryCustom = { from: null, to: null };
+
+function _summaryRange(period) {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const fmtDate = d => d.toISOString().split('T')[0];
+  if (period === 'today') return { from: todayStr, to: todayStr, label: 'Hoje' };
+  if (period === 'yesterday') {
+    const y = new Date(today.getTime() - 86400000);
+    return { from: fmtDate(y), to: fmtDate(y), label: 'Ontem' };
+  }
+  if (period === '7d') {
+    const from = new Date(today.getTime() - 6*86400000);
+    return { from: fmtDate(from), to: todayStr, label: '7 dias' };
+  }
+  if (period === '30d') {
+    const from = new Date(today.getTime() - 29*86400000);
+    return { from: fmtDate(from), to: todayStr, label: '30 dias' };
+  }
+  if (period === 'month') {
+    const first = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { from: fmtDate(first), to: todayStr, label: 'Mês atual' };
+  }
+  if (period === 'custom' && _summaryCustom.from && _summaryCustom.to) {
+    return { from: _summaryCustom.from, to: _summaryCustom.to, label: `${_summaryCustom.from} → ${_summaryCustom.to}` };
+  }
+  return null;
+}
+
+function setSummaryPeriod(p) {
+  if (p === 'custom') { openCustomDatePicker(); return; }
+  _summaryPeriod = p;
+  document.querySelectorAll('#sum-pills .pill').forEach(b => b.classList.toggle('active', b.dataset.sp === p));
+  if (navigator.vibrate) navigator.vibrate(10);
+  loadDailySummary();
+}
+
+function openCustomDatePicker() {
+  const today = new Date().toISOString().split('T')[0];
+  const monthAgo = new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+  const defFrom = _summaryCustom.from || monthAgo;
+  const defTo = _summaryCustom.to || today;
+  const content = `
+    <div style="padding:12px 18px 4px">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <label style="font-size:11px;color:var(--text3);font-weight:600">De:
+          <input type="date" id="sum-cust-from" value="${defFrom}" max="${today}"
+            style="display:block;margin-top:4px;width:100%;padding:11px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:14px;font-family:var(--mono);outline:none">
+        </label>
+        <label style="font-size:11px;color:var(--text3);font-weight:600">Até:
+          <input type="date" id="sum-cust-to" value="${defTo}" max="${today}"
+            style="display:block;margin-top:4px;width:100%;padding:11px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:14px;font-family:var(--mono);outline:none">
+        </label>
+      </div>
+      <div style="padding:14px 0 0">
+        <button onclick="applyCustomRange()" style="width:100%;padding:12px;background:linear-gradient(135deg,#6366f1,#7c3aed);color:#fff;border:none;border-radius:11px;font-size:13px;font-weight:700;font-family:var(--font);cursor:pointer">Aplicar</button>
+      </div>
+    </div>`;
+  openDrawer('Período personalizado', content);
+}
+
+function applyCustomRange() {
+  const from = document.getElementById('sum-cust-from')?.value;
+  const to = document.getElementById('sum-cust-to')?.value;
+  if (!from || !to) { alert('Selecione as duas datas'); return; }
+  if (new Date(to) < new Date(from)) { alert('Até precisa ser ≥ De'); return; }
+  _summaryCustom = { from, to };
+  _summaryPeriod = 'custom';
+  document.querySelectorAll('#sum-pills .pill').forEach(b => b.classList.toggle('active', b.dataset.sp === 'custom'));
+  closeDrawer();
+  loadDailySummary();
+}
+
+// Última auto-sync Meta (15/05): mostra "atualizado há X" no card Resumo
+async function loadMetaAutoSyncStatus() {
+  const el = document.getElementById('meta-autosync-status');
+  if (!el) return;
+  try {
+    const r = await api('/api/meta/auto-sync-status');
+    if (!r.success || !r.enabled) { el.innerHTML = ''; return; }
+    if (!r.last_sync) {
+      el.innerHTML = r.in_business_hours
+        ? `<span style="color:var(--text3)">Auto-sync ligado · primeira atualização em breve</span>`
+        : `<span style="color:var(--text3)">Auto-sync pausado (fora de 08-23h) · use sync manual</span>`;
+      return;
+    }
+    const age = r.last_sync_age_sec;
+    let ageLabel;
+    if (age < 60) ageLabel = 'agora';
+    else if (age < 3600) ageLabel = `há ${Math.round(age/60)}min`;
+    else ageLabel = `há ${Math.round(age/3600)}h`;
+    const inHoursTag = r.in_business_hours ? 'Auto-sync a cada 10min' : 'Auto-sync pausado (fora de 08-23h)';
+    if (r.last_error) {
+      el.innerHTML = `<span style="color:#fbbf24">Última auto-sync falhou ${ageLabel} · ${_escapeHtml(r.last_error.slice(0,60))}</span>`;
+    } else {
+      el.innerHTML = `<span style="color:var(--text3)">${inHoursTag} · atualizado ${ageLabel}</span>`;
+    }
+  } catch(e) { el.innerHTML = ''; }
+}
+
+// Status das BMs do Facebook (15/05): badge ⚠️ se alguma falhou no health check
+async function loadMetaBMStatus() {
+  const el = document.getElementById('meta-bm-status');
+  if (!el) return;
+  try {
+    const r = await api('/api/meta/health');
+    if (!r.success || !r.configured) {
+      el.innerHTML = '';
+      return;
+    }
+    const bms = r.bmsStatus || [];
+    if (!bms.length) { el.innerHTML = ''; return; }
+    const okCount = bms.filter(b => b.ok).length;
+    const failCount = bms.length - okCount;
+    if (failCount === 0) {
+      // Tudo OK — banner verde discreto
+      el.innerHTML = `<div style="padding:6px 10px;margin:6px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;font-size:10px;color:#34d399;display:flex;align-items:center;gap:6px">
+        <span>${bms.length} BM${bms.length>1?'s':''} conectada${bms.length>1?'s':''} · ${bms.map(b => b.name).join(' · ')}</span>
+      </div>`;
+    } else {
+      // Falha — badge vermelho destacado
+      const failed = bms.filter(b => !b.ok);
+      const failedNames = failed.map(b => b.name).join(', ');
+      const errors = failed.map(b => `${b.name}: ${_escapeHtml(b.error || 'sem detalhe')}`).join('<br>');
+      el.innerHTML = `<div style="padding:8px 12px;margin:6px 0;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:9px;font-size:11px;color:#f87171" onclick="alert('Detalhes:\\n${failed.map(b => (b.name+': '+(b.error||'sem detalhe'))).join('\\n').replace(/'/g,'')}');">
+        <div style="font-weight:700">${failCount} BM(s) offline: ${failedNames}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">${okCount} OK · gastos dessas BMs podem estar faltando · toca pra ver erro</div>
+      </div>`;
+    }
+  } catch(e) {}
+}
+
+async function syncMetaForSummary() {
+  const range = _summaryRange(_summaryPeriod);
+  if (!range) return;
+  if (!confirm(`Sincronizar gastos do Facebook de ${range.label}?\n\nVai puxar dia a dia da Meta Ads (~300ms cada).`)) return;
+  const btn = document.getElementById('sum-sync-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando...'; }
+  try {
+    const r = await api('/api/finance/sync-meta-range', {
+      method: 'POST',
+      body: JSON.stringify({ from: range.from, to: range.to })
+    });
+    if (r.success) {
+      alert(`${r.synced} dia(s) sincronizado(s)${r.failed > 0 ? ` · ${r.failed} falhou` : ''}`);
+      loadDailySummary();
+    } else {
+      alert(r.error || 'Erro desconhecido');
+    }
+  } catch(e) { alert('Erro: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Sincronizar gastos Facebook'; } }
+}
+
+async function loadDailySummary() {
+  const el = document.getElementById('ma-summary');
+  if (!el) return;
+  try {
+    const range = _summaryRange(_summaryPeriod);
+    if (!range) return;
+    const lblEl = document.getElementById('sum-period-label');
+    if (lblEl) lblEl.textContent = ' · ' + range.label;
+    const r = await api(`/api/daily-summary?from=${range.from}&to=${range.to}`);
+    if (!r.success) return;
+    const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+    const today = new Date().toISOString().split('T')[0];
+    const totals = r.totals || {};
+    // Sparkline geral (ordem cronológica do mais antigo pro mais novo)
+    const chronological = [...r.data].reverse();
+    const revSeries = chronological.map(d => d.net_revenue);
+    const totalRev = totals.net_revenue || revSeries.reduce((a,b)=>a+b,0);
+    const totalSpend = totals.facebook_spend || 0;
+    const totalProfit = totals.net_profit || 0;
+    const aggRoi = totals.roi || 0;
+    const days = totals.days || revSeries.length;
+    const profitColor = totalProfit >= 0 ? '#34d399' : '#f87171';
+    const roiColor = aggRoi >= 1.2 ? '#34d399' : (aggRoi >= 1.0 ? '#fbbf24' : '#f87171');
+
+    // Hero: total agregado + ROI no período
+    const sparkSvg = revSeries.length > 1
+      ? `<svg class="spark up" style="width:70px;height:24px" viewBox="0 0 70 24" preserveAspectRatio="none"><path d="${sparklinePath(revSeries, 70, 24)}"/></svg>`
+      : '';
+    const summaryHero = `
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px">
+          <div>
+            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:700">Faturamento ${range.label}</div>
+            <div style="font-size:20px;font-weight:800;color:#34d399;letter-spacing:-.5px;font-family:var(--font)">${fmt(totalRev)}</div>
+          </div>
+          ${sparkSvg}
+        </div>
+        <div style="display:flex;gap:12px;padding-top:6px;border-top:1px solid var(--border);font-size:11px">
+          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">Gasto FB</div><div style="color:#a78bfa;font-weight:700;font-family:var(--mono)">${fmt(totalSpend)}</div></div>
+          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">Lucro</div><div style="color:${profitColor};font-weight:700;font-family:var(--mono)">${fmt(totalProfit)}</div></div>
+          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">ROI</div><div style="color:${roiColor};font-weight:700;font-family:var(--mono)">${totalSpend>0 ? aggRoi.toFixed(2)+'x' : '—'}</div></div>
+        </div>
+      </div>`;
+
+    // Tabela diária — esconde se for 1 dia só (redundante com hero)
+    let rowsHtml = '';
+    if (days > 1) {
+      const header = `<div class="dsum-header"><div>Dia</div><div>Fatur.</div><div>Gasto FB</div><div>Lucro</div><div>ROI</div></div>`;
+      const rows = r.data.map(d => {
+        const isToday = d.date === today;
+        const dateLabel = isToday ? 'HOJE' : new Date(d.date+'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
+        let roiClass = 'neutral', roiText = '—';
+        if (d.has_spend_data) {
+          roiText = d.roi.toFixed(2) + 'x';
+          if (d.roi >= 1.2) roiClass = 'up';
+          else if (d.roi < 1.0) roiClass = 'dn';
+        }
+        const profitClass = d.net_profit >= 0 ? 'dsum-profit' : 'dsum-profit neg';
+        return `<div class="dsum-row ${isToday?'today':''}">
+          <div class="dsum-date ${isToday?'today-lbl':''}">${dateLabel}</div>
+          <div class="dsum-num dsum-rev">${fmt(d.net_revenue)}</div>
+          <div class="dsum-num dsum-spend">${d.has_spend_data ? fmt(d.facebook_spend) : '—'}</div>
+          <div class="dsum-num ${profitClass}">${d.has_spend_data ? fmt(d.net_profit) : '—'}</div>
+          <div class="dsum-roi ${roiClass}">${roiText}</div>
+        </div>`;
+      }).join('');
+      rowsHtml = header + rows;
+    }
+    el.innerHTML = summaryHero + rowsHtml;
+  } catch(e) {}
+}
+
+// ANÁLISES
+async function loadAnalytics() {
+  try {
+    const r = await api('/api/analytics?days=7&product=ALL');
+    if(!r.success) return;
+    const { eventStats } = r.data;
+
+    // CARDS TOP = HOJE (último item do eventStats que é a data atual)
+    const today = new Date().toISOString().split('T')[0];
+    const todayStats = eventStats.find(d => (d.day || d.date) === today) || eventStats[eventStats.length - 1] || {};
+    const todayPix = todayStats.pix_generated || 0;
+    const todayPaid = todayStats.paid || 0;
+    const todayRev = todayStats.revenue || 0;
+    const todayConv = todayPix > 0 ? (todayPaid / todayPix * 100).toFixed(0) + '%' : '0%';
+
+    animateNumber(document.getElementById('ma-pix'), todayPix);
+    animateNumber(document.getElementById('ma-paid'), todayPaid);
+    document.getElementById('ma-conv').textContent = todayConv;
+    document.getElementById('ma-rev').textContent = 'R$ ' + todayRev.toFixed(2).replace('.',',');
+
+    // Gráfico
+    const mx = Math.max(...eventStats.map(d=>Math.max(d.pix_generated||0,d.paid||0)),1);
+    const H = 70;
+    const chart = document.getElementById('ma-chart');
+    const labels = document.getElementById('ma-labels');
+    chart.innerHTML = eventStats.slice(-7).map(d=>{
+      const gh = Math.round(((d.pix_generated||0)/mx)*H);
+      const ph = Math.round(((d.paid||0)/mx)*H);
+      return `<div style="flex:1;display:flex;align-items:flex-end;gap:2px;height:${Math.max(gh,ph,2)}px">
+        <div class="bar-m bm-pix" style="height:${gh}px;flex:1"></div>
+        <div class="bar-m bm-paid" style="height:${ph}px;flex:1"></div>
+      </div>`;
+    }).join('');
+    labels.innerHTML = eventStats.slice(-7).map(d=>`<div class="bar-lbl-m">${(d.day||'').slice(5)}</div>`).join('');
+
+    // Top cidades (usa dados de conversas)
+    const convR = await api('/api/conversations');
+    if(convR.success) {
+      const cityMap = {};
+      convR.data.filter(c=>c.city&&c.completed).forEach(c=>{
+        const key = c.city+','+c.state;
+        cityMap[key] = (cityMap[key]||0)+1;
+      });
+      const cities = Object.entries(cityMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+      const maxC = cities[0]?.[1] || 1;
+      const citiesEl = document.getElementById('ma-cities');
+      if(!cities.length) {
+        citiesEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Sem dados ainda</div>';
+      } else {
+        citiesEl.innerHTML = cities.map(([city,count],i)=>`
+          <div class="city-row">
+            <div class="city-rank">${i+1}</div>
+            <div class="city-name">${city}</div>
+            <div class="city-bar-wrap"><div class="city-bar" style="width:${Math.round(count/maxC*100)}%"></div></div>
+            <div class="city-count">${count}</div>
+          </div>`).join('');
+      }
+    }
+  } catch(e) {}
+}
+
+// TOAST
+function showToast(msg, type='info') {
+  const t = document.createElement('div');
+  t.className = 'toast-m ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// INIT
+async function bootApp() {
+  if (!token) { renderFeed(); return; }
+  // Se biometria ativa e disponível → mostra lock screen e exige Face ID antes de carregar conteúdo
+  if (isBiometricEnabled() && await isBiometricAvailable()) {
+    showBioLock(true);
+    // Auto-tenta destravar imediatamente (iOS aciona Face ID na hora)
+    setTimeout(() => tryBiometricUnlock(), 300);
+  } else {
+    showApp();
+    // Após login (1ª vez), oferece ativar biometria se disponível e ainda não está ativada
+    setTimeout(async () => {
+      if (!isBiometricEnabled() && await isBiometricAvailable() && !localStorage.getItem('orion_bio_offer_seen')) {
+        if (confirm('Quer ativar Face ID pra abrir o app mais rápido (e mais seguro)?')) {
+          await enableBiometric();
+        }
+        localStorage.setItem('orion_bio_offer_seen', '1');
+      }
+    }, 2000);
+  }
+  renderFeed();
+}
+bootApp();
+</script>
+</body>
+</html>
