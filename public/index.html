@@ -328,6 +328,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
     <div class="lg-group"><label class="lg-label">Senha</label><input class="lg-input" type="password" id="lg-p" placeholder="Senha" autocomplete="current-password"></div>
     <button class="lg-btn" onclick="doLogin()">Entrar no Orion</button>
     <div class="lg-err" id="lg-err">Usuário ou senha incorretos</div>
+    <div id="lg-version" style="text-align:center;margin-top:18px;font-size:10px;color:#3a4356;font-family:var(--mono);letter-spacing:.5px"></div>
   </div>
 </div>
 
@@ -1631,6 +1632,7 @@ function playSound(type){
 document.getElementById('snd').addEventListener('change',e=>soundEnabled=e.target.checked);
 function toggleFocus(){focusMode=!focusMode;const b=document.getElementById('focus-btn');b.textContent=focusMode?'🎯 Foco Ativo':'🎯 Modo Foco';b.classList.toggle('focus-on',focusMode);showToast(focusMode?'Modo foco ativado':'Modo foco desativado','info');}
 function toggleTheme(){const d=document.body.classList.toggle('dark');localStorage.setItem('orion_theme',d?'dark':'light');document.getElementById('theme-btn').textContent=d?'Modo claro':'Modo escuro';}
+fetch('/api/version').then(r=>r.json()).then(d=>{const el=document.getElementById('lg-version');if(el)el.textContent='v'+d.version;}).catch(()=>{});
 function applyTheme(){const saved=localStorage.getItem('orion_theme');const dark=saved!=='light';document.body.classList.toggle('dark',dark);document.getElementById('theme-btn').textContent=dark?'Modo claro':'Modo escuro';}
 
 // SSE

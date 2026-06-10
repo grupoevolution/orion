@@ -7,6 +7,10 @@ const fs = require('fs');
 const zlib = require('zlib');
 const app = express();
 
+// ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
+const APP_VERSION = '3.2.0';
+const APP_STARTED_AT = new Date().toISOString();
+
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============
 let bcrypt = null;
 try { bcrypt = require('bcryptjs'); console.log('✅ bcryptjs carregado'); }
@@ -1891,7 +1895,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','),
         netValue, pixCode, checkoutUrl: generatedPixUrl, paymentMethod: paymentMethod || 'PIX',
         ddd: location?.ddd, city: location?.city, state: location?.state,
-        waiting_for_response: false, pixWaiting: true,
+        waiting_for_response: false, pixWaiting: true, funnelType: 'PIX',
         createdAt: new Date(), canceled: false, completed: false, paused: false
     };
 
@@ -2019,6 +2023,13 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
             db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps });
         }
         addLog('FUNNEL_SKIPPED', `⏸️ ${funnelType} registrado mas funil não disparado (cooldown) para ${phoneKey}`, { orderCode });
+        // ⭐ FIX 06/26: abandono/cartão recusado em cooldown eram 100% silenciosos — agora o push avisa
+        if (funnelType === 'ABANDONO' || funnelType === 'CARTAO_RECUSADO') {
+            try {
+                const notif = buildPaymentNotification(funnelType === 'ABANDONO' ? 'cart_abandoned' : 'card_refused', customerName, netValue || amount);
+                await sendPushNotification(notif.title, notif.body + ' · repetido, funil não disparado', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+            } catch(e) {}
+        }
         return;
     }
 
@@ -2366,13 +2377,19 @@ function resumeStuckConversations() {
     const RESUME_BACKOFF_MS = 10 * 60 * 1000;
     const now = Date.now();
 
-    // 1) Conversas esperando a instância fixa (sticky) voltar
+    // 1) Conversas esperando a instância fixa (sticky) voltar.
+    //    Retoma se: sticky voltou a ficar online, OU o grace period venceu (sticky nunca voltou —
+    //    o sendWithFallback vai liberar o sticky vencido e migrar pra outro número).
+    const GRACE_MS = (parseInt(process.env.GRACE_PERIOD_DAYS || '3')) * 24 * 60 * 60 * 1000;
     let resumedCount = 0;
     for (const [phoneKey, conv] of conversations.entries()) {
         if (!conv.waitingForStickyReturn) continue;
         if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber) continue;
         const sticky = stickyInstances.get(phoneKey);
-        if (!sticky || !connected.has(sticky)) continue;
+        const stickyOnline = sticky && connected.has(sticky);
+        const createdMs = conv.createdAt ? new Date(conv.createdAt).getTime() : now;
+        const gracePassed = now - createdMs > GRACE_MS;
+        if (!stickyOnline && !gracePassed) continue;
         if (conv._lastResumeAt && now - conv._lastResumeAt < RESUME_BACKOFF_MS) continue;
         conv.waitingForStickyReturn = false;
         conv._lastResumeAt = now;
@@ -2767,11 +2784,19 @@ app.post('/webhook/kirvano', async (req, res) => {
 
         if (isApproved) {
             const existingConv = findConversationUniversal(customerPhone);
-            if (existingConv?.funnelId?.includes('_PIX')) {
-                await transferPixToApproved(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location);
+            // ⭐ FIX 06/26: usa a chave REAL da conversa encontrada (pode viver sob outra variação do número)
+            const convKey = existingConv?.phoneKey || phoneKey;
+            // ⭐ FIX 06/26: detecção por ESTADO da conversa, não pelo nome do funil — funil A/B com id
+            // personalizado (sem '_PIX' no nome) caía no caminho errado e o cancelamento podia falhar.
+            const isPixConv = existingConv && !existingConv.canceled && !existingConv.completed &&
+                (existingConv.pixWaiting || existingConv.funnelType === 'PIX' || (existingConv.funnelId || '').includes('_PIX'));
+            if (isPixConv) {
+                await transferPixToApproved(convKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location);
             } else {
-                const pt = pixTimeouts.get(phoneKey); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
-                await startFunnel(phoneKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location);
+                for (const k of new Set([phoneKey, convKey])) {
+                    const pt = pixTimeouts.get(k); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(k); try { db.deletePixTimeout(k); } catch(e) {} }
+                }
+                await startFunnel(convKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location);
             }
             // Repassa pro LinkRotator (sem await — fire-and-forget)
             relayToLinkRotator(isCard ? 'CARD_PAID' : 'SALE_APPROVED', relayPayload);
@@ -2799,8 +2824,14 @@ app.post('/webhook/kirvano', async (req, res) => {
                 // Regra do Danilo: cliente em PIX/ABANDONO/etc só é interrompido por APROVADA.
                 const activeType = getActiveFunnelType(phoneKey);
                 if (activeType) {
-                    addLog('ABANDONED_IGNORED', `🛒 Carrinho abandonado IGNORADO — cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
-                    // SEM notif/SSE/push — silencioso pra não confundir o Danilo
+                    // ⭐ FIX 06/26: era 100% silencioso — parecia que o webhook de abandono não chegava.
+                    // Agora notifica (push + painel); só o FUNIL continua bloqueado (cliente já em outro funil).
+                    addLog('ABANDONED_IGNORED', `🛒 Carrinho abandonado — funil bloqueado, cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
+                    sendSSE('cart_abandoned', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
+                    {
+                        const notif = buildPaymentNotification('cart_abandoned', customerName, amount);
+                        await sendPushNotification(notif.title, notif.body + ' · já está em outro funil', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+                    }
                 } else {
                     addLog('ABANDONED', `🛒 Carrinho abandonado: ${customerName}`, { orderCode, phoneKey });
                     // ⭐ FIX 05/05: SSE pra tocar som no painel quando carrinho abandonado chega
@@ -2941,11 +2972,16 @@ app.post('/webhook/perfectpay', async (req, res) => {
             });
 
             const existingConv = findConversationUniversal(customerPhone);
-            if (existingConv?.funnelId?.includes('_PIX')) {
-                await transferPixToApproved(phoneKey, remoteJid, orderCode, customerName, productId, productName, saleAmount, netValue, [], paymentMethod, location);
+            const convKey = existingConv?.phoneKey || phoneKey;
+            const isPixConv = existingConv && !existingConv.canceled && !existingConv.completed &&
+                (existingConv.pixWaiting || existingConv.funnelType === 'PIX' || (existingConv.funnelId || '').includes('_PIX'));
+            if (isPixConv) {
+                await transferPixToApproved(convKey, remoteJid, orderCode, customerName, productId, productName, saleAmount, netValue, [], paymentMethod, location);
             } else {
-                const pt = pixTimeouts.get(phoneKey); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
-                await startFunnel(phoneKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], paymentMethod, location);
+                for (const k of new Set([phoneKey, convKey])) {
+                    const pt = pixTimeouts.get(k); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(k); try { db.deletePixTimeout(k); } catch(e) {} }
+                }
+                await startFunnel(convKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], paymentMethod, location);
             }
             res.json({ success: true });
         } else if (statusEnum === 1 && !isCard) {
@@ -4564,6 +4600,11 @@ app.post('/api/test/notification', authMiddleware, async (req, res) => {
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// Versão em produção (público — usado pra confirmar deploy)
+app.get('/api/version', (req, res) => {
+    res.json({ version: APP_VERSION, started_at: APP_STARTED_AT });
+});
+
 // Preferências de notificação — toggles do app (cada tipo pode ser ligado/desligado)
 const NOTIF_PREF_LIST = [
     { key: 'notif_pix_generated', label: 'PIX gerado' },
@@ -5417,7 +5458,7 @@ setTimeout(cleanupPixPages, 5 * 60 * 1000); // 1ª limpeza 5min após boot
 // ============ INICIALIZAÇÃO ============
 app.listen(PORT, async () => {
     console.log('='.repeat(60));
-    console.log('🌌 ORION v2.0 — Sistema de Automação WhatsApp');
+    console.log(`🌌 ORION v${APP_VERSION} — Sistema de Automação WhatsApp`);
     console.log('='.repeat(60));
     console.log(`✅ Porta: ${PORT} | Evolution: ${EVOLUTION_BASE_URL}`);
     console.log(`✅ Instâncias: ${CONFIGURED_INSTANCES.join(', ')}`);
