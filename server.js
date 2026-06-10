@@ -8,7 +8,7 @@ const zlib = require('zlib');
 const app = express();
 
 // ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
-const APP_VERSION = '3.2.0';
+const APP_VERSION = '3.3.0';
 const APP_STARTED_AT = new Date().toISOString();
 
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============

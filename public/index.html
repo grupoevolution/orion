@@ -9,15 +9,15 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#f4f5fa;--bg2:#ffffff;--bg3:#f0f2f8;--bg4:#e6e9f2;--sidebar:#0a0c14;--border:#e6e9f2;--border2:#d4d9e8;--accent:#10b981;--accent-blue:#3b82f6;--accent2:#8b5cf6;--accent3:#059669;--danger:#ef4444;--warning:#f59e0b;--text:#0f172a;--text2:#475569;--text3:#94a3b8;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;--radius:14px;--radius2:9px;--shadow:0 1px 2px rgba(15,23,42,.04),0 2px 8px rgba(15,23,42,.04);--shadow2:0 8px 28px rgba(15,23,42,.1);--glow:0 0 0 transparent}
-body.dark{--bg:#07090f;--bg2:#0c1019;--bg3:#11141f;--bg4:#1a2030;--border:rgba(255,255,255,.06);--border2:rgba(255,255,255,.12);--text:#eef1f8;--text2:#b6c0d4;--text3:#5b6678;--shadow:0 1px 2px rgba(0,0,0,.3),0 2px 10px rgba(0,0,0,.25);--shadow2:0 14px 40px rgba(0,0,0,.5);--glow:0 0 24px rgba(16,185,129,.07)}
+body.dark{--bg:#000000;--bg2:#0a0a0b;--bg3:#111113;--bg4:#1a1a1d;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.16);--text:#ffffff;--text2:#a1a1aa;--text3:#55555e;--shadow:0 1px 2px rgba(0,0,0,.4);--shadow2:0 14px 40px rgba(0,0,0,.6);--glow:0 0 0 transparent}
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s;letter-spacing:-.011em}
-body.dark{background:radial-gradient(1200px 500px at 80% -10%,rgba(16,185,129,.05) 0%,transparent 55%),radial-gradient(900px 420px at 10% 110%,rgba(139,92,246,.04) 0%,transparent 55%),var(--bg)}
+body.dark{background:#000000}
 
 /* LOGIN */
-#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:radial-gradient(800px 480px at 50% 18%,rgba(16,185,129,.09) 0%,transparent 60%),radial-gradient(700px 400px at 85% 90%,rgba(139,92,246,.07) 0%,transparent 55%),#07090f}
-.login-box{background:rgba(13,17,26,.85);backdrop-filter:blur(28px) saturate(150%);border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:48px 42px;width:392px;box-shadow:0 24px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.05)}
+#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:#000000}
+.login-box{background:#0a0a0b;border:1px solid rgba(255,255,255,.09);border-radius:22px;padding:48px 42px;width:392px;box-shadow:0 24px 80px rgba(0,0,0,.7)}
 .login-logo{text-align:center;margin-bottom:34px}
 .login-logo img{width:172px;height:auto;filter:drop-shadow(0 0 26px rgba(16,185,129,.3));border-radius:14px}
 .login-logo p{color:#5b6678;font-size:11px;margin-top:14px;letter-spacing:3px;text-transform:uppercase;font-weight:600}
@@ -32,7 +32,7 @@ body.dark{background:radial-gradient(1200px 500px at 80% -10%,rgba(16,185,129,.0
 
 /* LAYOUT */
 #app{display:none}
-.sidebar{position:fixed;left:0;top:0;bottom:0;width:236px;background:linear-gradient(180deg,#0a0d15 0%,#07090f 100%);display:flex;flex-direction:column;z-index:100;border-right:1px solid rgba(255,255,255,.05)}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:236px;background:#000000;display:flex;flex-direction:column;z-index:100;border-right:1px solid rgba(255,255,255,.07)}
 .sb-logo{padding:22px 20px 18px;border-bottom:1px solid rgba(255,255,255,.05)}
 .sb-logo img{width:128px;height:auto;filter:drop-shadow(0 0 12px rgba(16,185,129,.25))}
 .sb-nav{flex:1;padding:14px 12px;overflow-y:auto}
@@ -57,7 +57,7 @@ body.dark{background:radial-gradient(1200px 500px at 80% -10%,rgba(16,185,129,.0
 .sb-btn.focus-on{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.25);color:#fbbf24}
 .main{margin-left:236px;min-height:100vh}
 .topbar{padding:0 30px;height:62px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg2);position:sticky;top:0;z-index:50;backdrop-filter:blur(14px)}
-body.dark .topbar{background:rgba(7,9,15,.82);-webkit-backdrop-filter:blur(14px)}
+body.dark .topbar{background:rgba(0,0,0,.85);-webkit-backdrop-filter:blur(14px)}
 .topbar-title{font-size:16px;font-weight:800;letter-spacing:-.4px}
 .conn-badge{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.22)}
 .conn-badge .dot{width:6px;height:6px;border-radius:50%;background:#10b981;box-shadow:0 0 7px rgba(16,185,129,.8);animation:pulse 2s infinite}
@@ -71,7 +71,7 @@ body.dark .topbar{background:rgba(7,9,15,.82);-webkit-backdrop-filter:blur(14px)
 /* MÉTRICAS */
 .metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:14px;margin-bottom:24px}
 .mc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:all .18s}
-body.dark .mc{background:linear-gradient(165deg,rgba(255,255,255,.035) 0%,rgba(255,255,255,0) 55%),var(--bg2)}
+body.dark .mc{background:var(--bg2)}
 .mc:hover{box-shadow:var(--shadow2);transform:translateY(-2px);border-color:var(--border2)}
 .mc::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;opacity:.9}
 .mc-blue::after{background:linear-gradient(90deg,#3b82f6,#60a5fa)}
@@ -88,7 +88,7 @@ body.dark .mc-blue .mc-val{color:#60a5fa}body.dark .mc-green .mc-val{color:#34d3
 
 /* SECTION */
 .section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
-body.dark .section{background:linear-gradient(180deg,rgba(255,255,255,.018) 0%,rgba(255,255,255,0) 30%),var(--bg2)}
+body.dark .section{background:var(--bg2)}
 .sh{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .sh-title{font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.2px}
 .sh-sub{font-size:11px;color:var(--text3);margin-top:2px;font-weight:500}
@@ -321,8 +321,9 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">
-      <img src="/logo.png" alt="ORION">
-      <p>Sistema de Automação WhatsApp</p>
+      <svg viewBox="0 0 360 200" xmlns="http://www.w3.org/2000/svg" style="width:200px;height:auto;display:block;margin:0 auto"><g stroke="#ffffff" stroke-opacity=".25" stroke-width="1.6" fill="none" stroke-linecap="round"><path d="M120 28 L146 96"/><path d="M232 36 L208 116"/><path d="M146 96 L177 106 L208 116"/><path d="M146 96 L130 178"/><path d="M208 116 L236 174"/><path d="M120 28 L232 36"/></g><g fill="#ffffff"><circle cx="120" cy="28" r="6.5"/><circle cx="232" cy="36" r="5.5"/><circle cx="130" cy="178" r="5.5"/><circle cx="236" cy="174" r="7"/></g><g fill="#34d399"><circle cx="146" cy="96" r="6"/><circle cx="177" cy="106" r="6.5"/><circle cx="208" cy="116" r="6"/></g></svg>
+      <div style="font-size:26px;font-weight:800;letter-spacing:.45em;color:#fff;margin-top:14px;padding-left:.45em">ORION</div>
+      <p>Automação de Vendas</p>
     </div>
     <div class="lg-group"><label class="lg-label">Login</label><input class="lg-input" id="lg-u" placeholder="Usuário" autocomplete="username"></div>
     <div class="lg-group"><label class="lg-label">Senha</label><input class="lg-input" type="password" id="lg-p" placeholder="Senha" autocomplete="current-password"></div>
@@ -335,7 +336,10 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 <!-- APP -->
 <div id="app">
   <aside class="sidebar">
-    <div class="sb-logo"><img src="/logo.png" alt="ORION"></div>
+    <div class="sb-logo" style="display:flex;align-items:center;gap:10px">
+      <svg viewBox="100 10 156 180" xmlns="http://www.w3.org/2000/svg" style="width:30px;height:34px;flex-shrink:0"><g stroke="#ffffff" stroke-opacity=".25" stroke-width="3" fill="none" stroke-linecap="round"><path d="M120 28 L146 96"/><path d="M232 36 L208 116"/><path d="M146 96 L177 106 L208 116"/><path d="M146 96 L130 178"/><path d="M208 116 L236 174"/><path d="M120 28 L232 36"/></g><g fill="#ffffff"><circle cx="120" cy="28" r="9"/><circle cx="232" cy="36" r="8"/><circle cx="130" cy="178" r="8"/><circle cx="236" cy="174" r="10"/></g><g fill="#34d399"><circle cx="146" cy="96" r="8.5"/><circle cx="177" cy="106" r="9"/><circle cx="208" cy="116" r="8.5"/></g></svg>
+      <div style="font-size:15px;font-weight:800;letter-spacing:.32em;color:#fff">ORION</div>
+    </div>
     <nav class="sb-nav">
       <div class="sb-section">Principal</div>
       <button class="nav-item active" onclick="showPage('dashboard',this)">
@@ -389,7 +393,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
       <div class="sb-toggle"><span>Sons</span><label class="sw"><input type="checkbox" id="snd" checked><span class="sl"></span></label></div>
       <button class="sb-btn" id="focus-btn" onclick="toggleFocus()">Modo Foco</button>
       <button class="sb-btn" id="theme-btn" onclick="toggleTheme()">Modo escuro</button>
-      <a href="/mobile.html" style="padding:7px 10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.15);border-radius:var(--radius2);color:#60a5fa;font-size:11px;cursor:pointer;font-family:var(--font);transition:all .2s;text-align:left;text-decoration:none;display:block">📱 Abrir App Mobile</a>
+      <a href="/mobile.html" style="padding:7px 10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.15);border-radius:var(--radius2);color:#60a5fa;font-size:11px;cursor:pointer;font-family:var(--font);transition:all .2s;text-align:left;text-decoration:none;display:block">Abrir App Mobile</a>
     </div>
   </aside>
 
@@ -403,7 +407,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
     <div id="page-dashboard" class="page active">
       <div id="test-mode-banner" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(217,119,6,.1));border:2px solid rgba(245,158,11,.4);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:22px">🧪</span>
+          <span style="font-size:22px"></span>
           <div>
             <div style="font-weight:700;font-size:13px;color:#d97706">MODO TESTE ATIVO</div>
             <div style="font-size:11px;color:var(--text2);margin-top:2px">Cooldown ignorado · Conversas anteriores são canceladas automaticamente ao receber novo PIX no mesmo número</div>
@@ -412,7 +416,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <button class="btn btn-sm" style="background:#d97706;color:#fff;border:1px solid #d97706" onclick="toggleTestMode(false)">Desativar Modo Teste</button>
       </div>
       <div id="test-mode-off-btn" style="display:flex;justify-content:flex-end;margin-bottom:10px">
-        <button class="btn btn-g btn-sm" onclick="toggleTestMode(true)" title="Ativa pra testar o sistema com seu próprio número sem esperar cooldown">🧪 Ativar Modo Teste</button>
+        <button class="btn btn-g btn-sm" onclick="toggleTestMode(true)" title="Ativa pra testar o sistema com seu próprio número sem esperar cooldown">Ativar Modo Teste</button>
       </div>
       <div class="metrics-row">
         <div class="mc mc-blue"><div class="mc-lbl">Conversas Ativas</div><div class="mc-val" id="d-act">0</div></div>
@@ -526,7 +530,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
                 <input type="checkbox" id="ffunnel-enabled" onchange="toggleCurrentFunnelEnabled()">
                 <span id="ffunnel-enabled-lbl">Funil ativado</span>
               </label>
-              <button class="btn btn-g btn-sm" onclick="openEditCurrentFunnel()" title="Editar nome, produto vinculado ou tipo do funil">✏️ Editar</button>
+              <button class="btn btn-g btn-sm" onclick="openEditCurrentFunnel()" title="Editar nome, produto vinculado ou tipo do funil">Editar</button>
               <button class="btn btn-g btn-sm" onclick="exportFunnels()">↑ Export</button>
               <button class="btn btn-g btn-sm" onclick="importFunnels()">↓ Import</button>
               <button class="btn btn-g btn-sm" onclick="duplicateFunnel()" title="Cria uma cópia deste funil para usar no A/B Test">⚗️ Duplicar</button>
@@ -571,7 +575,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             <div class="sh-sub">Iniciam um funil automaticamente quando lead novo (sem conversa ativa) manda uma mensagem com palavra-chave</div>
           </div>
           <div style="display:flex;gap:6px">
-            <button class="btn btn-g btn-sm" onclick="openTestStartTrigger()" title="Simula uma mensagem chegando e mostra se algum trigger bateria">🧪 Testar Mensagem</button>
+            <button class="btn btn-g btn-sm" onclick="openTestStartTrigger()" title="Simula uma mensagem chegando e mostra se algum trigger bateria">Testar Mensagem</button>
             <button class="btn btn-p btn-sm" onclick="openStartTriggerModal()">+ Novo Gatilho de Início</button>
           </div>
         </div>
@@ -624,7 +628,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
     <!-- INSTÂNCIAS -->
     <div id="page-instances" class="page">
       <div class="section">
-        <div class="sh"><div class="sh-title">Instâncias WhatsApp</div><div style="display:flex;gap:6px"><button class="btn btn-g btn-sm" onclick="syncPhones()">🔄 Sincronizar Números</button><button class="btn btn-g btn-sm" onclick="loadInstances()">↻ Atualizar</button></div></div>
+        <div class="sh"><div class="sh-title">Instâncias WhatsApp</div><div style="display:flex;gap:6px"><button class="btn btn-g btn-sm" onclick="syncPhones()">Sincronizar Números</button><button class="btn btn-g btn-sm" onclick="loadInstances()">↻ Atualizar</button></div></div>
         <div class="inst-grid" id="inst-grid"></div>
       </div>
     </div>
@@ -731,26 +735,26 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
       </div>
     </div>
     <!-- ========== FINANCEIRO (NOVO) ========== -->
-    <div id="page-finance" class="page" style="padding:0;background:#0a0e1a;min-height:100vh">
+    <div id="page-finance" class="page" style="padding:0;background:#000000;min-height:100vh">
       <style>
         #page-finance{color:#e4e7ef}
         .fin-wrap{max-width:1280px;margin:0 auto;padding:28px 24px}
         .fin-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:14px}
         .fin-title{font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.4px}
         .fin-sub{font-size:12px;color:#64748b;margin-top:2px}
-        .fin-tabs{display:inline-flex;background:#11182a;border:1px solid #1e2a44;border-radius:10px;padding:4px;gap:2px}
+        .fin-tabs{display:inline-flex;background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:4px;gap:2px}
         .fin-tab{padding:8px 18px;border:none;background:transparent;color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;border-radius:7px;transition:all .15s;font-family:var(--font)}
         .fin-tab:hover{color:#cbd5e1}
-        .fin-tab.active{background:#10b981;color:#0a0e1a}
+        .fin-tab.active{background:#10b981;color:#000000}
         .fin-tabview{display:none}
         .fin-tabview.active{display:block}
         .fin-grid{display:grid;gap:14px;margin-bottom:20px}
         .fin-grid.cols-3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
         .fin-grid.cols-4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
         .fin-grid.cols-6{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-        .fin-card{background:linear-gradient(180deg,#11182a 0%,#0d1424 100%);border:1px solid #1e2a44;border-radius:14px;padding:20px;position:relative;overflow:hidden}
+        .fin-card{background:linear-gradient(180deg,#0a0a0b 0%,#0a0a0b 100%);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:20px;position:relative;overflow:hidden}
         .fin-card.hero{padding:24px}
-        .fin-card.accent{border-color:#10b981;background:linear-gradient(135deg,rgba(16,185,129,0.08) 0%,#11182a 100%)}
+        .fin-card.accent{border-color:#10b981;background:linear-gradient(135deg,rgba(16,185,129,0.08) 0%,#0a0a0b 100%)}
         .fin-lbl{font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:1px;margin-bottom:10px}
         .fin-val{font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px;font-variant-numeric:tabular-nums}
         .fin-val.huge{font-size:36px}
@@ -759,29 +763,29 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         .fin-delta{font-size:11px;color:#64748b;margin-top:6px;font-weight:500}
         .fin-delta.up{color:#10b981}
         .fin-delta.down{color:#ef4444}
-        .fin-section{background:#11182a;border:1px solid #1e2a44;border-radius:14px;padding:22px;margin-bottom:20px}
+        .fin-section{background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:22px;margin-bottom:20px}
         .fin-section-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
         .fin-section-t{font-size:14px;font-weight:700;color:#fff}
         .fin-input-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
         .fin-input-group{flex:1;min-width:160px}
         .fin-input-lbl{display:block;font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:6px}
-        .fin-input{width:100%;padding:11px 14px;background:#0a0e1a;border:1px solid #1e2a44;border-radius:8px;color:#fff;font-size:14px;font-family:var(--mono);font-weight:600}
+        .fin-input{width:100%;padding:11px 14px;background:#000000;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#fff;font-size:14px;font-family:var(--mono);font-weight:600}
         .fin-input:focus{outline:none;border-color:#10b981}
-        .fin-btn{padding:11px 22px;background:#10b981;color:#0a0e1a;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s}
+        .fin-btn{padding:11px 22px;background:#10b981;color:#000000;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s}
         .fin-btn:hover{background:#0ea671}
-        .fin-btn.ghost{background:transparent;border:1px solid #1e2a44;color:#cbd5e1}
-        .fin-btn.ghost:hover{background:#1e2a44}
+        .fin-btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.1);color:#cbd5e1}
+        .fin-btn.ghost:hover{background:rgba(255,255,255,.1)}
         .fin-tbl{width:100%;border-collapse:collapse;font-size:13px}
-        .fin-tbl th{background:#0a0e1a;color:#64748b;padding:10px 12px;text-align:left;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #1e2a44}
-        .fin-tbl td{padding:9px 12px;border-bottom:1px solid #1e2a44;color:#cbd5e1;font-variant-numeric:tabular-nums}
-        .fin-tbl tr:hover td{background:#0d1424}
-        .fin-tbl input{width:100px;padding:6px 10px;background:#0a0e1a;border:1px solid #1e2a44;border-radius:6px;color:#fff;font-size:12px;font-family:var(--mono)}
+        .fin-tbl th{background:#000000;color:#64748b;padding:10px 12px;text-align:left;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid rgba(255,255,255,.1)}
+        .fin-tbl td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.1);color:#cbd5e1;font-variant-numeric:tabular-nums}
+        .fin-tbl tr:hover td{background:#0a0a0b}
+        .fin-tbl input{width:100px;padding:6px 10px;background:#000000;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#fff;font-size:12px;font-family:var(--mono)}
         .fin-roi-pill{display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
         .fin-roi-green{background:rgba(16,185,129,0.15);color:#10b981}
         .fin-roi-blue{background:rgba(59,130,246,0.15);color:#60a5fa}
         .fin-roi-red{background:rgba(239,68,68,0.15);color:#ef4444}
         .fin-month-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-        .fin-month-card{background:#11182a;border:1px solid #1e2a44;border-radius:12px;padding:16px}
+        .fin-month-card{background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px}
         .fin-month-card-name{font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.8px}
         .fin-month-stat{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px}
         .fin-month-stat span:first-child{color:#64748b}
@@ -789,18 +793,18 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         .fin-empty{text-align:center;padding:40px;color:#64748b;font-size:13px}
         .fin-bar{display:flex;align-items:center;gap:8px;margin-top:14px}
         .fin-bar-label{font-size:11px;color:#94a3b8;min-width:90px}
-        .fin-bar-track{flex:1;height:8px;background:#0a0e1a;border-radius:100px;overflow:hidden}
+        .fin-bar-track{flex:1;height:8px;background:#000000;border-radius:100px;overflow:hidden}
         .fin-bar-fill{height:100%;background:linear-gradient(90deg,#10b981,#06b6d4);border-radius:100px;transition:width .4s}
         .fin-bar-val{font-size:11px;color:#fff;font-weight:700;font-variant-numeric:tabular-nums;min-width:80px;text-align:right}
         .fin-bestworst{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
         @media(max-width:768px){.fin-bestworst{grid-template-columns:1fr}.fin-val.huge{font-size:28px}}
-        .fin-best{background:linear-gradient(135deg,rgba(16,185,129,0.15) 0%,#11182a 100%);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px}
-        .fin-worst{background:linear-gradient(135deg,rgba(239,68,68,0.12) 0%,#11182a 100%);border:1px solid rgba(239,68,68,0.25);border-radius:12px;padding:16px}
+        .fin-best{background:linear-gradient(135deg,rgba(16,185,129,0.15) 0%,#0a0a0b 100%);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px}
+        .fin-worst{background:linear-gradient(135deg,rgba(239,68,68,0.12) 0%,#0a0a0b 100%);border:1px solid rgba(239,68,68,0.25);border-radius:12px;padding:16px}
         .fin-best-h,.fin-worst-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
         .fin-best-h{color:#10b981} .fin-worst-h{color:#ef4444}
         .fin-best-d,.fin-worst-d{font-size:18px;font-weight:800;color:#fff}
         .fin-best-r,.fin-worst-r{font-size:12px;color:#94a3b8;margin-top:3px}
-        .fin-banner{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#0a0e1a;padding:14px 18px;border-radius:10px;display:flex;align-items:center;gap:12px;margin-bottom:18px;font-weight:600;font-size:13px}
+        .fin-banner{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#000000;padding:14px 18px;border-radius:10px;display:flex;align-items:center;gap:12px;margin-bottom:18px;font-weight:600;font-size:13px}
         .fin-config-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:end}
         @media(max-width:768px){.fin-config-row{grid-template-columns:1fr}}
       </style>
@@ -975,7 +979,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 
             <div id="fin-c-empty-warn" style="display:none;padding:22px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;font-size:13px;color:#fbbf24;line-height:1.6;margin-bottom:16px">
               ⚠️ <strong>Nenhuma campanha rastreada ainda.</strong> Pra ver dados aqui, configura UTMs no destination URL dos teus anúncios no Facebook Ads:<br>
-              <code style="display:block;background:#0a0e1a;padding:8px 12px;border-radius:6px;margin-top:8px;font-size:11px;color:#10b981">?utm_source=facebook&amp;utm_campaign={{campaign.name}}&amp;utm_content={{ad.name}}</code>
+              <code style="display:block;background:#000000;padding:8px 12px;border-radius:6px;margin-top:8px;font-size:11px;color:#10b981">?utm_source=facebook&amp;utm_campaign={{campaign.name}}&amp;utm_content={{ad.name}}</code>
             </div>
 
             <!-- Cards de resumo -->
@@ -1052,7 +1056,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             </div>
 
             <div id="tp-not-configured" style="display:none;padding:22px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;font-size:13px;color:#fbbf24;line-height:1.6">
-              ⚠️ <strong>Meta Ads não configurado.</strong> Pra ativar essa aba, adiciona no Easypanel as env vars <code style="background:#0a0e1a;padding:2px 6px;border-radius:4px;color:#10b981">META_ACCESS_TOKEN</code> e <code style="background:#0a0e1a;padding:2px 6px;border-radius:4px;color:#10b981">META_AD_ACCOUNTS</code>.
+              ⚠️ <strong>Meta Ads não configurado.</strong> Pra ativar essa aba, adiciona no Easypanel as env vars <code style="background:#000000;padding:2px 6px;border-radius:4px;color:#10b981">META_ACCESS_TOKEN</code> e <code style="background:#000000;padding:2px 6px;border-radius:4px;color:#10b981">META_AD_ACCOUNTS</code>.
             </div>
 
             <div id="tp-loading" style="display:none;padding:30px;text-align:center;color:#64748b">Carregando dados da Meta...</div>
@@ -1088,7 +1092,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
                   <div class="fin-best-h" style="color:#10b981">ESCALAR (CPA ≤ R$ 15)</div>
                   <div id="tp-scale-list" style="font-size:12px;line-height:1.7"></div>
                 </div>
-                <div style="background:linear-gradient(135deg,rgba(59,130,246,0.12) 0%,#11182a 100%);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:16px">
+                <div style="background:linear-gradient(135deg,rgba(59,130,246,0.12) 0%,#0a0a0b 100%);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:16px">
                   <div class="fin-best-h" style="color:#60a5fa">MANTER (CPA R$ 16-20)</div>
                   <div id="tp-keep-list" style="font-size:12px;line-height:1.7"></div>
                 </div>
@@ -1132,7 +1136,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
                       </tr>
                     </thead>
                     <tbody id="tp-campaigns-tbody"></tbody>
-                    <tfoot id="tp-campaigns-tfoot" style="background:#0a0e1a;font-weight:700"></tfoot>
+                    <tfoot id="tp-campaigns-tfoot" style="background:#000000;font-weight:700"></tfoot>
                   </table>
                 </div>
               </div>
@@ -1171,7 +1175,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
                 <input type="number" class="fin-input" id="fin-cfg-t1" placeholder="30" step="0.01">
               </div>
               <div class="fin-input-group">
-                <label class="fin-input-lbl">⭐1 estrela a partir de (R$)</label>
+                <label class="fin-input-lbl">1 estrela a partir de (R$)</label>
                 <input type="number" class="fin-input" id="fin-cfg-t2" placeholder="60" step="0.01">
               </div>
               <div class="fin-input-group">
@@ -1308,7 +1312,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
           </div>
         </div>
         <div style="padding:0 20px 20px;display:flex;gap:10px">
-          <button class="btn btn-p" onclick="saveSettings()">💾 Salvar Configurações</button>
+          <button class="btn btn-p" onclick="saveSettings()">Salvar Configurações</button>
           <button class="btn btn-g btn-sm" onclick="loadSettings()">↻ Recarregar</button>
         </div>
       </div>
@@ -1447,7 +1451,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 <!-- MODAL EDITAR PRODUTO (v1.1) -->
 <div class="modal-overlay" id="modal-edit-product">
   <div class="modal" style="max-width:560px">
-    <div class="modal-t">✏️ Editar Produto</div>
+    <div class="modal-t">Editar Produto</div>
     <input type="hidden" id="ep-id">
     <div class="fe-row">
       <label class="fe-lbl">ID do Produto (não pode ser alterado)</label>
@@ -1465,7 +1469,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
     </div>
     <div class="modal-f">
       <button class="btn btn-g" onclick="closeModal('modal-edit-product')">Cancelar</button>
-      <button class="btn btn-p" onclick="saveEditProduct()">💾 Salvar Alterações</button>
+      <button class="btn btn-p" onclick="saveEditProduct()">Salvar Alterações</button>
     </div>
   </div>
 </div>
@@ -1473,7 +1477,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 <!-- MODAL CONFIGURAR PÁGINA PIX -->
 <div class="modal-overlay" id="modal-pix-page">
   <div class="modal" style="max-width:560px">
-    <div class="modal-t">📱 Página PIX — <span id="pp-prod-name"></span></div>
+    <div class="modal-t">Página PIX — <span id="pp-prod-name"></span></div>
     <input type="hidden" id="pp-id">
     <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.5">
       Configure a página que o cliente vai ver quando clicar no link <code style="color:var(--accent);font-family:monospace">{PIX_LINK}</code> da copy.
@@ -1501,7 +1505,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
     </div>
     <div class="modal-f">
       <button class="btn btn-g" onclick="closeModal('modal-pix-page')">Cancelar</button>
-      <button class="btn btn-p" onclick="savePixPage()">💾 Salvar Configuração</button>
+      <button class="btn btn-p" onclick="savePixPage()">Salvar Configuração</button>
     </div>
   </div>
 </div>
@@ -1509,7 +1513,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 <!-- MODAL EDITAR FUNIL (v1.1) -->
 <div class="modal-overlay" id="modal-edit-funnel">
   <div class="modal" style="max-width:560px">
-    <div class="modal-t">✏️ Editar Funil</div>
+    <div class="modal-t">Editar Funil</div>
     <input type="hidden" id="ef-id">
     <div class="fe-row">
       <label class="fe-lbl">ID do Funil (não pode ser alterado)</label>
@@ -1540,7 +1544,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
     <div class="modal-f">
       <button class="btn btn-d" onclick="deleteFunnelFromModal()" style="margin-right:auto">🗑️ Deletar Funil</button>
       <button class="btn btn-g" onclick="closeModal('modal-edit-funnel')">Cancelar</button>
-      <button class="btn btn-p" onclick="saveEditFunnel()">💾 Salvar</button>
+      <button class="btn btn-p" onclick="saveEditFunnel()">Salvar</button>
     </div>
   </div>
 </div>
@@ -1857,7 +1861,7 @@ function renderFunnelBreakdown(list) {
 
 async function toggleTestMode(activate) {
   if (activate) {
-    const ok = confirm('🧪 Ativar Modo Teste?\n\n• Ignora cooldown entre funis\n• Cancela conversa anterior automaticamente ao receber novo PIX no mesmo número\n\nUse só durante testes. Desative antes de migrar pra produção.');
+    const ok = confirm('Ativar Modo Teste?\n\n• Ignora cooldown entre funis\n• Cancela conversa anterior automaticamente ao receber novo PIX no mesmo número\n\nUse só durante testes. Desative antes de migrar pra produção.');
     if (!ok) return;
   }
   const r = await api('/api/test-mode', { method: 'POST', body: JSON.stringify({ active: activate }) });
@@ -1895,7 +1899,7 @@ function renderConversations(){
     const pb=c.paymentMethod==='CREDIT_CARD'?'<span class="badge b-card" style="margin-top:2px">💳</span>':'<span class="badge b-pix" style="margin-top:2px">PIX</span>';
     const bumps=c.orderBumps?.length?`<span style="font-size:10px;color:var(--text3)">${escapeHtml(c.orderBumps.join(', '))}</span>`:'—';
     const endTs = c.pixTimeoutRemaining !== null ? Date.now() + c.pixTimeoutRemaining*1000 : null;
-    const timer=endTs!==null?`<div class="countdown"><div class="cd-dot"></div><span class="pix-timer" data-end="${endTs}">${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</span></div>`:c.pixCode?`<button class="copy-btn" onclick="copyPix('${escapeHtml(c.pixCode).replace(/'/g,"\\'")}')">📋 Copiar PIX</button>`:'—';
+    const timer=endTs!==null?`<div class="countdown"><div class="cd-dot"></div><span class="pix-timer" data-end="${endTs}">${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</span></div>`:c.pixCode?`<button class="copy-btn" onclick="copyPix('${escapeHtml(c.pixCode).replace(/'/g,"\\'")}')">Copiar PIX</button>`:'—';
     const loc=c.city?`<div style="font-size:9px;color:var(--text3)">${escapeHtml(c.city)}, ${escapeHtml(c.state)}</div>`:'';
     const dt=new Date(c.createdAt).toLocaleString('pt-BR');
     // ⭐ FIX 04/05: escape de XSS — atacante criando checkout com nome malicioso conseguia injetar script no admin
@@ -2458,10 +2462,10 @@ async function loadProducts(){
         ${abCount>0?`⚗️ A/B Test ativo — ${abCount+1} funis em rotação`:'A/B Test desativado'}
       </div>
       <div class="prod-acts" style="flex-wrap:wrap;gap:5px">
-        <button class="btn btn-p btn-xs" onclick='openEditProductModal(${JSON.stringify(p).replace(/'/g, "&#39;")})'>✏️ Editar</button>
+        <button class="btn btn-p btn-xs" onclick='openEditProductModal(${JSON.stringify(p).replace(/'/g, "&#39;")})'>Editar</button>
         <button class="btn ${p.active?'btn-d':'btn-s'} btn-xs" onclick="toggleProd('${escapeHtml(p.id)}',${!p.active})">${p.active?'Pausar':'Ativar'}</button>
         <button class="btn btn-g btn-xs" onclick="openABModal('${escapeHtml(p.id)}','${escapeHtml(p.name)}','${p.ab_funnel_ids||'[]'}')">⚗️ A/B</button>
-        <button class="btn btn-g btn-xs" onclick="openPixPageModal('${escapeHtml(p.id)}','${escapeHtml(p.name)}',${JSON.stringify({title:p.pix_page_title||'',model_name:p.pix_page_model_name||'',overlay_text:p.pix_page_overlay_text||'',media_url:p.pix_page_media_url||''}).replace(/'/g,'&#39;')})" title="Configurar página PIX do cliente">📱 Página PIX</button>
+        <button class="btn btn-g btn-xs" onclick="openPixPageModal('${escapeHtml(p.id)}','${escapeHtml(p.name)}',${JSON.stringify({title:p.pix_page_title||'',model_name:p.pix_page_model_name||'',overlay_text:p.pix_page_overlay_text||'',media_url:p.pix_page_media_url||''}).replace(/'/g,'&#39;')})" title="Configurar página PIX do cliente">Página PIX</button>
         <button class="btn btn-d btn-xs" onclick="deleteProduct('${escapeHtml(p.id)}','${escapeHtml(p.name)}')" title="Deletar produto">🗑️</button>
       </div>
     </div>`;
@@ -2888,7 +2892,7 @@ async function finLoadCampaigns(){
       const sharePct = totalNet > 0 ? ((c.net / totalNet) * 100) : 0;
       const isTop = i === 0;
       return `<tr>
-        <td><span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:${isTop?'rgba(16,185,129,0.2)':'#1e2a44'};color:${isTop?'#10b981':'#94a3b8'};font-weight:700;font-size:11px;text-align:center;line-height:22px">${i+1}</span></td>
+        <td><span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:${isTop?'rgba(16,185,129,0.2)':'rgba(255,255,255,.1)'};color:${isTop?'#10b981':'#94a3b8'};font-weight:700;font-size:11px;text-align:center;line-height:22px">${i+1}</span></td>
         <td style="font-weight:600;color:#fff">${c.campaign}</td>
         <td><b style="color:#10b981">${c.sales}</b></td>
         <td>${finBRL(c.gross)}</td>
@@ -3059,7 +3063,7 @@ function tpRender(){
   // Linha TOTAL do resumo por conta
   const accTotalCpa = totals.purchases > 0 ? totals.spend / totals.purchases : null;
   const accTotalCpaColor = accTotalCpa === null ? '#64748b' : (accTotalCpa <= 15 ? '#10b981' : accTotalCpa <= 25 ? '#60a5fa' : '#ef4444');
-  const accFooter = `<tr style="background:#0a0e1a;font-weight:700;border-top:2px solid #10b981">
+  const accFooter = `<tr style="background:#000000;font-weight:700;border-top:2px solid #10b981">
     <td style="color:#10b981">TOTAL</td>
     <td style="color:#fff">${finBRL(totals.spend)}</td>
     <td><b style="color:#10b981">${totals.purchases}</b></td>
@@ -3082,7 +3086,7 @@ function tpRender(){
   for (const c of sorted) {
     if (c.account_id !== lastAcc) {
       // Cabeçalho de seção da conta
-      campRowsParts.push(`<tr style="background:rgba(16,185,129,0.05)"><td colspan="8" style="padding:10px 16px;color:#10b981;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-top:1px solid #1e2a44">━━━ ${c.account_label} ━━━</td></tr>`);
+      campRowsParts.push(`<tr style="background:rgba(16,185,129,0.05)"><td colspan="8" style="padding:10px 16px;color:#10b981;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-top:1px solid rgba(255,255,255,.1)">━━━ ${c.account_label} ━━━</td></tr>`);
       lastAcc = c.account_id;
     }
     const actionConf = {
@@ -3109,7 +3113,7 @@ function tpRender(){
   // Linha TOTAL no tfoot
   const totalCpa = totals.purchases > 0 ? totals.spend / totals.purchases : null;
   const totalCpaColor = totalCpa === null ? '#64748b' : (totalCpa <= 15 ? '#10b981' : totalCpa <= 25 ? '#60a5fa' : '#ef4444');
-  document.getElementById('tp-campaigns-tfoot').innerHTML = `<tr style="background:#0a0e1a;border-top:2px solid #10b981">
+  document.getElementById('tp-campaigns-tfoot').innerHTML = `<tr style="background:#000000;border-top:2px solid #10b981">
     <td colspan="2" style="color:#10b981;font-weight:700;font-size:13px;padding:14px 16px">📊 TOTAL DO PERÍODO</td>
     <td style="color:#fff;font-size:14px">${finBRL(totals.spend)}</td>
     <td><b style="color:#10b981;font-size:14px">${totals.purchases}</b></td>
@@ -3362,7 +3366,7 @@ async function loadInstances(){
         <div class="inst-info">${sl} · ${days}d no sistema</div>
         <div style="display:flex;gap:6px;margin-top:10px">
           <button class="inst-act ${inst.paused?'resume':'pause'}" style="flex:1" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button>
-          <button class="inst-act edit" style="flex:1" onclick='openInstModal(${JSON.stringify(inst.name)}, ${JSON.stringify(phoneNum || "")})'>✏️ Identificar</button>
+          <button class="inst-act edit" style="flex:1" onclick='openInstModal(${JSON.stringify(inst.name)}, ${JSON.stringify(phoneNum || "")})'>Identificar</button>
           <button class="inst-act danger" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover">🗑️</button>
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:11px">
@@ -3404,7 +3408,7 @@ function openInstModal(instanceName, currentPhone) {
       <div class="modal-card">
         <div class="modal-h">
           <div>
-            <div class="modal-title">✏️ Identificar Instância</div>
+            <div class="modal-title">Identificar Instância</div>
             <div class="modal-sub">Instância: <strong>${instanceName}</strong></div>
           </div>
           <button class="modal-x" onclick="closeInstModal()">✕</button>
@@ -3417,7 +3421,7 @@ function openInstModal(instanceName, currentPhone) {
           </div>
 
           <div class="modal-field">
-            <label>📱 Celular Físico</label>
+            <label>Celular Físico</label>
             <select id="modal-device" class="modal-inp">
               <option value="">— Selecionar —</option>
               <option value="Celular 0" ${cur.device==='Celular 0'?'selected':''}>Celular 0</option>
@@ -3457,7 +3461,7 @@ function openInstModal(instanceName, currentPhone) {
         </div>
         <div class="modal-foot">
           <button class="btn btn-g" onclick="closeInstModal()">Cancelar</button>
-          <button class="btn btn-p" onclick='saveInstModal(${JSON.stringify(instanceName)}, ${JSON.stringify(cur.phone)})'>💾 Salvar</button>
+          <button class="btn btn-p" onclick='saveInstModal(${JSON.stringify(instanceName)}, ${JSON.stringify(cur.phone)})'>Salvar</button>
         </div>
       </div>
     </div>

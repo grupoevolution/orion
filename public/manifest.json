@@ -1,21 +1,21 @@
 {
   "name": "Orion",
   "short_name": "Orion",
-  "description": "Sistema de automa\u00e7\u00e3o WhatsApp para convers\u00e3o de leads",
+  "description": "Sistema de automação WhatsApp para conversão de leads",
   "start_url": "/mobile.html",
   "display": "standalone",
-  "background_color": "#0a0d18",
-  "theme_color": "#0a0d18",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon-192.png?v=2",
+      "src": "/icon-192.png?v=3",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png?v=2",
+      "src": "/icon-512.png?v=3",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

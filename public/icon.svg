@@ -1,26 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1a1f3a"/>
-      <stop offset="100%" stop-color="#0a0d18"/>
-    </linearGradient>
-    <linearGradient id="o" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4f46e5"/>
-      <stop offset="50%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#7c3aed"/>
-    </linearGradient>
-    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0.3"/>
-    </linearGradient>
-    <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="14"/>
-    </filter>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity=".9"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBelt" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity=".9"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="512" height="512" rx="115" fill="url(#bg)"/>
-  <g transform="translate(256 256)">
-    <circle r="160" fill="url(#glow)" filter="url(#blur)" opacity="0.6"/>
-    <circle r="138" fill="none" stroke="url(#o)" stroke-width="48"/>
-    <circle r="138" fill="none" stroke="#818cf8" stroke-width="2" opacity="0.4"/>
+  <rect width="512" height="512" rx="116" fill="#000000"/>
+  <g stroke="#ffffff" stroke-opacity=".22" stroke-width="3" fill="none" stroke-linecap="round">
+    <path d="M168 122 L210 246"/>
+    <path d="M344 138 L302 282"/>
+    <path d="M210 246 L256 264 L302 282"/>
+    <path d="M210 246 L182 396"/>
+    <path d="M302 282 L342 390"/>
+    <path d="M168 122 L344 138"/>
+  </g>
+  <g>
+    <circle cx="168" cy="122" r="34" fill="url(#glow)" opacity=".35"/>
+    <circle cx="168" cy="122" r="13" fill="#ffffff"/>
+    <circle cx="344" cy="138" r="28" fill="url(#glow)" opacity=".3"/>
+    <circle cx="344" cy="138" r="11" fill="#ffffff"/>
+    <circle cx="182" cy="396" r="28" fill="url(#glow)" opacity=".3"/>
+    <circle cx="182" cy="396" r="11" fill="#ffffff"/>
+    <circle cx="342" cy="390" r="36" fill="url(#glow)" opacity=".4"/>
+    <circle cx="342" cy="390" r="14" fill="#ffffff"/>
+  </g>
+  <g>
+    <circle cx="210" cy="246" r="30" fill="url(#glowBelt)" opacity=".5"/>
+    <circle cx="256" cy="264" r="34" fill="url(#glowBelt)" opacity=".55"/>
+    <circle cx="302" cy="282" r="30" fill="url(#glowBelt)" opacity=".5"/>
+    <circle cx="210" cy="246" r="12" fill="#34d399"/>
+    <circle cx="256" cy="264" r="13" fill="#34d399"/>
+    <circle cx="302" cy="282" r="12" fill="#34d399"/>
   </g>
 </svg>

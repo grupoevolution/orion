@@ -6,26 +6,24 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Orion">
-<meta name="theme-color" content="#0b0f1a">
+<meta name="theme-color" content="#000000">
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png?v=2">
-<link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png?v=2">
-<link rel="apple-touch-icon" href="/icon-192.png?v=2">
-<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
+<link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png?v=3">
+<link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png?v=3">
+<link rel="apple-touch-icon" href="/icon-192.png?v=3">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=3">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
 <title>Orion</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-:root{--bg:#0b0f1a;--bg2:#111827;--bg3:#1a2235;--border:rgba(255,255,255,.08);--accent:#2563eb;--green:#059669;--red:#dc2626;--amber:#d97706;--purple:#7c3aed;--text:#f1f5f9;--text2:#94a3b8;--text3:#475569;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;--safe-top:env(safe-area-inset-top);--safe-bottom:env(safe-area-inset-bottom)}
+:root{--bg:#000000;--bg2:#0a0a0b;--bg3:#131315;--border:rgba(255,255,255,.09);--accent:#34d399;--green:#10b981;--red:#ef4444;--amber:#f59e0b;--purple:#8b5cf6;--text:#ffffff;--text2:#a1a1aa;--text3:#55555e;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;--safe-top:env(safe-area-inset-top);--safe-bottom:env(safe-area-inset-bottom)}
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
 body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 
 /* LOGIN */
-#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;z-index:999;
-  background-image:url('https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_d9mqaud9mqaud9mq.jpeg');
-  background-size:cover;background-position:center}
-.login-box{background:rgba(11,15,26,.92);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:36px 28px;width:100%;max-width:340px}
+#login{position:fixed;inset:0;background:#000000;display:flex;align-items:center;justify-content:center;padding:24px;z-index:999}
+.login-box{background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:36px 28px;width:100%;max-width:340px}
 .login-logo{text-align:center;margin-bottom:28px}
 .login-logo img{width:160px;height:auto;filter:drop-shadow(0 0 16px rgba(37,99,235,.5))}
 .login-logo p{color:rgba(255,255,255,.35);font-size:11px;margin-top:6px;letter-spacing:1px}
@@ -104,10 +102,10 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .high-badge{display:inline-block;font-size:8px;font-weight:800;color:#0a0d18;background:#fbbf24;padding:2px 6px;border-radius:8px;letter-spacing:.4px;margin-left:6px;vertical-align:middle;text-transform:uppercase;box-shadow:0 0 6px rgba(251,191,36,.5)}
 
 /* ROI HERO CARD */
-.roi-hero{background:linear-gradient(135deg,rgba(79,70,229,.18) 0%,rgba(124,58,237,.12) 50%,rgba(168,85,247,.08) 100%);border:1px solid rgba(124,58,237,.3);border-radius:16px;padding:16px;margin-bottom:14px;position:relative;overflow:hidden}
-.roi-hero::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:radial-gradient(circle,rgba(124,58,237,.3) 0%,transparent 60%);pointer-events:none}
+.roi-hero{background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px;margin-bottom:14px;position:relative;overflow:hidden}
+.roi-hero::before{content:'';display:none}
 .roi-h-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.roi-h-lbl{font-size:9px;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:.6px}
+.roi-h-lbl{font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px}
 .roi-h-status{font-size:8px;font-weight:700;padding:2px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.3px}
 .roi-h-status.up{background:rgba(34,197,94,.15);color:#34d399;border:1px solid rgba(34,197,94,.3)}
 .roi-h-status.dn{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
@@ -122,7 +120,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .roi-h-num-val.spend{color:#fbbf24}
 .roi-h-num-val.profit{color:#a78bfa}
 .roi-h-empty{font-size:11px;color:var(--text3);padding:8px 0;text-align:center;font-style:italic}
-.roi-add-btn{margin-top:10px;width:100%;padding:9px 12px;background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.4);border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:6px}
+.roi-add-btn{margin-top:10px;width:100%;padding:10px 12px;background:rgba(255,255,255,.06);color:#ffffff;border:1px solid rgba(255,255,255,.14);border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:6px}
 .roi-add-btn:active{background:rgba(124,58,237,.35)}
 
 /* MODAL OVERLAY (gasto FB, futuras ações) */
@@ -145,11 +143,11 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .modal-btn.primary:disabled{opacity:.5;cursor:not-allowed}
 
 /* BIOMETRIC LOCK SCREEN */
-#bio-lock{position:fixed;inset:0;background:radial-gradient(at 30% 20%,rgba(79,70,229,.12) 0%,transparent 50%),radial-gradient(at 70% 80%,rgba(124,58,237,.08) 0%,transparent 50%),#0a0d18;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9997;padding:32px;text-align:center}
-#bio-lock img{width:100px;height:100px;margin-bottom:24px;filter:drop-shadow(0 0 24px rgba(124,58,237,.4))}
+#bio-lock{position:fixed;inset:0;background:#000000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9997;padding:32px;text-align:center}
+#bio-lock img{width:100px;height:100px;margin-bottom:24px}
 .bio-title{font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px;letter-spacing:-.3px}
 .bio-sub{font-size:13px;color:var(--text2);margin-bottom:32px;max-width:280px;line-height:1.5}
-.bio-btn{padding:14px 28px;background:linear-gradient(135deg,#6366f1 0%,#7c3aed 100%);color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);box-shadow:0 8px 24px rgba(124,58,237,.4);display:flex;align-items:center;gap:10px}
+.bio-btn{padding:14px 28px;background:#ffffff;color:#000000;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:10px}
 .bio-btn:active{transform:scale(.97)}
 .bio-btn svg{width:18px;height:18px}
 .bio-fail{font-size:12px;color:#f87171;margin-top:14px;font-weight:600;display:none}
@@ -161,7 +159,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .glass{backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%);background:rgba(17,22,42,.7);border:1px solid rgba(255,255,255,.06)}
 
 /* TOPBAR PREMIUM */
-.topbar{padding:11px 14px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:rgba(11,15,26,.85);border-bottom:1px solid rgba(255,255,255,.05)}
+.topbar{padding:11px 14px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:rgba(0,0,0,.88);border-bottom:1px solid rgba(255,255,255,.07)}
 .tb-left{display:flex;align-items:center;gap:10px}
 .tb-logo{width:30px;height:30px;border-radius:8px;flex-shrink:0}
 .tb-greeting{display:flex;flex-direction:column;line-height:1.1}
@@ -183,8 +181,8 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .hero-fat-trend.neutral{background:rgba(148,163,184,.1);color:var(--text3);border:1px solid var(--border)}
 
 /* HERO DUPLO (15/05): Faturamento + Lucro lado a lado, mesmo peso visual */
-.hero-dual{display:grid;grid-template-columns:1fr 1px 1fr;gap:12px;background:linear-gradient(135deg,rgba(5,150,105,.16) 0%,rgba(34,197,94,.08) 50%,rgba(124,58,237,.05) 100%);border:1px solid rgba(34,197,94,.22);border-radius:18px;padding:16px 14px;margin-bottom:14px;position:relative;overflow:hidden;animation:cardIn .35s ease both}
-.hero-dual::before{content:'';position:absolute;top:-30px;right:-30px;width:140px;height:140px;background:radial-gradient(circle,rgba(34,197,94,.18) 0%,transparent 60%);pointer-events:none}
+.hero-dual{display:grid;grid-template-columns:1fr 1px 1fr;gap:12px;background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:16px 14px;margin-bottom:14px;position:relative;overflow:hidden;animation:cardIn .35s ease both}
+.hero-dual::before{content:'';display:none}
 .hero-dual-top{grid-column:1 / -1;display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;position:relative;z-index:1}
 .hero-dual-side{min-width:0;position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center}
 .hero-dual-divider{background:rgba(255,255,255,.08);align-self:stretch}
@@ -319,7 +317,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .spark.up{color:#34d399}.spark.dn{color:#f87171}
 
 /* MODO FOCO */
-#focus-mode{position:fixed;inset:0;background:radial-gradient(at 30% 20%,rgba(79,70,229,.18) 0%,transparent 50%),radial-gradient(at 70% 80%,rgba(124,58,237,.12) 0%,transparent 50%),#0a0d18;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:9996;padding:32px;text-align:center}
+#focus-mode{position:fixed;inset:0;background:#000000;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:9996;padding:32px;text-align:center}
 #focus-mode.active{display:flex;animation:fadeIn .25s ease}
 .focus-block{margin-bottom:32px;text-align:center}
 .focus-num{font-size:60px;font-weight:800;letter-spacing:-2.5px;line-height:1;margin-bottom:6px;font-family:var(--font)}
@@ -452,8 +450,9 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 <div id="login">
   <div class="login-box">
     <div class="login-logo">
-      <img src="/icon.svg" alt="ORION">
-      <p>Automação WhatsApp</p>
+      <svg viewBox="0 0 360 200" xmlns="http://www.w3.org/2000/svg" style="width:170px;height:auto"><g stroke="#ffffff" stroke-opacity=".25" stroke-width="1.6" fill="none" stroke-linecap="round"><path d="M120 28 L146 96"/><path d="M232 36 L208 116"/><path d="M146 96 L177 106 L208 116"/><path d="M146 96 L130 178"/><path d="M208 116 L236 174"/><path d="M120 28 L232 36"/></g><g fill="#ffffff"><circle cx="120" cy="28" r="6.5"/><circle cx="232" cy="36" r="5.5"/><circle cx="130" cy="178" r="5.5"/><circle cx="236" cy="174" r="7"/></g><g fill="#34d399"><circle cx="146" cy="96" r="6"/><circle cx="177" cy="106" r="6.5"/><circle cx="208" cy="116" r="6"/></g></svg>
+      <div style="font-size:20px;font-weight:800;letter-spacing:.45em;color:#fff;margin-top:10px;padding-left:.45em">ORION</div>
+      <p>Automação de Vendas</p>
     </div>
     <input class="inp" id="lg-u" placeholder="Usuário" autocomplete="username">
     <input class="inp" type="password" id="lg-p" placeholder="Senha" autocomplete="current-password">
@@ -480,7 +479,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 
   <div class="topbar">
     <div class="tb-left">
-      <img class="tb-logo" src="/icon-192.png?v=2" alt="Orion">
+      <svg class="tb-logo" viewBox="100 10 156 180" xmlns="http://www.w3.org/2000/svg" style="width:26px;height:30px;border-radius:0"><g stroke="#ffffff" stroke-opacity=".25" stroke-width="3" fill="none" stroke-linecap="round"><path d="M120 28 L146 96"/><path d="M232 36 L208 116"/><path d="M146 96 L177 106 L208 116"/><path d="M146 96 L130 178"/><path d="M208 116 L236 174"/><path d="M120 28 L232 36"/></g><g fill="#ffffff"><circle cx="120" cy="28" r="9"/><circle cx="232" cy="36" r="8"/><circle cx="130" cy="178" r="8"/><circle cx="236" cy="174" r="10"/></g><g fill="#34d399"><circle cx="146" cy="96" r="8.5"/><circle cx="177" cy="106" r="9"/><circle cx="208" cy="116" r="8.5"/></g></svg>
       <div class="tb-greeting">
         <div class="tb-greet" id="tb-greet">Olá, Danilo</div>
         <div class="tb-time" id="tb-time">--:--</div>
