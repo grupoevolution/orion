@@ -48,7 +48,7 @@ const EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
 // ⭐ FIX 04/05: parseInt("7m") = NaN → setTimeout(fn, NaN) dispara em 0ms (sem espera dos 7min).
 // ⭐ FIX 11/05: editável no admin via settings.PIX_TIMEOUT_MS. Fallback mantido em 7min pra
-//              retrocompat (NÃO mudar comportamento sem o Danilo trocar no admin manualmente).
+//              retrocompat (NÃO mudar comportamento sem o Iago trocar no admin manualmente).
 function getPixTimeoutMs() {
     try {
         const fromDb = db.getSetting('PIX_TIMEOUT_MS');
@@ -59,7 +59,7 @@ function getPixTimeoutMs() {
     } catch(e) {}
     const fromEnv = parseInt(process.env.PIX_TIMEOUT_MS);
     if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-    return 7 * 60 * 1000; // default mantido 7min (retrocompat) — Danilo muda no admin pra 5min
+    return 7 * 60 * 1000; // default mantido 7min (retrocompat) — Iago muda no admin pra 5min
 }
 // Mantido pra retrocompat. Code novo usa getPixTimeoutMs() pra valor dinâmico.
 let PIX_TIMEOUT = 7 * 60 * 1000;
@@ -2497,7 +2497,7 @@ async function processScheduledFunnels() {
                     addLog('RECOVERY_CANCEL_FUNNEL', `🚫 Funil destino "${s.funnel_id}" não existe ou está vazio`, { phoneKey: s.phone_key });
                     continue;
                 }
-                // DISPARA — usa startFunnel com customFunnelId pra forçar o funil escolhido pelo Danilo
+                // DISPARA — usa startFunnel com customFunnelId pra forçar o funil escolhido pelo Iago
                 const location = { ddd: null, city: null, state: null }; // location seria recuperada pelo phoneKey se precisar
                 await startFunnel(
                     s.phone_key,
@@ -2821,7 +2821,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                 // SEM SSE/notif/push — silencioso
             } else {
                 // ⭐ FIX 10/05: ABANDONED só dispara (notif + funil) se cliente NÃO está em outro funil ativo.
-                // Regra do Danilo: cliente em PIX/ABANDONO/etc só é interrompido por APROVADA.
+                // Regra do Iago: cliente em PIX/ABANDONO/etc só é interrompido por APROVADA.
                 const activeType = getActiveFunnelType(phoneKey);
                 if (activeType) {
                     // ⭐ FIX 06/26: era 100% silencioso — parecia que o webhook de abandono não chegava.
@@ -3698,7 +3698,7 @@ app.delete('/api/start-triggers/:id', authMiddleware, (req, res) => {
 
 // ⭐ FIX 10/05: Endpoint de DIAGNÓSTICO — simula mensagem chegando sem disparar nada.
 // Retorna passo-a-passo: o que o sistema enxergou e por que (não) bateu.
-// Útil pra debugar quando Danilo cadastra trigger e ele não funciona em produção.
+// Útil pra debugar quando Iago cadastra trigger e ele não funciona em produção.
 app.post('/api/start-triggers/test', authMiddleware, (req, res) => {
     try {
         const text = String(req.body?.text || '');
@@ -4135,7 +4135,7 @@ app.post('/api/push/unsubscribe', authMiddleware, (req, res) => {
 app.get('/api/settings', authMiddleware, (req, res) => {
     const defaults = {
         // ⭐ FIX 11/05: editável no admin. Default mantido 7min (420000) pra retrocompat.
-        //              Danilo muda no painel pra 5min quando quiser (300000).
+        //              Iago muda no painel pra 5min quando quiser (300000).
         PIX_TIMEOUT_MS: process.env.PIX_TIMEOUT_MS || '420000',
         REACTIVATION_DAYS: process.env.REACTIVATION_DAYS || '3',
         CLEANUP_DAYS: CLEANUP_DAYS.toString(),
@@ -5066,7 +5066,7 @@ async function getMetaInsights(datePreset, timeRange) {
             const purchases = extractPurchases(c.actions);
             const cpa = purchases > 0 ? +(spend / purchases).toFixed(2) : null;
 
-            // Sugestão automática (régua de pausa baseada no histórico de abril do Danilo)
+            // Sugestão automática (régua de pausa baseada no histórico de abril do Iago)
             let action = 'monitor';
             let actionReason = '';
             if (purchases === 0 && spend >= META_PAUSE_THRESHOLD) {

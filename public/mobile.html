@@ -481,7 +481,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
     <div class="tb-left">
       <svg class="tb-logo" viewBox="100 10 156 180" xmlns="http://www.w3.org/2000/svg" style="width:26px;height:30px;border-radius:0"><g stroke="#ffffff" stroke-opacity=".25" stroke-width="3" fill="none" stroke-linecap="round"><path d="M120 28 L146 96"/><path d="M232 36 L208 116"/><path d="M146 96 L177 106 L208 116"/><path d="M146 96 L130 178"/><path d="M208 116 L236 174"/><path d="M120 28 L232 36"/></g><g fill="#ffffff"><circle cx="120" cy="28" r="9"/><circle cx="232" cy="36" r="8"/><circle cx="130" cy="178" r="8"/><circle cx="236" cy="174" r="10"/></g><g fill="#34d399"><circle cx="146" cy="96" r="8.5"/><circle cx="177" cy="106" r="9"/><circle cx="208" cy="116" r="8.5"/></g></svg>
       <div class="tb-greeting">
-        <div class="tb-greet" id="tb-greet">Olá, Danilo</div>
+        <div class="tb-greet" id="tb-greet">Olá, Iago</div>
         <div class="tb-time" id="tb-time">--:--</div>
       </div>
     </div>
@@ -682,7 +682,7 @@ function playSound(type, opts = {}) {
     else if(type === 'pay') audio = SOUNDS.pay;
     if (!audio) return;
     audio.currentTime = 0;
-    // PIX alto valor → toca o som de pagamento (mais "celebrativo") pra Danilo identificar de longe
+    // PIX alto valor → toca o som de pagamento (mais "celebrativo") pra Iago identificar de longe
     if (opts.highValue && type === 'pix') {
       SOUNDS.pay.currentTime = 0;
       SOUNDS.pay.play().catch(()=>{});
@@ -1087,10 +1087,10 @@ function updateGreeting() {
   const now = new Date();
   const h = now.getHours();
   let greet;
-  if (h < 5) greet = 'Boa madrugada, Danilo';
-  else if (h < 12) greet = 'Bom dia, Danilo';
-  else if (h < 18) greet = 'Boa tarde, Danilo';
-  else greet = 'Boa noite, Danilo';
+  if (h < 5) greet = 'Boa madrugada, Iago';
+  else if (h < 12) greet = 'Bom dia, Iago';
+  else if (h < 18) greet = 'Boa tarde, Iago';
+  else greet = 'Boa noite, Iago';
   const gEl = document.getElementById('tb-greet');
   if (gEl) gEl.textContent = greet;
   const tEl = document.getElementById('tb-time');
