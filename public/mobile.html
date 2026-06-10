@@ -1425,9 +1425,9 @@ function connectSSE() {
 
   sse.addEventListener('pix_generated', e => {
     const d = JSON.parse(e.data);
-    // ⭐ FIX 15/05: PIX bloqueado por cooldown (mesmo cliente/produto recente) NÃO entra no feed.
-    // O server ainda registra em events (auditoria), mas não polui o feed e não vibra/toca.
+    // PIX repetido/bloqueado: aparece no feed (sem som/vibração) pra nunca parecer que o sistema falhou
     if (d.skipped) {
+      addFeed('info', 'PIX Gerado (funil não disparado)', d.customerName, d.amount, d.productName, { phoneKey: d.phoneKey });
       loadDashboard();
       return;
     }

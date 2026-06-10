@@ -1313,8 +1313,11 @@ setInterval(() => {
 // ============ EVOLUTION API ============
 async function sendToEvolution(instanceName, endpoint, payload) {
     const url = `${EVOLUTION_BASE_URL}${endpoint}/${instanceName}`;
+    // ⭐ FIX 06/26: 30s pra envio de mensagem (áudio/vídeo demoram a converter na Evolution).
+    // Com 15s, o envio estourava o timeout DEPOIS da mensagem já ter sido entregue → retry → cliente recebia 2x.
+    const sendTimeout = endpoint.startsWith('/message/') ? 30000 : 15000;
     try {
-        const response = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY }, timeout: 15000 });
+        const response = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY }, timeout: sendTimeout });
         const data = response.data || {};
         // ⭐ FIX 04/05 (atenuado): só bloqueia em erro EXPLÍCITO. hasMessageKey check removido pra evitar falso positivo
         // com formatos de resposta diferentes da Evolution. Se aparecer "EVO_FAKE_OK" no log, é erro real.
@@ -1339,11 +1342,15 @@ async function sendToEvolution(instanceName, endpoint, payload) {
             errStr.includes('not registered') ||
             errStr.includes('does not exist')
         );
+        // ⭐ FIX 06/26: timeout/conexão-cortada DEPOIS do request sair = a mensagem PODE ter sido entregue.
+        // Reenviar nesse caso é o que duplicava mensagem pro cliente. Marcamos como "ambíguo" e quem
+        // chama decide (envio de mensagem NÃO retenta; o funil segue assumindo entregue).
+        const isAmbiguous = !status && ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET'].includes(error.code) && endpoint.startsWith('/message/');
         // Log detalhado (mantém só pra erros não-numéricos pra não poluir log)
         if (!isInvalidNumber) {
-            addLog('EVO_HTTP_ERR', `❌ ${instanceName} ${endpoint}: HTTP ${status || error.code || 'NO_STATUS'} — ${JSON.stringify(errBody || '').substring(0, 200) || error.message?.substring(0, 200)}`);
+            addLog('EVO_HTTP_ERR', `❌ ${instanceName} ${endpoint}: HTTP ${status || error.code || 'NO_STATUS'}${isAmbiguous ? ' (AMBÍGUO — pode ter entregado)' : ''} — ${JSON.stringify(errBody || '').substring(0, 200) || error.message?.substring(0, 200)}`);
         }
-        return { ok: false, error: errBody || error.message, status, invalidNumber: isInvalidNumber };
+        return { ok: false, error: errBody || error.message, status, invalidNumber: isInvalidNumber, ambiguous: isAmbiguous };
     }
 }
 
@@ -1504,6 +1511,7 @@ async function sendAudio(remoteJid, audioUrl, instanceName) {
     const r1 = await sendToEvolutionWithPhoneFallback(instanceName, '/message/sendWhatsAppAudio', { audio: audioUrl, delay: 1200, encoding: true }, phone);
     if (r1.ok) return r1;
     if (r1.invalidNumber) return r1; // número realmente não existe — não desperdiça download
+    if (r1.ambiguous) return r1; // ⭐ FIX 06/26: timeout pós-envio = áudio PODE ter chegado — tentar de novo era o que duplicava
     try {
         const audioResponse = await axios.get(audioUrl, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
         const base64 = Buffer.from(audioResponse.data).toString('base64');
@@ -1521,6 +1529,7 @@ async function sendViewOnce(remoteJid, mediaUrl, mediaType, instanceName) {
     const r1 = await sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: mediaType, media: mediaUrl, viewOnce: true }, phone);
     if (r1.ok) return r1;
     if (r1.invalidNumber) return r1;
+    if (r1.ambiguous) return r1; // ⭐ FIX 06/26: não reenvia em timeout pós-envio
     try {
         const resp = await axios.get(mediaUrl, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
         const mimetype = mediaType === 'image' ? 'image/jpeg' : 'video/mp4';
@@ -1732,6 +1741,20 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
                     if (conv) { conv.invalidNumber = true; conv.canceled = true; conversations.set(phoneKey, conv); }
                     return { success: false, invalidNumber: true };
                 }
+
+                // ⭐ FIX 06/26: timeout DEPOIS do request sair = mensagem pode ter sido entregue.
+                // Retentar aqui (mesma instância ou outra) era o que mandava a mensagem 2x pro cliente.
+                // Assume entregue e segue o funil — perder 1 mensagem é menos pior que duplicar.
+                if (result.ambiguous) {
+                    addLog('SEND_AMBIGUOUS', `⚠️ Timeout pós-envio via ${instanceName} — assumindo entregue (sem retry)`, { phoneKey, type: step.type });
+                    registerSentMessage(phoneKey, step, conversation);
+                    stickyInstances.set(phoneKey, instanceName);
+                    try { db.getDb().prepare('UPDATE conversations SET sticky_instance=? WHERE phone_key=?').run(instanceName, phoneKey); } catch(e){}
+                    db.updateInstanceStats(instanceName, 1);
+                    db.logMessage(phoneKey, 'out', actualText || actualMediaUrl, instanceName, step.id);
+                    sendSSE('message_sent', { phoneKey, instance: instanceName, stepType: step.type });
+                    return { success: true, instanceName, ambiguous: true };
+                }
                 db.updateInstanceHealth(instanceName, false, false);
 
                 if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
@@ -1838,6 +1861,11 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     if (shouldBlockFunnelByCooldown(phoneKey, productId, 'PIX')) {
         db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
         sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
+        {
+            // ⭐ FIX 06/26: PIX em cooldown não notificava nada — parecia que o sistema falhou. Agora o push avisa.
+            const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount);
+            await sendPushNotification(notif.title, notif.body + ' · repetido, funil não disparado', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+        }
         addLog('PIX_SKIPPED', `⏸️ PIX registrado mas funil não disparado (cooldown) para ${phoneKey}`, { orderCode });
         return;
     }
@@ -2319,70 +2347,79 @@ async function _checkInstancesHealthInner() {
                 }
                 addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!${currentPhone ? ' 📞 ' + currentPhone : ''}`);
                 sendSSE('instance_up', { name: inst.name, phone: currentPhone });
-
-                // ⭐ v1.3: Retoma conversas que estavam aguardando essa instância voltar
-                let resumedCount = 0;
-                for (const [phoneKey, conv] of conversations.entries()) {
-                    if (conv.waitingForStickyReturn && stickyInstances.get(phoneKey) === inst.name) {
-                        conv.waitingForStickyReturn = false;
-                        conversations.set(phoneKey, conv);
-                        resumedCount++;
-                        // Agenda retomada do passo atual em ~5s (escalonado pra não estourar)
-                        setTimeout(() => {
-                            try { sendStep(phoneKey); } catch(e) {}
-                        }, 5000 + (resumedCount * 1500));
-                    }
-                }
-                if (resumedCount > 0) {
-                    addLog('STICKY_RESUME', `▶️ ${resumedCount} conversa(s) retomadas via ${inst.name}`);
-                }
-
-                // ⭐ FIX 04/05: Retoma TAMBÉM órfãos (awaitingPool) — rate limit 30s pra não sobrecarregar a instância que acabou de voltar.
-                // ⭐ 15/05: Cutoff curto pra ABANDONO (2h). Antes era 24h pra tudo — causava carpet bombing pós-viagem.
-                //          PIX/APROVADA/outros mantêm 24h porque tão funcionando 100%.
-                const ORPHAN_CUTOFF = Date.now() - (24 * 60 * 60 * 1000);
-                const ORPHAN_CUTOFF_ABANDONO = Date.now() - (2 * 60 * 60 * 1000);
-                let orphanResumed = 0;
-                let orphanSkippedAbandono = 0;
-                for (const [phoneKey, conv] of conversations.entries()) {
-                    if (!conv.awaitingPool) continue;
-                    if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber) continue;
-                    const createdAt = conv.createdAt ? new Date(conv.createdAt).getTime() : 0;
-                    const isAbandono = conv.funnelType === 'ABANDONO';
-                    const cutoff = isAbandono ? ORPHAN_CUTOFF_ABANDONO : ORPHAN_CUTOFF;
-                    if (createdAt < cutoff) {
-                        if (isAbandono) orphanSkippedAbandono++;
-                        continue;
-                    }
-                    // ⭐ 15/05: Respeita toggle global de abandono — se DESLIGADO, não retoma órfãos de abandono.
-                    if (isAbandono && !isAbandonoEnabled()) {
-                        orphanSkippedAbandono++;
-                        continue;
-                    }
-                    conv.awaitingPool = false;
-                    conv.hasError = false;
-                    conv.waiting_for_response = false;
-                    conversations.set(phoneKey, conv);
-                    orphanResumed++;
-                    setTimeout(() => { try { sendStep(phoneKey); } catch(e) {} }, 10000 + (orphanResumed * 30000));
-                }
-                if (orphanResumed > 0) {
-                    addLog('ORPHAN_RESUME', `🔁 ${orphanResumed} órfão(s) agendados via ${inst.name} (1 a cada 30s)`);
-                }
-                if (orphanSkippedAbandono > 0) {
-                    addLog('ORPHAN_SKIP_ABANDONO', `⏭️ ${orphanSkippedAbandono} abandono(s) pulado(s) (>2h ou toggle OFF) — use o app pra disparar/limpar manualmente`);
-                }
             }
         }
     }
     if (changed) refreshInstanceCache();
+    // ⭐ FIX 06/26: a retomada roda em TODO tick, independente de transição.
+    // Antes ela só rodava quando o check FLAGRAVA a instância voltando — se a queda+volta
+    // acontecia entre dois ticks, o lead ficava preso no meio do funil pra sempre.
+    try { resumeStuckConversations(); } catch(e) { addLog('RESUME_SWEEP_ERR', `⚠️ ${e.message}`); }
 }
-// Verificação silenciosa a cada 5min (era 30s) — só atualiza status na tela e retoma leads travados.
+
+// Retoma conversas presas (sticky aguardando volta / órfãs sem pool) sempre que houver
+// instância conectada disponível. Idempotente: os flags são resetados antes de agendar,
+// e cada conversa tem backoff de 10min entre retomadas pra não martelar envio que falha sempre.
+function resumeStuckConversations() {
+    const connected = new Set(db.getInstances().filter(i => i.connected && !i.paused).map(i => i.name));
+    if (connected.size === 0) return;
+    const RESUME_BACKOFF_MS = 10 * 60 * 1000;
+    const now = Date.now();
+
+    // 1) Conversas esperando a instância fixa (sticky) voltar
+    let resumedCount = 0;
+    for (const [phoneKey, conv] of conversations.entries()) {
+        if (!conv.waitingForStickyReturn) continue;
+        if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber) continue;
+        const sticky = stickyInstances.get(phoneKey);
+        if (!sticky || !connected.has(sticky)) continue;
+        if (conv._lastResumeAt && now - conv._lastResumeAt < RESUME_BACKOFF_MS) continue;
+        conv.waitingForStickyReturn = false;
+        conv._lastResumeAt = now;
+        conversations.set(phoneKey, conv);
+        resumedCount++;
+        setTimeout(() => { try { sendStep(phoneKey); } catch(e) {} }, 5000 + (resumedCount * 1500));
+    }
+    if (resumedCount > 0) addLog('STICKY_RESUME', `▶️ ${resumedCount} conversa(s) retomadas (sticky online)`);
+
+    // 2) Órfãs (awaitingPool) — qualquer instância conectada serve.
+    // Cutoff curto pra ABANDONO (2h, evita carpet bombing); 24h pro resto.
+    const ORPHAN_CUTOFF = now - (24 * 60 * 60 * 1000);
+    const ORPHAN_CUTOFF_ABANDONO = now - (2 * 60 * 60 * 1000);
+    let orphanResumed = 0;
+    let orphanSkippedAbandono = 0;
+    for (const [phoneKey, conv] of conversations.entries()) {
+        if (!conv.awaitingPool) continue;
+        if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber) continue;
+        if (conv._lastResumeAt && now - conv._lastResumeAt < RESUME_BACKOFF_MS) continue;
+        const createdAt = conv.createdAt ? new Date(conv.createdAt).getTime() : 0;
+        const isAbandono = conv.funnelType === 'ABANDONO';
+        const cutoff = isAbandono ? ORPHAN_CUTOFF_ABANDONO : ORPHAN_CUTOFF;
+        if (createdAt < cutoff) {
+            if (isAbandono) orphanSkippedAbandono++;
+            continue;
+        }
+        if (isAbandono && !isAbandonoEnabled()) {
+            orphanSkippedAbandono++;
+            continue;
+        }
+        conv.awaitingPool = false;
+        conv.hasError = false;
+        conv.waiting_for_response = false;
+        conv._lastResumeAt = now;
+        conversations.set(phoneKey, conv);
+        orphanResumed++;
+        setTimeout(() => { try { sendStep(phoneKey); } catch(e) {} }, 10000 + (orphanResumed * 30000));
+    }
+    if (orphanResumed > 0) addLog('ORPHAN_RESUME', `🔁 ${orphanResumed} órfão(s) agendados (1 a cada 30s)`);
+    if (orphanSkippedAbandono > 0) addLog('ORPHAN_SKIP_ABANDONO', `⏭️ ${orphanSkippedAbandono} abandono(s) pulado(s) (>2h ou toggle OFF)`);
+}
+// Verificação silenciosa a cada 2min (era 30s) — atualiza status na tela e SEMPRE varre leads presos.
 // Quedas detectadas na hora do envio disparam verificação imediata via verifyInstanceAfterSendError().
-setInterval(checkInstancesHealth, 5 * 60 * 1000);
+setInterval(checkInstancesHealth, 2 * 60 * 1000);
 
 // Verificação sob demanda: quando um envio falha, confere na hora se a instância caiu,
-// atualiza o status e tira ela do pool imediatamente (sem esperar o ciclo de 5min).
+// atualiza o status e tira ela do pool imediatamente (sem esperar o próximo ciclo).
 // Debounce de 60s por instância pra rajada de falhas não virar rajada de requisições.
 const _lastErrorCheck = new Map();
 async function verifyInstanceAfterSendError(instanceName) {
@@ -2781,8 +2818,15 @@ app.post('/webhook/kirvano', async (req, res) => {
             // Se já está em ABANDONO/CARTAO_RECUSADO/etc, ignora (regra de exclusividade).
             const activeType = getActiveFunnelType(phoneKey);
             if (activeType && activeType !== 'PIX_WAITING' && activeType !== 'PIX') {
-                addLog('PIX_GENERATED_IGNORED', `⏳ PIX_GENERATED IGNORADO — cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
-                // SEM notif/SSE/push (silencioso)
+                // ⭐ FIX 06/26: era 100% silencioso (nem evento, nem painel, nem push) — parecia que o sistema
+                // tinha ignorado o PIX. Agora registra e notifica; só o FUNIL continua bloqueado (exclusividade).
+                addLog('PIX_GENERATED_IGNORED', `⏳ PIX gerado mas funil bloqueado — cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
+                db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
+                sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
+                {
+                    const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount);
+                    await sendPushNotification(notif.title, notif.body + ' · já está em outro funil', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+                }
             } else {
                 // A checagem de "já existe" do mesmo tipo é feita dentro de createPixWaitingConversation
                 // (que também respeita o Modo Teste, cancelando a anterior automaticamente)
