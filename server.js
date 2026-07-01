@@ -8,7 +8,7 @@ const zlib = require('zlib');
 const app = express();
 
 // ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
-const APP_VERSION = '3.4.0';
+const APP_VERSION = '3.5.0';
 const APP_STARTED_AT = new Date().toISOString();
 
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============
@@ -853,32 +853,53 @@ function replaceVariables(text, conversation) {
     return r;
 }
 
-// ============ A/B TEST ============
+// ============ A/B TEST / SELEÇÃO DE FUNIL ============
+// ⭐ FIX 07/26: agora escolhe SEMPRE um funil que EXISTE e TEM passos, mesmo que o id não siga
+// a convenção "PRODUTO_TIPO". Antes o sistema assumia que o funil se chamava exatamente
+// GRUPO_VIP_ABANDONO; se o usuário tinha o funil de abandono com outro nome (ou o
+// GRUPO_VIP_ABANDONO existia vazio como rascunho), caía em "funil vazio" e não enviava.
+// Estratégia: junta o padrão + variantes A/B do produto + QUALQUER funil do produto com o
+// tipo certo; descarta os vazios; faz round-robin só entre os que têm conteúdo.
 function selectABFunnel(productId, funnelType) {
+    const defaultFunnel = productId + '_' + funnelType;
+    const candidateIds = new Set([defaultFunnel]);
+
+    // Variantes A/B configuradas no produto
     const product = db.getProducts().find(p => p.id === productId);
-    if (!product) return productId + '_' + funnelType;
+    if (product) {
+        try { JSON.parse(product.ab_funnel_ids || '[]').forEach(id => candidateIds.add(id)); } catch {}
+    }
+    // Qualquer funil do produto (ou com id no padrão PRODUTO_*) cujo tipo bata com o pedido
+    try {
+        db.getFunnels().forEach(f => {
+            const belongsToProduct = f.product_id === productId || (f.id || '').startsWith(productId + '_');
+            const typeMatches = f.type === funnelType || (f.id || '').toUpperCase().includes(funnelType);
+            if (belongsToProduct && typeMatches) candidateIds.add(f.id);
+        });
+    } catch {}
 
-    let abFunnelIds = [];
-    try { abFunnelIds = JSON.parse(product.ab_funnel_ids || '[]'); } catch {}
-
-    // Filtra só funis do tipo correto
-    const relevantFunnels = abFunnelIds.filter(id => {
+    // Mantém só os que existem E têm passos (ignora rascunhos/stubs vazios)
+    const pool = [...candidateIds].filter(id => {
         const f = db.getFunnelById(id);
-        return f && (f.type === funnelType || id.includes(funnelType));
+        return f && Array.isArray(f.steps) && f.steps.length > 0;
     });
 
-    const defaultFunnel = productId + '_' + funnelType;
-    if (relevantFunnels.length === 0) return defaultFunnel;
+    if (pool.length === 0) {
+        // Nenhum funil com conteúdo — retorna o padrão (dispara o alerta de "funil vazio" no sendStep)
+        addLog('AB_NO_CONTENT', `⚠️ Nenhum funil de ${funnelType} com passos para ${productId} — usando ${defaultFunnel}`, { productId, funnelType });
+        return defaultFunnel;
+    }
 
-    // Adiciona o funil padrão ao pool se não estiver
-    const pool = [defaultFunnel, ...relevantFunnels.filter(id => id !== defaultFunnel)];
+    // Preferência: se o funil padrão (convenção) tem conteúdo, ele lidera o pool
+    pool.sort((a, b) => (a === defaultFunnel ? -1 : b === defaultFunnel ? 1 : 0));
 
     const key = productId + '_' + funnelType;
     const currentIdx = abIndexMap.get(key) || 0;
     const selectedFunnel = pool[currentIdx % pool.length];
     abIndexMap.set(key, currentIdx + 1);
 
-    addLog('AB_SELECT', `🔄 A/B: ${selectedFunnel} (variante ${(currentIdx % pool.length) + 1}/${pool.length})`, { productId, funnelType });
+    if (pool.length > 1) addLog('AB_SELECT', `🔄 A/B: ${selectedFunnel} (${(currentIdx % pool.length) + 1}/${pool.length})`, { productId, funnelType });
+    else if (selectedFunnel !== defaultFunnel) addLog('FUNNEL_RESOLVED', `✅ ${funnelType} → ${selectedFunnel} (funil real, id fora da convenção)`, { productId, funnelType });
     return selectedFunnel;
 }
 

@@ -2178,12 +2178,21 @@ async function saveCreateFunnel(){
   if(r.success){
     showToast(`Funil "${name}" criado!`,'success');
     closeModal('modal-create-funnel');
-    loadFunnelList();
+    await loadFunnelList();
     // Já abre o novo funil pra editar passos
     setTimeout(() => {
       const sel = document.getElementById('fsel');
       if(sel) sel.value = id;
       loadFunnelEditor();
+    }, 300);
+  } else if((r.error||'').toLowerCase().includes('exist')){
+    // ⭐ Já existe um funil com esse ID — em vez de travar o usuário, abre o existente pra editar.
+    showToast(`Já existe um funil "${id}" — abrindo pra você editar os passos`,'info');
+    closeModal('modal-create-funnel');
+    await loadFunnelList();
+    setTimeout(() => {
+      const sel = document.getElementById('fsel');
+      if(sel){ sel.value = id; loadFunnelEditor(); }
     }, 300);
   } else {
     showToast('Erro: ' + (r.error||''),'error');
