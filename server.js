@@ -8,7 +8,7 @@ const zlib = require('zlib');
 const app = express();
 
 // ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
-const APP_VERSION = '3.3.0';
+const APP_VERSION = '3.4.0';
 const APP_STARTED_AT = new Date().toISOString();
 
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============
@@ -1192,6 +1192,33 @@ function getActiveFunnelType(phoneKey) {
     return c.funnelType || (c.funnelId ? c.funnelId.split('_').pop() : null);
 }
 
+// ============ HIERARQUIA DE FUNIS ============
+// Regra do Iago: ABANDONO (baixo) < PIX (meio) < APROVADA (topo).
+//  - Evento de nível MAIOR cancela o funil ativo de nível menor e assume (transfere).
+//    Ex: cliente em ABANDONO gera PIX → cancela abandono, começa PIX.
+//        cliente em PIX paga → cancela PIX, começa APROVADA.
+//  - Evento de nível IGUAL ou MENOR não dispara funil (duplicado, ou hierarquia inferior).
+//    Ex: PIX enquanto já em PIX (2º Pix) → ignora. ABANDONO enquanto em PIX → ignora.
+//  - Depois de pagar, nada de nível baixo dispara (ver hasPaidRecently).
+const FUNNEL_LEVEL = { ABANDONO: 1, CARTAO_RECUSADO: 1, RECUPERACAO: 1, PIX_WAITING: 2, PIX: 2, APROVADA: 3 };
+function funnelLevel(t) { return FUNNEL_LEVEL[t] || 0; }
+
+// Epoch por telefone. Muda toda vez que um funil NOVO começa ou uma conversa é
+// cancelada/transferida. O loop de envio (sendStep) captura o epoch na entrada e aborta
+// se ele mudar — garante que um funil antigo NUNCA continua depois de ser substituído
+// (ex: o PIX para na hora que o pagamento cai, sem mensagem órfã).
+const convEpoch = new Map();
+function bumpEpoch(phoneKey) { const e = (convEpoch.get(phoneKey) || 0) + 1; convEpoch.set(phoneKey, e); return e; }
+
+// Cliente pagou nas últimas N horas? Bloqueia funis de nível baixo pós-venda.
+function hasPaidRecently(phoneKey, hours = 24) {
+    try {
+        return !!db.getDb().prepare(
+            `SELECT 1 FROM events WHERE phone_key = ? AND type IN ('PIX_PAID','CARD_PAID') AND datetime(created_at) > datetime('now', ?) LIMIT 1`
+        ).get(phoneKey, `-${parseInt(hours) || 24} hours`);
+    } catch(e) { return false; }
+}
+
 // ============ LOCK ============
 async function acquireWebhookLock(phoneKey, timeout = 10000) {
     const start = Date.now();
@@ -1638,8 +1665,17 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
         if (variant) { actualMediaUrl = variant.mediaUrl || actualMediaUrl; actualText = variant.text || actualText; }
     }
 
-    const active = getPoolForConversation(phoneKey);
-    if (active.length === 0) { addLog('NO_INSTANCES', '⚠️ Sem instâncias ativas!'); return { success: false, error: 'NO_ACTIVE_INSTANCES' }; }
+    let active = getPoolForConversation(phoneKey);
+    // ⭐ FIX 07/26: se o pool de ABANDONO/recuperação está vazio (nenhuma instância dedicada online),
+    // cai pro pool principal em vez de simplesmente não enviar. Assim o abandono SEMPRE tem por onde sair.
+    if (active.length === 0) {
+        const convFT = conversations.get(phoneKey)?.funnelType;
+        if ((convFT === 'ABANDONO' || convFT === 'CARTAO_RECUSADO' || convFT === 'RECUPERACAO') && activeInstancesCache.length > 0) {
+            active = activeInstancesCache;
+            addLog('ABANDONO_POOL_FALLBACK', `⚠️ Pool de ${convFT} vazio — usando pool principal pra não perder o envio`, { phoneKey });
+        }
+    }
+    if (active.length === 0) { addLog('NO_INSTANCES', '⚠️ Sem instâncias ativas pra enviar!', { phoneKey }); return { success: false, error: 'NO_ACTIVE_INSTANCES' }; }
 
     const preferred = selectNextInstance(isFirstMessage, phoneKey);
     const stickyInstance = stickyInstances.get(phoneKey);
@@ -1844,6 +1880,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     // ⭐ FIX 10/05: Cliente que JÁ COMPLETOU funil anterior pode receber PIX novo.
     // Só bloqueia se a conversa ainda está ATIVA (não-cancelada E não-completa).
     if (existing && !existing.canceled && !existing.completed) {
+        const existingLevel = funnelLevel(getActiveFunnelType(phoneKey));
         // MODO TESTE: cancela automaticamente a conversa existente pra poder testar de novo
         if (isTestModeActive()) {
             existing.canceled = true;
@@ -1854,8 +1891,20 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
             const pt = pixTimeouts.get(phoneKey);
             if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
             try { db.deletePixTimeout(phoneKey); } catch(e) {}
+            bumpEpoch(phoneKey);
             addLog('TEST_MODE_CANCEL', `🧪 Modo Teste: conversa anterior cancelada para ${phoneKey}`, { phoneKey });
+        } else if (existingLevel < funnelLevel('PIX')) {
+            // ⭐ FIX 07/26 HIERARQUIA: PIX é nível maior que ABANDONO/CARTÃO RECUSADO —
+            // cancela o funil de baixo em andamento e assume (transfere pro PIX).
+            existing.canceled = true;
+            existing.canceledAt = new Date();
+            existing.cancelReason = 'upgrade_para_pix';
+            conversations.set(phoneKey, existing);
+            try { convToDb(phoneKey, existing); } catch(e) {}
+            bumpEpoch(phoneKey); // mata o loop do funil de abandono na hora
+            addLog('PIX_UPGRADE', `⬆️ PIX assumiu — cancelado funil ${existing.funnelType || 'anterior'} em andamento (${phoneKey})`, { phoneKey });
         } else {
+            // Mesmo nível (2º Pix) ou nível maior (APROVADA) já ativo → não dispara PIX duplicado.
             addLog('PIX_BLOCKED', `Já existe para ${phoneKey} (funil ${existing.funnelType || existing.funnelId} ativo)`);
             return;
         }
@@ -1900,6 +1949,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     };
 
     conversations.set(phoneKey, conv);
+    bumpEpoch(phoneKey); // novo funil PIX — invalida qualquer loop anterior
     registerPhoneUniversal(remoteJid, phoneKey);
     try { convToDb(phoneKey, conv); } catch(e) {} // persiste imediato pro rollback seguro
 
@@ -1919,6 +1969,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
             const selectedFunnel = selectABFunnel(productId, 'PIX');
             c.funnelId = selectedFunnel; c.abFunnelVariant = selectedFunnel;
             conversations.set(phoneKey, c);
+            bumpEpoch(phoneKey); // 7min expiraram — funil PIX começa agora
             db.recordABResult(selectedFunnel, false);
             db.recordFunnelReceipt(phoneKey, productId, 'PIX', selectedFunnel);
             await sendStep(phoneKey);
@@ -1942,6 +1993,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     const abVariant = pixConv?.abFunnelVariant;
 
     if (pixConv) { pixConv.canceled = true; pixConv.canceledAt = new Date(); conversations.set(phoneKey, pixConv); }
+    bumpEpoch(phoneKey); // pagamento cancela o funil PIX — mata o loop na hora
     const pt = pixTimeouts.get(phoneKey);
     if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
     try { db.deletePixTimeout(phoneKey); } catch(e) {}
@@ -1979,9 +2031,11 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay, netValue, pixCode,
         paymentMethod: paymentMethod || 'PIX', ddd: location?.ddd, city: location?.city, state: location?.state,
         waiting_for_response: false, createdAt: new Date(), lastSystemMessage: new Date(),
-        canceled: false, completed: false, paused: false, transferredFromPix: true, abFunnelVariant: selectedFunnel
+        canceled: false, completed: false, paused: false, transferredFromPix: true, abFunnelVariant: selectedFunnel,
+        funnelType: 'APROVADA'
     };
     conversations.set(phoneKey, conv);
+    bumpEpoch(phoneKey); // funil APROVADA assume — novo epoch pro loop dele
     registerPhoneUniversal(remoteJid, phoneKey);
     if (existingSticky) stickyInstances.set(phoneKey, existingSticky);
     db.recordABResult(selectedFunnel, false);
@@ -2006,6 +2060,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
             const pt = pixTimeouts.get(phoneKey);
             if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
             try { db.deletePixTimeout(phoneKey); } catch(e) {}
+            bumpEpoch(phoneKey); // cancela o funil anterior — mata o loop dele
             if (funnelType === 'APROVADA') {
                 addLog('APROVADA_TRANSFER', `💰 Cliente em ${existing.funnelType || existing.funnelId} pagou — transferindo pra APROVADA`, { phoneKey });
             } else {
@@ -2063,6 +2118,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         funnelType
     };
     conversations.set(phoneKey, conv);
+    bumpEpoch(phoneKey); // funil novo — invalida qualquer loop anterior
     registerPhoneUniversal(remoteJid, phoneKey);
     db.recordABResult(selectedFunnel, false);
     db.recordFunnelReceipt(phoneKey, productId, funnelType, selectedFunnel);
@@ -2072,6 +2128,8 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
 }
 
 // ============ SEND STEP ============
+// Rate-limit do alerta "funil vazio" (não spammar push se muitos leads caírem no mesmo funil vazio)
+const _emptyFunnelAlert = new Map();
 // Helper: re-checa se a conversa foi cancelada/pausada/paga durante um await (evita enviar msg pra cliente que já pagou)
 function isConvAlive(phoneKey) {
     const c = conversations.get(phoneKey);
@@ -2082,14 +2140,27 @@ async function sendStep(phoneKey) {
     const conversation = conversations.get(phoneKey);
     if (!conversation || conversation.canceled || conversation.pixWaiting || conversation.paused || conversation.invalidNumber) return;
 
-    // ⭐ FIX 06/26: além de viva, a conversa no Map precisa ser ESTA MESMA.
-    // Quando o cliente paga no meio de um delay, transferPixToApproved() SUBSTITUI a conversa no Map
-    // pela de APROVADA (que está viva) — isConvAlive(phoneKey) sozinho dizia "pode continuar" e a
-    // mensagem de cobrança do PIX saía mesmo com o pagamento feito, ainda avançando o passo do funil errado.
-    const stillCurrent = () => conversations.get(phoneKey) === conversation && isConvAlive(phoneKey);
+    // ⭐ FIX 07/26: guard por EPOCH. Captura o epoch do funil na entrada; se ele mudar (funil novo
+    // começou, ou a conversa foi transferida/cancelada), este loop aborta na próxima checagem.
+    // Cobre o caso "paguei e o PIX continuou": o pagamento troca o epoch, o loop do PIX morre na hora.
+    const myEpoch = convEpoch.get(phoneKey);
+    const stillCurrent = () => convEpoch.get(phoneKey) === myEpoch && conversations.get(phoneKey) === conversation && isConvAlive(phoneKey);
 
     const funnel = db.getFunnelById(conversation.funnelId);
-    if (!funnel || !funnel.steps?.length) { addLog('FUNNEL_EMPTY', `⚠️ ${conversation.funnelId} vazio`, { phoneKey }); return; }
+    if (!funnel || !funnel.steps?.length) {
+        // ⭐ FIX 07/26: funil vazio/não encontrado é a causa nº1 de "chega evento mas não envia".
+        // Antes ficava só num log escondido — agora avisa o operador no celular (1x a cada 10min por funil).
+        addLog('FUNNEL_EMPTY', `⚠️ Funil ${conversation.funnelId} vazio ou não existe — ${conversation.customerName || phoneKey} NÃO recebeu (tipo ${conversation.funnelType || '?'})`, { phoneKey });
+        try {
+            const alertKey = 'empty_' + conversation.funnelId;
+            const last = _emptyFunnelAlert.get(alertKey) || 0;
+            if (Date.now() - last > 10 * 60 * 1000) {
+                _emptyFunnelAlert.set(alertKey, Date.now());
+                await sendPushNotification('Funil sem mensagens', `${conversation.funnelType || 'Funil'} "${conversation.funnelId}" está vazio — configure no painel. Cliente não recebeu.`, 'info');
+            }
+        } catch(e) {}
+        return;
+    }
 
     const step = funnel.steps[conversation.stepIndex];
     if (!step) return;
@@ -2189,8 +2260,8 @@ async function sendStep(phoneKey) {
     if (result.success) {
         // ⭐ FIX 06/26: se a conversa foi substituída DURANTE o envio (pagamento chegou no meio do HTTP),
         // não regrava a antiga no Map nem avança o passo — senão o funil APROVADA pularia mensagens.
-        if (conversations.get(phoneKey) !== conversation) {
-            addLog('STEP_ABORT', `⏸️ Conversa substituída durante envio — não avança passo`, { phoneKey });
+        if (!stillCurrent()) {
+            addLog('STEP_ABORT', `⏸️ Funil substituído durante envio — não avança passo`, { phoneKey });
             return;
         }
         conversation.lastSystemMessage = new Date();
@@ -2198,12 +2269,18 @@ async function sendStep(phoneKey) {
         if (step.waitForReply && step.type !== 'delay') {
             addLog('STEP_WAIT', `⏸️ Aguardando resposta (passo ${conversation.stepIndex + 1})`, { phoneKey });
         } else {
-            await advanceConversation(phoneKey, null, 'auto');
+            await advanceConversation(phoneKey, null, 'auto', myEpoch);
         }
     }
 }
 
-async function advanceConversation(phoneKey, replyText, reason) {
+async function advanceConversation(phoneKey, replyText, reason, expectedEpoch) {
+    // ⭐ FIX 07/26: se veio de um loop de funil que já foi substituído (epoch mudou), não avança.
+    // Impede o funil antigo (ex: PIX pós-pagamento) de empurrar o próximo passo do funil novo.
+    if (expectedEpoch !== undefined && convEpoch.get(phoneKey) !== expectedEpoch) {
+        addLog('ADVANCE_STALE', `⏸️ Avanço ignorado — funil já foi substituído`, { phoneKey });
+        return;
+    }
     const conversation = conversations.get(phoneKey);
     if (!conversation || conversation.canceled || conversation.paused) return;
 
@@ -2832,6 +2909,9 @@ app.post('/webhook/kirvano', async (req, res) => {
                         const notif = buildPaymentNotification('cart_abandoned', customerName, amount);
                         await sendPushNotification(notif.title, notif.body + ' · já está em outro funil', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
                     }
+                } else if (hasPaidRecently(phoneKey, 24)) {
+                    // ⭐ FIX 07/26 HIERARQUIA: cliente já pagou nas últimas 24h — abandono (nível baixo) não dispara.
+                    addLog('ABANDONED_PAID', `🛒 Carrinho abandonado ignorado — cliente já comprou nas últimas 24h (${customerName})`, { orderCode, phoneKey });
                 } else {
                     addLog('ABANDONED', `🛒 Carrinho abandonado: ${customerName}`, { orderCode, phoneKey });
                     // ⭐ FIX 05/05: SSE pra tocar som no painel quando carrinho abandonado chega
@@ -2845,22 +2925,23 @@ app.post('/webhook/kirvano', async (req, res) => {
                 }
             }
         } else if (isPix && event.includes('GENERATED')) {
-            // ⭐ FIX 10/05: PIX_GENERATED só dispara se cliente NÃO está em outro funil ativo (que não seja PIX_WAITING).
-            // Se já está em ABANDONO/CARTAO_RECUSADO/etc, ignora (regra de exclusividade).
+            // ⭐ FIX 07/26 HIERARQUIA: PIX (nível 2) assume sobre ABANDONO/CARTÃO RECUSADO (nível 1),
+            // mas NÃO dispara se já está em PIX/PIX_WAITING (2º Pix duplicado), em APROVADA, ou se já pagou.
             const activeType = getActiveFunnelType(phoneKey);
-            if (activeType && activeType !== 'PIX_WAITING' && activeType !== 'PIX') {
-                // ⭐ FIX 06/26: era 100% silencioso (nem evento, nem painel, nem push) — parecia que o sistema
-                // tinha ignorado o PIX. Agora registra e notifica; só o FUNIL continua bloqueado (exclusividade).
-                addLog('PIX_GENERATED_IGNORED', `⏳ PIX gerado mas funil bloqueado — cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
+            const bloqueiaPix = hasPaidRecently(phoneKey, 24) || (activeType && funnelLevel(activeType) >= funnelLevel('PIX'));
+            if (bloqueiaPix) {
+                // Registra e notifica; só o FUNIL não dispara (duplicado ou já pagou).
+                const motivo = hasPaidRecently(phoneKey, 24) ? 'já comprou' : `já em ${activeType}`;
+                addLog('PIX_GENERATED_IGNORED', `⏳ PIX gerado mas funil não disparado — ${motivo} (${customerName})`, { orderCode, phoneKey });
                 db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
                 sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
                 {
                     const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount);
-                    await sendPushNotification(notif.title, notif.body + ' · já está em outro funil', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+                    await sendPushNotification(notif.title, notif.body + ` · ${motivo}`, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
                 }
             } else {
-                // A checagem de "já existe" do mesmo tipo é feita dentro de createPixWaitingConversation
-                // (que também respeita o Modo Teste, cancelando a anterior automaticamente)
+                // Sem funil ativo, ou em funil de nível MENOR (abandono) → createPixWaitingConversation
+                // cancela o de abandono e assume (upgrade). Duplicata de mesmo tipo é tratada lá dentro.
                 await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'PIX', location, pixExpiresAt, productsForSummary);
                 // Repassa pro LinkRotator (sem await)
                 relayToLinkRotator('PIX_GENERATED', relayPayload);
@@ -2985,11 +3066,12 @@ app.post('/webhook/perfectpay', async (req, res) => {
             }
             res.json({ success: true });
         } else if (statusEnum === 1 && !isCard) {
-            // ⭐ FIX 10/05: PIX_GENERATED só processa se cliente NÃO está em outro funil ativo
+            // ⭐ FIX 07/26 HIERARQUIA: PIX assume sobre abandono; bloqueia se já em PIX/APROVADA ou já pagou.
             const activeType = getActiveFunnelType(phoneKey);
-            if (activeType && activeType !== 'PIX_WAITING' && activeType !== 'PIX') {
-                addLog('PP_PIX_GENERATED_IGNORED', `⏳ PIX_GENERATED IGNORADO — cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
-                return res.json({ success: true, ignored: 'active_funnel' });
+            if (hasPaidRecently(phoneKey, 24) || (activeType && funnelLevel(activeType) >= funnelLevel('PIX'))) {
+                const motivo = hasPaidRecently(phoneKey, 24) ? 'já comprou' : `já em ${activeType}`;
+                addLog('PP_PIX_GENERATED_IGNORED', `⏳ PIX_GENERATED não disparado — ${motivo} (${customerName})`, { orderCode, phoneKey });
+                return res.json({ success: true, ignored: 'hierarquia' });
             }
             // PIX gerado (aguardando pagamento) — registra event mas não entra no faturamento ainda
             db.recordEvent('PIX_GENERATED', {
