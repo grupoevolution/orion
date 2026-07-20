@@ -537,6 +537,30 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
       <!-- ABANDONO CONTROL (15/05): toggle global + alerta de fila pendente -->
       <div id="abandono-control"></div>
 
+      <!-- ENVIO MANUAL (20/07): número + nome + e-mail → dispara o funil escolhido -->
+      <div class="sec">
+        <div class="sec-h" onclick="toggleManualSend()" style="cursor:pointer">
+          <span>Envio Manual de Funil</span>
+          <span id="ms-arrow" style="color:var(--text3);font-size:14px">▸</span>
+        </div>
+        <div id="ms-body" style="display:none;padding:12px 14px">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Funil que será enviado</div>
+          <select class="inp" id="msm-funnel" style="margin-bottom:10px"></select>
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Leads</div>
+          <div id="msm-leads"></div>
+          <button onclick="addMobileLeadRow()" style="width:100%;padding:10px;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.2);border-radius:10px;color:var(--text2);font-size:12px;font-weight:600;font-family:var(--font);cursor:pointer;margin-bottom:12px">+ Adicionar outro lead</button>
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Intervalo entre envios</div>
+          <select class="inp" id="msm-spacing">
+            <option value="20" selected>20 segundos (recomendado)</option>
+            <option value="30">30 segundos</option>
+            <option value="60">1 minuto</option>
+          </select>
+          <div id="msm-result" style="display:none;font-size:11px;line-height:1.7;background:rgba(255,255,255,.05);border-radius:10px;padding:10px 12px;margin-bottom:10px;max-height:130px;overflow-y:auto"></div>
+          <button id="msm-submit" onclick="submitMobileManualSend()" style="width:100%;padding:14px;background:var(--accent);border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:800;font-family:var(--font);cursor:pointer">📤 Enviar Funil</button>
+          <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">Lead que já tem número fixado sai pelo mesmo número. Lead novo entra na fila de distribuição. Envios espaçados protegem contra bloqueio.</div>
+        </div>
+      </div>
+
       <div class="grid2">
         <div class="mc mc-blue"><div class="mc-lbl">PIX Pendentes</div><div class="mc-val" id="m-pix">0</div></div>
         <div class="mc mc-green"><div class="mc-lbl">Pagamentos Hoje</div><div class="mc-val" id="m-paid">0</div><div class="mc-sub" id="m-paid-s">PIX 0 · Cartão 0</div><div class="mc-trend" id="m-paid-trend"></div></div>
@@ -1405,6 +1429,65 @@ async function confirmAddSpend() {
     btn.disabled = false;
     btn.textContent = 'Adicionar';
   }
+}
+
+// ===== ENVIO MANUAL =====
+let _msFunnelsLoaded = false;
+function addMobileLeadRow() {
+  const wrap = document.getElementById('msm-leads');
+  const row = document.createElement('div');
+  row.className = 'msm-row';
+  row.style.cssText = 'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;margin-bottom:8px;position:relative';
+  row.innerHTML = `
+    <button onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:6px;background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px">✕</button>
+    <input class="inp msm-phone" placeholder="Número com DDD (11999998888)" inputmode="numeric" style="margin-bottom:8px">
+    <input class="inp msm-name" placeholder="Nome do cliente" style="margin-bottom:8px">
+    <input class="inp msm-email" type="email" placeholder="E-mail (login do app)" style="margin-bottom:0">`;
+  wrap.appendChild(row);
+}
+async function toggleManualSend() {
+  const body = document.getElementById('ms-body');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  document.getElementById('ms-arrow').textContent = open ? '▾' : '▸';
+  if (open && !document.querySelector('#msm-leads .msm-row')) addMobileLeadRow();
+  if (open && !_msFunnelsLoaded) {
+    const sel = document.getElementById('msm-funnel');
+    sel.innerHTML = '<option>Carregando funis...</option>';
+    try {
+      const r = await api('/api/funnels');
+      const funnels = (r.data || []).filter(f => (f.steps || []).length > 0);
+      if (!funnels.length) { sel.innerHTML = '<option value="">Nenhum funil com mensagens</option>'; return; }
+      sel.innerHTML = funnels.map(f => `<option value="${f.id}">${f.name || f.id} (${(f.steps||[]).length} passos)</option>`).join('');
+      _msFunnelsLoaded = true;
+    } catch(e) { sel.innerHTML = '<option value="">Erro ao carregar</option>'; }
+  }
+}
+async function submitMobileManualSend() {
+  const funnel_id = document.getElementById('msm-funnel').value;
+  if (!funnel_id) { showToast('Escolha um funil', 'error'); return; }
+  const leads = [...document.querySelectorAll('#msm-leads .msm-row')].map(r => ({
+    phone: r.querySelector('.msm-phone').value.trim(),
+    name: r.querySelector('.msm-name').value.trim(),
+    email: r.querySelector('.msm-email').value.trim()
+  })).filter(l => l.phone);
+  if (!leads.length) { showToast('Informe pelo menos 1 número', 'error'); return; }
+  const btn = document.getElementById('msm-submit');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try {
+    const r = await api('/api/manual-send', { method: 'POST', body: JSON.stringify({ funnel_id, leads, spacing_seconds: parseInt(document.getElementById('msm-spacing').value) }) });
+    const box = document.getElementById('msm-result');
+    box.style.display = 'block';
+    if (!r.success) { box.innerHTML = `<span style="color:#f87171">❌ ${r.error || 'Erro no envio'}</span>`; }
+    else {
+      box.innerHTML = (r.results || []).map(x => x.ok
+        ? `<div style="color:#34d399">✅ ${x.phone} — agendado${x.inSeconds ? ` (em ${x.inSeconds}s)` : ''}</div>`
+        : `<div style="color:#fbbf24">⚠️ ${x.phone} — ${x.reason}</div>`).join('');
+      showToast(`${r.scheduled} lead(s) agendado(s)`, 'success');
+      if (r.scheduled > 0) [...document.querySelectorAll('#msm-leads .msm-row')].forEach(row => { if (row.querySelector('.msm-phone').value.trim()) row.remove(); });
+    }
+  } catch(e) { showToast('Erro: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '📤 Enviar Funil'; }
 }
 
 // NAV
