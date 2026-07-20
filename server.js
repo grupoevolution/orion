@@ -8,7 +8,7 @@ const zlib = require('zlib');
 const app = express();
 
 // ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
-const APP_VERSION = '3.6.2';
+const APP_VERSION = '3.6.3';
 const APP_STARTED_AT = new Date().toISOString();
 
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============
@@ -172,6 +172,16 @@ if (JWT_SECRET.length < 32) {
 // ============ DATABASE ============
 const db = require('./database');
 db.initDatabase();
+
+// ⭐ 20/07 v3.6.3: migração — o fallback antigo do {PIX_LINK} (e-volutionn.com/planosk) morreu.
+// Se o valor antigo estiver salvo nas configurações, troca pelo app de membros automaticamente.
+try {
+    const oldFb = db.getSetting('PIX_FALLBACK_URL');
+    if (oldFb && oldFb.includes('e-volutionn.com')) {
+        db.setSetting('PIX_FALLBACK_URL', 'https://m.membrosvips.com');
+        console.log('🔧 PIX_FALLBACK_URL migrado: link morto (e-volutionn) → https://m.membrosvips.com');
+    }
+} catch(e) {}
 
 // ============ RESTAURAR STICKY DO BANCO (sobrevive reinicializações) ============
 function restoreStickyFromDB() {
@@ -895,11 +905,12 @@ function replaceVariables(text, conversation) {
     let linkPix = conversation.checkoutUrl;
     if (!linkPix) {
         try {
-            const fb = db.getSetting('PIX_FALLBACK_URL', 'https://e-volutionn.com/planosk/');
-            linkPix = (fb && String(fb).trim()) || 'https://e-volutionn.com/planosk/';
+            // ⭐ 20/07 v3.6.3: fallback antigo (e-volutionn.com/planosk) MORREU — agora é o app de membros
+            const fb = db.getSetting('PIX_FALLBACK_URL', 'https://m.membrosvips.com');
+            linkPix = (fb && String(fb).trim()) || 'https://m.membrosvips.com';
             addLog('PIX_LINK_FALLBACK', `🟠 Link cliente indisponível — caindo no fallback (${linkPix})`, { phoneKey: conversation.phoneKey, orderCode: conversation.orderCode });
         } catch(e) {
-            linkPix = 'https://e-volutionn.com/planosk/';
+            linkPix = 'https://m.membrosvips.com';
         }
     }
     r = r.replace(/\{PIX_LINK\}/g, () => linkPix);
@@ -909,7 +920,8 @@ function replaceVariables(text, conversation) {
     r = r.replace(/\{NOME\}/g, () => nomeFormatado);
     r = r.replace(/\{VALOR\}/g, () => safe(conversation.amountDisplay));
     r = r.replace(/\{PRODUTO\}/g, () => safe(conversation.productName));
-    r = r.replace(/\{CIDADE\}/g, () => safe(conversation.city));
+    // ⭐ 20/07 v3.6.3: sem cidade identificada → "onde" (a frase "você é de {CIDADE}?" vira "você é de onde?")
+    r = r.replace(/\{CIDADE\}/g, () => safe(conversation.city) || 'onde');
     r = r.replace(/\{ESTADO\}/g, () => safe(conversation.state));
     r = r.replace(/\{ORDER_BUMPS\}/g, () => Array.isArray(conversation.orderBumps) ? conversation.orderBumps.join(', ') : '');
     r = r.replace(/\{SAUDACAO\}/g, () => getSaudacao());
@@ -2157,6 +2169,21 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
     // ⭐ FIX 10/05: cliente que JÁ COMPLETOU funil anterior pode receber novo funil.
     // Só bloqueia se a conversa anterior ainda está ATIVA (não-cancelada E não-completa).
     if (existing && !existing.canceled && !existing.completed) {
+        // ⭐ FIX 20/07 v3.6.3: gateway RETENTA o webhook de aprovada (mesma venda chega 2-3x).
+        // Antes: o duplicado CANCELAVA o funil APROVADA em andamento e o cooldown barrava o novo —
+        // resultado: áudio saía, cliente respondia e nada acontecia (conversa morta em silêncio).
+        // Agora: mesmo pedido (orderCode) → ignora sem tocar no funil vivo.
+        if (funnelType === 'APROVADA' && !isTestModeActive() && existing.orderCode === orderCode) {
+            addLog('APROVADA_DUP', `🔁 Webhook repetido da venda ${orderCode} ignorado — funil em andamento preservado`, { phoneKey });
+            return;
+        }
+        // ⭐ FIX 20/07 v3.6.3: cooldown checado ANTES de cancelar. Se o funil novo não vai disparar
+        // (cooldown), não mata o que está rodando. Venda nova real ainda é registrada (receita).
+        if (funnelType === 'APROVADA' && !isTestModeActive() && shouldBlockFunnelByCooldown(phoneKey, productId, funnelType)) {
+            db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps });
+            addLog('APROVADA_COOLDOWN_KEEP', `⏸️ APROVADA em cooldown — venda registrada, funil atual preservado`, { phoneKey, orderCode });
+            return;
+        }
         // ⭐ FIX 05/05: APROVADA SEMPRE substitui qualquer funil em andamento (ABANDONO, CARTAO_RECUSADO, REATIVACAO).
         // Antes: cliente em ABANDONO que pagasse retornava FUNNEL_BLOCKED e nunca recebia APROVADA.
         if (funnelType === 'APROVADA' || isTestModeActive()) {
@@ -4482,7 +4509,7 @@ app.get('/api/settings', authMiddleware, (req, res) => {
         FUNNEL_COOLDOWN_DAYS: '7',
         TEST_MODE: '0',
         // ⭐ FIX 10/05: link de fallback editável pelo admin pra quando o link do cliente falhar
-        PIX_FALLBACK_URL: 'https://e-volutionn.com/planosk/',
+        PIX_FALLBACK_URL: 'https://m.membrosvips.com',
         // ⭐ FIX 10/05: URLs dos 3 sons (editáveis sem deploy)
         SOUND_PIX_URL:  'https://e-volutionn.com/wp-content/uploads/2026/04/ding-sound-effect_2_Sfdd45L.mp3',
         SOUND_PAY_URL:  'https://e-volutionn.com/wp-content/uploads/2026/04/u_byub5wd934-cashier-quotka-chingquot-sound-effect-129698.mp3',

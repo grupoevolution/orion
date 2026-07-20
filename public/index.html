@@ -1247,7 +1247,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
           </div>
           <div class="fe-row" style="grid-column:1/-1">
             <label class="fe-lbl">Link de fallback do PIX (quando o link do cliente falhar)</label>
-            <input type="url" class="fe-inp" id="cfg-pix-fallback" placeholder="https://e-volutionn.com/planosk/" style="width:100%">
+            <input type="url" class="fe-inp" id="cfg-pix-fallback" placeholder="https://m.membrosvips.com" style="width:100%">
             <div style="font-size:10px;color:var(--text3);margin-top:3px">Quando o link individual do cliente (página /pix/:token) não puder ser gerado, o sistema envia ESTE link no lugar. <b>Nunca manda mensagem vazia.</b> Veja a contagem de uso na aba "Análises" → log <code>PIX_LINK_FALLBACK</code>.</div>
           </div>
           <!-- ⭐ FIX 10/05: 3 sons editáveis -->
@@ -3929,7 +3929,7 @@ async function loadSettings() {
   document.getElementById('cfg-max-funnels').value = d.MAX_FUNNELS_PER_LEAD_PER_DAY||3;
   document.getElementById('cfg-cleanup').value = d.CLEANUP_DAYS||7;
   const cd = document.getElementById('cfg-cooldown'); if(cd) cd.value = d.FUNNEL_COOLDOWN_DAYS||7;
-  const fb = document.getElementById('cfg-pix-fallback'); if(fb) fb.value = d.PIX_FALLBACK_URL || 'https://e-volutionn.com/planosk/';
+  const fb = document.getElementById('cfg-pix-fallback'); if(fb) fb.value = d.PIX_FALLBACK_URL || 'https://m.membrosvips.com';
   // ⭐ FIX 10/05: URLs dos 3 sons + aplica imediato no Audio() do painel
   const sp = document.getElementById('cfg-sound-pix');  if(sp) sp.value = d.SOUND_PIX_URL  || DEFAULT_SOUND_PIX;
   const sy = document.getElementById('cfg-sound-pay');  if(sy) sy.value = d.SOUND_PAY_URL  || DEFAULT_SOUND_PAY;
@@ -3967,7 +3967,7 @@ async function saveSettings() {
     showToast('Link de fallback precisa começar com http:// ou https://','error');
     return;
   }
-  if (!fbVal) fbVal = 'https://e-volutionn.com/planosk/';
+  if (!fbVal) fbVal = 'https://m.membrosvips.com';
   // ⭐ FIX 10/05: valida URLs dos sons
   const soundPix  = (document.getElementById('cfg-sound-pix')?.value  || '').trim();
   const soundPay  = (document.getElementById('cfg-sound-pay')?.value  || '').trim();
