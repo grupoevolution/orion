@@ -342,6 +342,8 @@ function initDatabase() {
         "ALTER TABLE conversations ADD COLUMN last_send_error TEXT",
         // ⭐ FIX 05/05: flag pra "PROTEGER" essa instância de carrinho abandonado
         "ALTER TABLE instances ADD COLUMN block_abandono INTEGER DEFAULT 0",
+        // ⭐ 20/07: e-mail do cliente na conversa (variável {EMAIL} nos funis — acesso do app vai por login)
+        "ALTER TABLE conversations ADD COLUMN customer_email TEXT",
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch(e) { /* coluna já existe, ignora */ }
@@ -396,6 +398,7 @@ function initDatabase() {
             product_name TEXT,
             product_id TEXT,
             expires_at TEXT NOT NULL,
+            products_json TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         );
     `);
@@ -653,8 +656,8 @@ function saveConversation(conv) {
          order_bumps, amount, amount_display, net_value, pix_code, checkout_url, payment_method, ddd, city, state,
          waiting_for_response, pix_waiting, sticky_instance, canceled, completed, has_error, invalid_number,
          transferred_from_pix, paused, reactivation, ab_funnel_variant, created_at, last_message_at, last_reply_at, completed_at, canceled_at,
-         awaiting_pool, waiting_for_sticky_return, funnel_type, last_send_error)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+         awaiting_pool, waiting_for_sticky_return, funnel_type, last_send_error, customer_email)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(conv.phone_key, conv.remote_jid, conv.funnel_id, conv.step_index, conv.order_code, conv.customer_name,
         conv.product_id, conv.product_name, JSON.stringify(conv.order_bumps || []),
         conv.amount || 0, conv.amount_display, conv.net_value || 0, conv.pix_code, conv.checkout_url || null, conv.payment_method || 'PIX',
@@ -663,7 +666,7 @@ function saveConversation(conv) {
         conv.canceled ? 1 : 0, conv.completed ? 1 : 0, conv.has_error ? 1 : 0, conv.invalid_number ? 1 : 0,
         conv.transferred_from_pix ? 1 : 0, conv.paused ? 1 : 0, conv.reactivation ? 1 : 0,
         conv.ab_funnel_variant, conv.created_at, conv.last_message_at, conv.last_reply_at, conv.completed_at, conv.canceled_at,
-        conv.awaiting_pool ? 1 : 0, conv.waiting_for_sticky_return ? 1 : 0, conv.funnel_type || null, conv.last_send_error || null);
+        conv.awaiting_pool ? 1 : 0, conv.waiting_for_sticky_return ? 1 : 0, conv.funnel_type || null, conv.last_send_error || null, conv.customer_email || null);
 }
 function getConversations(limit = 200) {
     return getDb().prepare('SELECT * FROM conversations ORDER BY created_at DESC LIMIT ?').all(limit).map(c => ({ ...c, order_bumps: JSON.parse(c.order_bumps || '[]') }));

@@ -482,6 +482,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             <button class="fb" onclick="setFilter('pix',this)">PIX ⏳</button>
             <button class="fb" onclick="setFilter('done',this)">Concluídas</button>
             <button class="btn btn-g btn-sm" onclick="loadConversations()">↻</button>
+            <button class="btn btn-sm" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.4);color:#34d399" onclick="openManualSendModal()" title="Cadastra 1 ou mais leads (número, nome, e-mail) e dispara o funil escolhido">📤 Envio Manual</button>
             <button class="btn btn-sm" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#ef4444" onclick="recoverStuckLeads()" title="Recupera leads presos (AGUARDANDO sem instância)">🚑 Recuperar Presos</button>
             <button class="btn btn-sm" style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.4);color:#3b82f6" onclick="diagEvolution()" title="Testa conexão e envio direto pela Evolution — revela causa real do SEND_FAILED">🔍 Diagnosticar Evolution</button>
           </div>
@@ -562,6 +563,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
           <code style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--accent)" title="Código PIX copia-e-cola (texto longo)">{PIX_GERADO}</code>
           <code style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--accent)">{VALOR}</code>
           <code style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--accent)">{PRODUTO}</code>
+          <code style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--accent)" title="E-mail do cliente (login do app de membros) — vem do checkout ou do envio manual">{EMAIL}</code>
         </div>
       </div>
     </div>
@@ -1370,6 +1372,34 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 </div>
 
 <!-- MODAL GATILHO -->
+<!-- MODAL ENVIO MANUAL -->
+<div class="modal-overlay" id="modal-manual-send">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-t">📤 Envio Manual de Leads</div>
+    <div class="fe-row"><label class="fe-lbl">Funil que será enviado</label>
+      <select class="fe-sel" id="ms-funnel"></select>
+    </div>
+    <div class="fe-row"><label class="fe-lbl">Leads (número com DDD, nome e e-mail)</label>
+      <div id="ms-leads"></div>
+      <button class="btn btn-g btn-sm" style="margin-top:8px" onclick="addManualLeadRow()">+ Adicionar lead</button>
+    </div>
+    <div class="fe-row"><label class="fe-lbl">Intervalo entre envios</label>
+      <select class="fe-sel" id="ms-spacing">
+        <option value="20" selected>20 segundos (recomendado)</option>
+        <option value="30">30 segundos</option>
+        <option value="60">1 minuto</option>
+        <option value="120">2 minutos</option>
+      </select>
+      <div style="font-size:10px;color:var(--text3);margin-top:3px">Espaçar os envios protege as instâncias contra bloqueio. Lead que já tem número fixado sai pelo mesmo número; lead novo entra na fila de distribuição.</div>
+    </div>
+    <div id="ms-result" style="display:none;font-size:12px;line-height:1.7;max-height:160px;overflow-y:auto;background:rgba(255,255,255,.04);border-radius:8px;padding:10px 12px;margin-bottom:4px"></div>
+    <div class="modal-f">
+      <button class="btn btn-g" onclick="closeModal('modal-manual-send')">Fechar</button>
+      <button class="btn btn-p" id="ms-submit" onclick="submitManualSend()">📤 Enviar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-trigger">
   <div class="modal">
     <div class="modal-t" id="trig-modal-t">Novo Gatilho</div>
@@ -2222,7 +2252,7 @@ function renderFunnelEditor(){
       <div class="sc-prev">${s.type==='delay'?`⏰ Delay: ${s.delaySeconds}s (±20% aleatório)`:s.type==='sticker'?`🎭 ${s.mediaUrl||'URL não configurada'}`:s.type==='audio'||s.type.includes('viewonce')?`URL: ${s.mediaUrl||'não configurada'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`:`${s.delayBefore?`<span style="color:#d97706">⏰ ${s.delayBefore}s</span> · `:''}${s.text?s.text.substring(0,80)+'...':'<i style="color:var(--text3)">Sem texto</i>'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`}</div>
       <div class="sc-edit" id="se${i}">
         ${s.type==='delay'?`<div class="fe-row"><label class="fe-lbl">Segundos (±20% variação automática)</label><input type="number" class="fe-inp" value="${s.delaySeconds||10}" oninput="upStep(${i},'delaySeconds',this.value)"></div>`:`
-          ${!['audio','image','video','viewonce_image','viewonce_video','sticker'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">Texto — {NOME} {SAUDACAO} {CIDADE} {ESTADO} {PIX_LINK} {VALOR}</label><textarea class="fe-ta" oninput="upStep(${i},'text',this.value)">${s.text||''}</textarea></div>`:''}
+          ${!['audio','image','video','viewonce_image','viewonce_video','sticker'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">Texto — {NOME} {SAUDACAO} {CIDADE} {ESTADO} {PIX_LINK} {VALOR} {EMAIL}</label><textarea class="fe-ta" oninput="upStep(${i},'text',this.value)">${s.text||''}</textarea></div>`:''}
           ${s.type!=='text'?`<div class="fe-row"><label class="fe-lbl">URL da Mídia</label><input type="url" class="fe-inp" value="${s.mediaUrl||''}" oninput="upStep(${i},'mediaUrl',this.value)" placeholder="https://..."></div>`:''}
           <div class="fe-row"><label class="fe-lbl">Delay antes (segundos, ±20% automático)</label><input type="number" class="fe-inp" value="${s.delayBefore||0}" oninput="upStep(${i},'delayBefore',this.value)"></div>
           <div class="fe-chk"><input type="checkbox" id="wr${i}" ${s.waitForReply?'checked':''} onchange="upStep(${i},'waitForReply',this.checked)"><label for="wr${i}">⏸ Aguardar resposta para continuar</label></div>
@@ -3829,6 +3859,61 @@ async function duplicateFunnel(){
 
 // UTILS
 function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+// ===== ENVIO MANUAL =====
+function addManualLeadRow(){
+  const wrap=document.getElementById('ms-leads');
+  const row=document.createElement('div');
+  row.className='ms-lead-row';
+  row.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  row.innerHTML=`<input class="fe-inp ms-phone" placeholder="11999998888" style="flex:0 0 130px" inputmode="numeric">
+    <input class="fe-inp ms-name" placeholder="Nome" style="flex:1">
+    <input class="fe-inp ms-email" placeholder="email@cliente.com" style="flex:1.2" type="email">
+    <button class="btn btn-d btn-xs" onclick="this.parentElement.remove()" title="Remover">✕</button>`;
+  wrap.appendChild(row);
+}
+async function openManualSendModal(){
+  const sel=document.getElementById('ms-funnel');
+  sel.innerHTML='<option>Carregando funis...</option>';
+  document.getElementById('ms-result').style.display='none';
+  document.getElementById('ms-result').innerHTML='';
+  const wrap=document.getElementById('ms-leads');
+  if(!wrap.children.length)addManualLeadRow();
+  document.getElementById('modal-manual-send').classList.add('open');
+  try{
+    const r=await api('/api/funnels');
+    const funnels=(r.data||[]).filter(f=>(f.steps||[]).length>0);
+    if(!funnels.length){sel.innerHTML='<option value="">Nenhum funil com mensagens — configure um funil primeiro</option>';return;}
+    sel.innerHTML=funnels.map(f=>`<option value="${f.id}">${f.name||f.id} (${(f.steps||[]).length} passos)</option>`).join('');
+  }catch(e){sel.innerHTML='<option value="">Erro ao carregar funis</option>';}
+}
+async function submitManualSend(){
+  const funnel_id=document.getElementById('ms-funnel').value;
+  if(!funnel_id){showToast('Escolha um funil','error');return;}
+  const leads=[...document.querySelectorAll('#ms-leads .ms-lead-row')].map(r=>({
+    phone:r.querySelector('.ms-phone').value.trim(),
+    name:r.querySelector('.ms-name').value.trim(),
+    email:r.querySelector('.ms-email').value.trim()
+  })).filter(l=>l.phone);
+  if(!leads.length){showToast('Informe pelo menos 1 número','error');return;}
+  const btn=document.getElementById('ms-submit');
+  btn.disabled=true;btn.textContent='Enviando...';
+  try{
+    const r=await api('/api/manual-send',{method:'POST',body:JSON.stringify({funnel_id,leads,spacing_seconds:parseInt(document.getElementById('ms-spacing').value)})});
+    const box=document.getElementById('ms-result');
+    box.style.display='block';
+    if(!r.success){box.innerHTML=`<span style="color:#ef4444">❌ ${r.error||'Erro no envio'}</span>`;}
+    else{
+      box.innerHTML=(r.results||[]).map(x=>x.ok
+        ?`<div>✅ ${x.phone} — agendado${x.inSeconds?` (em ${x.inSeconds}s)`:''}</div>`
+        :`<div style="color:#f59e0b">⚠️ ${x.phone} — ${x.reason}</div>`).join('');
+      showToast(`${r.scheduled} lead(s) agendado(s)`,'success');
+      if(r.scheduled>0)[...document.querySelectorAll('#ms-leads .ms-lead-row')].forEach((row,i)=>{if(row.querySelector('.ms-phone').value.trim())row.remove();});
+      loadConversations();
+    }
+  }catch(e){showToast('Erro: '+e.message,'error');}
+  finally{btn.disabled=false;btn.textContent='📤 Enviar';}
+}
 function showToast(msg,type='info'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200);}
 
 // CONFIGURAÇÕES

@@ -8,7 +8,7 @@ const zlib = require('zlib');
 const app = express();
 
 // ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.6.0';
 const APP_STARTED_AT = new Date().toISOString();
 
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============
@@ -204,6 +204,7 @@ function restorePendingConversations() {
                 stepIndex: row.step_index,
                 orderCode: row.order_code,
                 customerName: row.customer_name,
+                customerEmail: row.customer_email,
                 productId: row.product_id,
                 productName: row.product_name,
                 orderBumps: (() => { try { return JSON.parse(row.order_bumps || '[]'); } catch(e) { return []; } })(),
@@ -431,8 +432,11 @@ let sseClients = [];
 // A/B: índice atual por produto
 let abIndexMap = new Map();
 
-// ⭐ FIX 05/05: índice round-robin pra distribuir entre instâncias ativas (em memória)
+// ⭐ FIX 05/05: índice round-robin pra distribuir entre instâncias ativas
+// ⭐ 20/07: PERSISTIDO no banco — antes zerava a cada deploy/restart e a 1ª instância
+//          (ordem alfabética) concentrava os primeiros leads de toda reinicialização.
 let _rrIndex = 0;
+try { const saved = parseInt(db.getSetting('RR_INDEX')); if (Number.isFinite(saved) && saved >= 0) _rrIndex = saved; } catch(e) {}
 
 // ============ SSE ============
 function sendSSE(event, data) {
@@ -850,6 +854,9 @@ function replaceVariables(text, conversation) {
     r = r.replace(/\{ESTADO\}/g, () => safe(conversation.state));
     r = r.replace(/\{ORDER_BUMPS\}/g, () => Array.isArray(conversation.orderBumps) ? conversation.orderBumps.join(', ') : '');
     r = r.replace(/\{SAUDACAO\}/g, () => getSaudacao());
+    // ⭐ 20/07: e-mail do cliente (login do app de membros) — pra mandar o acesso já com o login na msg
+    r = r.replace(/\{EMAIL\}/g, () => safe(conversation.customerEmail));
+    r = r.replace(/\{EMAIL_CLIENTE\}/g, () => safe(conversation.customerEmail));
     return r;
 }
 
@@ -1033,7 +1040,7 @@ function checkStartTriggers(text, instanceName, debug = false) {
 }
 
 // Cria conversa nova a partir de um start_trigger e dispara o primeiro passo.
-async function startConversationFromTrigger(trigger, phoneKey, remoteJid, location, incomingInstance) {
+async function startConversationFromTrigger(trigger, phoneKey, remoteJid, location, incomingInstance, pushName = null) {
     try {
         // Resolve produto
         let productId = trigger.target_product_id;
@@ -1061,7 +1068,8 @@ async function startConversationFromTrigger(trigger, phoneKey, remoteJid, locati
             phoneKey, remoteJid,
             funnelId: trigger.target_funnel_id, stepIndex: 0,
             orderCode,
-            customerName: 'Cliente',
+            // ⭐ 20/07: usa o nome do perfil do WhatsApp (pushName) quando disponível — {NOME} personalizado
+            customerName: (pushName && String(pushName).trim()) || 'Cliente',
             productId, productName,
             orderBumps: [], amount: 0, amountDisplay: 'R$ 0,00', netValue: 0,
             paymentMethod: 'PIX',
@@ -1074,6 +1082,7 @@ async function startConversationFromTrigger(trigger, phoneKey, remoteJid, locati
         };
         conversations.set(phoneKey, conv);
         registerPhoneUniversal(remoteJid, phoneKey);
+        try { convToDb(phoneKey, conv); } catch(e) {} // ⭐ 20/07: persiste na hora (antes só no tick de 15s — deploy no meio perdia a conversa)
         db.incrementStartTriggerCount(trigger.id);
         // ⭐ FIX 11/05: registra log do disparo pra dashboard de stats
         try {
@@ -1330,6 +1339,7 @@ function convToDb(phoneKey, conv) {
         last_send_error: conv.lastSendError,
         // ⭐ FIX 04/05: salva o link da página PIX (sem isso o restore não tem como recuperar — {PIX_LINK} cai pro fallback do código)
         checkout_url: conv.checkoutUrl,
+        customer_email: conv.customerEmail,
     });
 }
 
@@ -1651,20 +1661,23 @@ function selectNextInstance(isFirstMessage, phoneKey) {
             }
         } catch(e) {}
     }
-    if (!isFirstMessage && stickyInstance && active.includes(stickyInstance)) return stickyInstance;
+    // ⭐ 20/07: STICKY VALE SEMPRE que a instância está online — inclusive na PRIMEIRA mensagem
+    // de um funil novo. Regra do Iago: lead que gerou Pix pela instância X e volta dias depois
+    // (novo Pix, abandono, compra) recebe DA MESMA instância X. O vínculo vive 7 dias no banco
+    // (tabela conversations, limpa por CLEANUP_DAYS). Antes: 1ª msg ignorava o sticky e jogava
+    // o lead conhecido de novo no rodízio — cliente recebia de número diferente a cada evento.
+    if (stickyInstance && active.includes(stickyInstance)) return stickyInstance;
 
     // ⭐ FIX 05/05: ROUND-ROBIN puro — distribui igualmente entre todas as instâncias ativas.
     // Antes: score-based (mais ociosa vence) tendia a sobrecarregar 1 quando outras tinham histórico.
     // Agora: cada instância nova pega 1 cliente antes de repetir, ordem alfabética estável.
-    if (isFirstMessage) {
-        const sorted = [...active].sort();
-        const chosen = sorted[_rrIndex % sorted.length];
-        _rrIndex = (_rrIndex + 1) % sorted.length;
-        try { addLog('LOAD_RR', `🔄 Round-robin [${sorted.join(', ')}] → ${chosen}`, { phoneKey, idx: _rrIndex }); } catch(e) {}
-        return chosen;
-    }
-
-    return active[0];
+    // Só chega aqui lead SEM instância fixa (novo, ou sticky offline) → próximo da fila.
+    const sorted = [...active].sort();
+    const chosen = sorted[_rrIndex % sorted.length];
+    _rrIndex = (_rrIndex + 1) % sorted.length;
+    try { db.setSetting('RR_INDEX', String(_rrIndex)); } catch(e) {} // sobrevive a deploy
+    try { addLog('LOAD_RR', `🔄 Round-robin [${sorted.join(', ')}] → ${chosen}`, { phoneKey, idx: _rrIndex }); } catch(e) {}
+    return chosen;
 }
 
 // ============ ENVIO COM FALLBACK ============
@@ -1701,11 +1714,6 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
     const preferred = selectNextInstance(isFirstMessage, phoneKey);
     const stickyInstance = stickyInstances.get(phoneKey);
     let instancesToTry;
-
-    // ⭐ FIX v1.2: Sticky usado também na primeira mensagem QUANDO conv vem de Start Trigger.
-    // Garante que resposta sai do MESMO número que o cliente mandou a mensagem.
-    // PIX/Aprovado/Abandono/Recusado NÃO setam startTriggerId, então mantêm comportamento original.
-    const isFromStartTrigger = !!conversation.startTriggerId;
 
     // ⭐ v1.3 — GRACE PERIOD pra sticky offline
     // REGRA: Se cliente já tem sticky e essa instância caiu, NÃO migra automaticamente.
@@ -1750,7 +1758,9 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
     // Recalcula sticky após possível liberação acima
     const finalSticky = stickyInstances.get(phoneKey);
 
-    if (finalSticky && active.includes(finalSticky) && (!isFirstMessage || isFromStartTrigger)) {
+    // ⭐ 20/07: sticky online vale pra TODA mensagem (inclusive 1ª de funil novo — lead que volta
+    // usa o mesmo número). O rodízio (preferred) só entra pra lead sem instância fixa.
+    if (finalSticky && active.includes(finalSticky)) {
         instancesToTry = [finalSticky, ...active.filter(i => i !== finalSticky)];
     } else {
         // Cliente NOVO ou sticky liberado: usa o preferred (escolhido pelo balanceador)
@@ -1876,7 +1886,7 @@ function getFirstNonIntroStepIndex(funnelId) {
     return 0; // todos são intro? começa do 0 mesmo (fallback seguro)
 }
 
-async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location, pixExpiresAt, productsForSummary) {
+async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location, pixExpiresAt, productsForSummary, customerEmail = null) {
     // ⭐ FIX 04/05: Race "APROVADA chega antes de PIX_GENERATED" (gateway atrasou primeiro webhook).
     // Sem isso: cliente recebe APROVADA, depois cria conversa PIX duplicada e funil PIX vai pra ele junto.
     // ⭐ FIX 10/05: janela ampliada 10min → 2h (gateways atrasam webhook em rajada) +
@@ -1961,7 +1971,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     }
 
     const conv = {
-        phoneKey, remoteJid, funnelId: productId + '_PIX', stepIndex: -1, orderCode, customerName,
+        phoneKey, remoteJid, funnelId: productId + '_PIX', stepIndex: -1, orderCode, customerName, customerEmail,
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','),
         netValue, pixCode, checkoutUrl: generatedPixUrl, paymentMethod: paymentMethod || 'PIX',
         ddd: location?.ddd, city: location?.city, state: location?.state,
@@ -2007,7 +2017,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     } catch(e) { console.error('Erro ao persistir timer PIX:', e.message); }
 }
 
-async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location) {
+async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location, customerEmail = null) {
     const pixConv = conversations.get(phoneKey);
     const pixCode = pixConv?.pixCode;
     const existingSticky = stickyInstances.get(phoneKey);
@@ -2049,6 +2059,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     else if (pixConv?.pixWaiting) addLog('KEEP_INTRO', `▶️ Cliente pagou antes dos 7min — começando do início (apresentação preservada)`, { phoneKey, funnelId: selectedFunnel });
     const conv = {
         phoneKey, remoteJid, funnelId: selectedFunnel, stepIndex: startStepIndex, orderCode, customerName,
+        customerEmail: customerEmail || pixConv?.customerEmail || null,
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay, netValue, pixCode,
         paymentMethod: paymentMethod || 'PIX', ddd: location?.ddd, city: location?.city, state: location?.state,
         waiting_for_response: false, createdAt: new Date(), lastSystemMessage: new Date(),
@@ -2065,7 +2076,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     await scheduleFirstStep(phoneKey, 'APROVADA');
 }
 
-async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location, customFunnelId = null) {
+async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location, customFunnelId = null, customerEmail = null) {
     const existing = conversations.get(phoneKey);
     // ⭐ FIX 10/05: cliente que JÁ COMPLETOU funil anterior pode receber novo funil.
     // Só bloqueia se a conversa anterior ainda está ATIVA (não-cancelada E não-completa).
@@ -2131,7 +2142,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
     const selectedFunnel = customFunnelId || selectABFunnel(productId, funnelType);
     const amountDisplay = 'R$ ' + (netValue || amount || 0).toFixed(2).replace('.', ',');
     const conv = {
-        phoneKey, remoteJid, funnelId: selectedFunnel, stepIndex: 0, orderCode, customerName,
+        phoneKey, remoteJid, funnelId: selectedFunnel, stepIndex: 0, orderCode, customerName, customerEmail,
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay, netValue, pixCode,
         paymentMethod: paymentMethod || 'PIX', ddd: location?.ddd, city: location?.city, state: location?.state,
         waiting_for_response: false, createdAt: new Date(),
@@ -2889,12 +2900,12 @@ app.post('/webhook/kirvano', async (req, res) => {
             const isPixConv = existingConv && !existingConv.canceled && !existingConv.completed &&
                 (existingConv.pixWaiting || existingConv.funnelType === 'PIX' || (existingConv.funnelId || '').includes('_PIX'));
             if (isPixConv) {
-                await transferPixToApproved(convKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location);
+                await transferPixToApproved(convKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location, customerEmail);
             } else {
                 for (const k of new Set([phoneKey, convKey])) {
                     const pt = pixTimeouts.get(k); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(k); try { db.deletePixTimeout(k); } catch(e) {} }
                 }
-                await startFunnel(convKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location);
+                await startFunnel(convKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location, null, customerEmail);
             }
             // Repassa pro LinkRotator (sem await — fire-and-forget)
             relayToLinkRotator(isCard ? 'CARD_PAID' : 'SALE_APPROVED', relayPayload);
@@ -2909,7 +2920,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                     const notif = buildPaymentNotification('card_refused', customerName, netValue || amount);
                     await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
                 }
-                await startFunnel(phoneKey, remoteJid, 'CARTAO_RECUSADO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'CREDIT_CARD', location);
+                await startFunnel(phoneKey, remoteJid, 'CARTAO_RECUSADO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'CREDIT_CARD', location, null, customerEmail);
             }
         } else if (isAbandoned) {
             // ⭐ 15/05: Toggle global — se DESLIGADO, registra em events/log mas não dispara nada.
@@ -2942,7 +2953,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                         const notif = buildPaymentNotification('cart_abandoned', customerName, amount);
                         await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
                     }
-                    await startFunnel(phoneKey, remoteJid, 'ABANDONO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location);
+                    await startFunnel(phoneKey, remoteJid, 'ABANDONO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location, null, customerEmail);
                 }
             }
         } else if (isPix && event.includes('GENERATED')) {
@@ -2963,7 +2974,7 @@ app.post('/webhook/kirvano', async (req, res) => {
             } else {
                 // Sem funil ativo, ou em funil de nível MENOR (abandono) → createPixWaitingConversation
                 // cancela o de abandono e assume (upgrade). Duplicata de mesmo tipo é tratada lá dentro.
-                await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'PIX', location, pixExpiresAt, productsForSummary);
+                await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'PIX', location, pixExpiresAt, productsForSummary, customerEmail);
                 // Repassa pro LinkRotator (sem await)
                 relayToLinkRotator('PIX_GENERATED', relayPayload);
             }
@@ -3078,12 +3089,12 @@ app.post('/webhook/perfectpay', async (req, res) => {
             const isPixConv = existingConv && !existingConv.canceled && !existingConv.completed &&
                 (existingConv.pixWaiting || existingConv.funnelType === 'PIX' || (existingConv.funnelId || '').includes('_PIX'));
             if (isPixConv) {
-                await transferPixToApproved(convKey, remoteJid, orderCode, customerName, productId, productName, saleAmount, netValue, [], paymentMethod, location);
+                await transferPixToApproved(convKey, remoteJid, orderCode, customerName, productId, productName, saleAmount, netValue, [], paymentMethod, location, customerEmail);
             } else {
                 for (const k of new Set([phoneKey, convKey])) {
                     const pt = pixTimeouts.get(k); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(k); try { db.deletePixTimeout(k); } catch(e) {} }
                 }
-                await startFunnel(convKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], paymentMethod, location);
+                await startFunnel(convKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], paymentMethod, location, null, customerEmail);
             }
             res.json({ success: true });
         } else if (statusEnum === 1 && !isCard) {
@@ -3107,7 +3118,7 @@ app.post('/webhook/perfectpay', async (req, res) => {
             });
             // A checagem de "já existe" é feita dentro de createPixWaitingConversation (respeita Modo Teste)
             // ⭐ FIX 10/05: passar pixExpiresAt + productsForSummary (faltavam — página PIX caía em 24h fixo e resumo vazio)
-            await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], 'PIX', location, pixExpiresAt, ppProductsForSummary);
+            await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], 'PIX', location, pixExpiresAt, ppProductsForSummary, customerEmail);
             res.json({ success: true });
         } else res.json({ success: true });
         } finally { releaseWebhookLock(phoneKey); }
@@ -3214,7 +3225,7 @@ app.post('/webhook/evolution', async (req, res) => {
                     const startTrigger = checkStartTriggers(messageText, incomingInstanceName);
                     if (startTrigger) {
                         const location = db.getLocationFromPhone(incomingPhone);
-                        const started = await startConversationFromTrigger(startTrigger, phoneKey, phoneToSearch, location, incomingInstanceName);
+                        const started = await startConversationFromTrigger(startTrigger, phoneKey, phoneToSearch, location, incomingInstanceName, messageData.pushName);
                         if (started) return res.json({ success: true });
                     }
                 } catch(stErr) {
@@ -3247,18 +3258,34 @@ app.post('/webhook/evolution', async (req, res) => {
 });
 
 // ============ PIX PAGE PÚBLICA ============
+// URL do app de membros — usada nos botões da página PIX (expirado / pago)
+const MEMBERS_APP_URL = process.env.MEMBERS_APP_URL || 'https://m.membrosvips.com';
+
+// ⭐ Status público do PIX (token-gated): a página consulta a cada 5s pra detectar pagamento
+// e virar tela de "pagamento confirmado" sozinha. Só devolve booleans — sem dados sensíveis.
+app.get('/pix/:token/status', (req, res) => {
+    try {
+        const page = db.getPixPage(req.params.token);
+        if (!page) return res.json({ paid: false, expired: true });
+        // Pagamento do MESMO lead a partir de pouco antes da criação da página (margem de 2min pra clock skew)
+        const paid = !!db.getDb().prepare(
+            `SELECT 1 FROM events WHERE phone_key = ? AND type IN ('PIX_PAID','CARD_PAID')
+             AND datetime(created_at) >= datetime(?, '-2 minutes') LIMIT 1`
+        ).get(page.phone_key, page.created_at);
+        res.json({ paid, expired: new Date(page.expires_at) < new Date() });
+    } catch(e) { res.json({ paid: false, expired: false }); }
+});
+
 app.get('/pix/:token', (req, res) => {
     const page = db.getPixPage(req.params.token);
-    if (!page) return res.status(404).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Link inválido</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f5f5f5;color:#333}</style></head><body><div style="text-align:center"><h2>Link inválido ou expirado</h2><p>Este link não existe ou já expirou.</p></div></body></html>`);
+    if (!page) return res.status(404).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Link expirado</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fff;color:#111;text-align:center;padding:24px}a.btn{display:inline-block;margin-top:18px;background:#111;color:#fff;text-decoration:none;font-weight:800;padding:16px 28px;border-radius:14px;font-size:15px}</style></head><body><div><h2 style="margin-bottom:8px">Esse link expirou</h2><p style="color:#6b7280;line-height:1.5">Mas calma — seu acesso ainda está disponível.<br>Toque abaixo pra entrar no app:</p><a class="btn" href="${MEMBERS_APP_URL}">IR PARA O APP</a></div></body></html>`);
 
     const expired = new Date(page.expires_at) < new Date();
     const prod = page.product_id ? db.getProducts().find(p => p.id === page.product_id) : null;
 
-    const title = prod?.pix_page_title || 'Finalize o pagamento para liberar seu acesso';
-    const modelName = prod?.pix_page_model_name || '';
-    const overlayText = prod?.pix_page_overlay_text || (modelName ? `Voce acabou de ganhar uma chamadinha com a ${modelName}. Finalize o pagamento para resgatar!` : '');
-    const mediaUrl = prod?.pix_page_media_url || '';
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(page.pix_code)}`;
+    const firstName = formatName(page.customer_name || '');
+    const title = prod?.pix_page_title || (firstName ? `${firstName}, seu acesso está reservado!` : 'Seu acesso está reservado!');
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encodeURIComponent(page.pix_code)}`;
 
     // Resumo do pedido (lista de produtos + total). Se não tiver products_json, mostra fallback simples.
     let products = [];
@@ -3304,29 +3331,20 @@ app.get('/pix/:token', (req, res) => {
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Inter',sans-serif;background:#fff;color:#111;min-height:100vh;padding-bottom:48px;}
-  .model-wrap{width:100%;height:320px;overflow:hidden;background:#111;opacity:0;transition:opacity .8s ease;position:relative;}
-  .model-wrap.visible{opacity:1;}
-  .model-img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block;filter:blur(10px) brightness(0.65);transform:scale(1.08);}
-  .model-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 40%,rgba(0,0,0,0.65) 100%);}
-  .model-live{position:absolute;top:14px;left:14px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.5);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:11px;font-weight:700;letter-spacing:0.5px;padding:6px 12px;border-radius:100px;}
-  .live-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px #ef4444;animation:blink 1.2s infinite;}
-  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
-  .model-text{position:absolute;bottom:0;left:0;right:0;padding:20px 20px 24px;text-align:center;}
-  .model-tag{display:inline-block;background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:5px 14px;border-radius:100px;margin-bottom:10px;}
-  .model-cta{font-size:17px;font-weight:900;color:#fff;line-height:1.3;letter-spacing:-0.2px;text-shadow:0 2px 16px rgba(0,0,0,0.7);}
   .body{padding:28px 20px 0;max-width:480px;margin:0 auto;}
   .headline{font-size:22px;font-weight:800;color:#111;line-height:1.2;letter-spacing:-0.3px;margin-bottom:6px;text-align:center;}
-  .subline{font-size:14px;color:#6b7280;line-height:1.5;margin-bottom:24px;text-align:center;font-weight:500;}
-  .cd-wrap{text-align:center;margin-bottom:24px;}
+  .subline{font-size:14px;color:#6b7280;line-height:1.5;margin-bottom:22px;text-align:center;font-weight:500;}
+  .subline strong{color:#111;}
+  .cd-wrap{text-align:center;margin-bottom:22px;}
   .cd-label{font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:8px;}
   .cd-timer{font-size:32px;font-weight:800;color:#111;font-variant-numeric:tabular-nums;letter-spacing:3px;line-height:1;margin-bottom:10px;}
-  .cd-timer.urgent{color:#dc2626;animation:pulse .5s infinite;}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.2}}
+  .cd-timer.urgent{color:#dc2626;}
   .cd-bar-wrap{height:4px;background:#f3f4f6;border-radius:100px;overflow:hidden;}
   .cd-bar{height:100%;background:#111;border-radius:100px;width:100%;transition:width 1s linear;}
   .cd-bar.urgent{background:#dc2626;}
-  .divider{height:1px;background:#f3f4f6;margin:20px 0;}
-  .summary{background:#fafafa;border:1px solid #f3f4f6;border-radius:12px;padding:16px 18px;margin-bottom:22px;}
+  .cd-after{display:none;font-size:13px;font-weight:700;color:#dc2626;margin-top:8px;line-height:1.4;}
+  .divider{height:1px;background:#f3f4f6;margin:18px 0;}
+  .summary{background:#fafafa;border:1px solid #f3f4f6;border-radius:12px;padding:16px 18px;margin-bottom:20px;}
   .summary-h{font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:12px;}
   .summary-item{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;padding:5px 0;}
   .summary-item.main{color:#111;font-weight:600;}
@@ -3337,78 +3355,150 @@ app.get('/pix/:token', (req, res) => {
   .summary-divider{height:1px;background:#e5e7eb;margin:10px 0;}
   .summary-total{display:flex;justify-content:space-between;align-items:center;font-weight:800;color:#111;font-size:15px;}
   .summary-total .total-value{font-size:19px;font-variant-numeric:tabular-nums;}
-  .qr-wrap{display:flex;justify-content:center;margin-bottom:14px;}
-  .qr-box{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;display:inline-block;}
-  .pix-code{background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:13px 15px;font-size:10px;color:#9ca3af;word-break:break-all;line-height:1.6;max-height:60px;overflow:hidden;position:relative;margin-bottom:12px;}
-  .pix-code::after{content:'';position:absolute;bottom:0;left:0;right:0;height:24px;background:linear-gradient(transparent,#f9fafb);}
-  .expired-msg{background:#fee2e2;border:1px solid #fecaca;color:#dc2626;border-radius:12px;padding:14px;text-align:center;font-size:14px;font-weight:600;margin-bottom:16px;}
-  .btn{width:100%;padding:20px;background:#111;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:0.3px;position:relative;overflow:hidden;margin-bottom:28px;transition:transform .1s;box-shadow:0 4px 24px rgba(0,0,0,0.12);}
-  .btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.07),transparent);animation:shine 2.5s infinite;}
+  .btn-wrap{position:sticky;bottom:14px;z-index:10;margin-bottom:10px;}
+  .btn{width:100%;padding:20px;background:#16a34a;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:0.3px;position:relative;overflow:hidden;transition:transform .1s;box-shadow:0 6px 28px rgba(22,163,74,0.35);animation:breathe 2s ease-in-out infinite;}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
+  .btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent);animation:shine 2.5s infinite;}
   @keyframes shine{to{left:150%}}
-  .btn:active{transform:scale(0.98);}
-  .btn.ok{background:#15803d;box-shadow:0 4px 24px rgba(21,128,61,0.2);}
+  .btn:active{transform:scale(0.97);}
+  .btn.ok{background:#15803d;animation:none;}
   .btn.ok::after{display:none;}
-  .steps-label{font-size:11px;font-weight:700;color:#d1d5db;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
-  .steps{display:flex;flex-direction:column;gap:12px;margin-bottom:28px;}
+  .btn-hint{text-align:center;font-size:12px;color:#6b7280;font-weight:600;margin-bottom:24px;line-height:1.5;}
+  .copied-help{display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 16px;font-size:13px;color:#166534;line-height:1.55;margin-bottom:22px;font-weight:600;}
+  .steps-label{font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
+  .steps{display:flex;flex-direction:column;gap:12px;margin-bottom:24px;}
   .step{display:flex;align-items:flex-start;gap:12px;}
-  .step-n{width:22px;height:22px;border-radius:50%;border:1.5px solid #e5e7eb;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;color:#9ca3af;}
-  .step-t{font-size:13px;color:#6b7280;line-height:1.45;}
+  .step-n{width:22px;height:22px;border-radius:50%;background:#f0fdf4;border:1.5px solid #bbf7d0;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;color:#16a34a;}
+  .step-t{font-size:13.5px;color:#4b5563;line-height:1.5;}
   .step-t strong{color:#111;font-weight:700;}
-  .footer{text-align:center;font-size:11px;color:#d1d5db;padding-top:16px;border-top:1px solid #f3f4f6;}
+  .qr-toggle{width:100%;background:none;border:1px dashed #d1d5db;border-radius:12px;padding:13px;font-size:13px;color:#6b7280;font-weight:600;cursor:pointer;margin-bottom:14px;font-family:inherit;}
+  .qr-area{display:none;text-align:center;margin-bottom:22px;}
+  .qr-box{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;display:inline-block;margin-bottom:8px;}
+  .qr-note{font-size:12px;color:#9ca3af;line-height:1.5;}
+  .trust{display:flex;justify-content:center;gap:18px;margin-bottom:16px;flex-wrap:wrap;}
+  .trust-item{font-size:11.5px;color:#6b7280;font-weight:600;display:flex;align-items:center;gap:5px;}
+  .footer{text-align:center;font-size:11px;color:#d1d5db;padding-top:14px;border-top:1px solid #f3f4f6;}
+  .state{display:none;text-align:center;padding:40px 10px 20px;}
+  .state.show{display:block;}
+  .state-icon{font-size:56px;margin-bottom:14px;line-height:1;}
+  .state-h{font-size:23px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;}
+  .state-p{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:22px;}
+  .state-p strong{color:#111;}
+  .btn-app{display:block;width:100%;padding:20px;background:#111;color:#fff;text-decoration:none;border-radius:14px;font-size:16px;font-weight:800;letter-spacing:0.3px;box-shadow:0 4px 24px rgba(0,0,0,0.15);}
+  .btn-app.green{background:#16a34a;box-shadow:0 6px 28px rgba(22,163,74,0.35);}
 </style>
 </head>
 <body>
-${mediaUrl ? `
-<div class="model-wrap" id="modelWrap">
-  <img class="model-img" src="${mediaUrl}" alt="">
-  <div class="model-overlay"></div>
-  ${modelName ? `<div class="model-live"><div class="live-dot"></div>AO VIVO · ${modelName}</div>` : ''}
-  ${overlayText ? `<div class="model-text"><div class="model-tag">Presente desbloqueado</div><div class="model-cta">${overlayText}</div></div>` : ''}
-</div>` : ''}
 <div class="body">
-  <div class="headline">${title}</div>
-  <div class="subline">Finalize antes do tempo acabar e receba bonus exclusivos</div>
-  <div class="cd-wrap">
-    <div class="cd-label">Finalize antes do tempo acabar e receba bonus</div>
-    <div class="cd-timer" id="timer">${expired ? '00:00' : '03:00'}</div>
-    <div class="cd-bar-wrap"><div class="cd-bar ${expired ? 'urgent' : ''}" id="cdBar" style="${expired ? 'width:0%' : ''}"></div></div>
+
+  <!-- ===== ESTADO: PAGAMENTO CONFIRMADO (aparece sozinho quando o pagamento cai) ===== -->
+  <div class="state" id="statePaid">
+    <div class="state-icon">🎉</div>
+    <div class="state-h">Pagamento confirmado!</div>
+    <div class="state-p">Seu acesso <strong>já foi liberado</strong>.<br>Toque no botão abaixo pra entrar agora — e fica de olho no seu <strong>WhatsApp</strong>, que enviamos tudo por lá também. 💬</div>
+    <a class="btn-app green" href="${MEMBERS_APP_URL}">ACESSAR MEU CONTEÚDO AGORA</a>
   </div>
-  <div class="divider"></div>
-  ${summaryHtml}
-  ${expired ? '<div class="expired-msg">Este link expirou. Gere um novo PIX no checkout.</div>' : `
-  <div class="qr-wrap"><div class="qr-box"><img src="${qrUrl}" width="160" height="160" alt="QR Code PIX" style="display:block;border-radius:4px;"></div></div>
-  <div class="pix-code" id="pixBox">${page.pix_code}</div>
-  <button class="btn" id="btnPix" onclick="copyPix()">CLIQUE AQUI PARA COPIAR O PIX</button>`}
-  <div class="steps-label">Como pagar</div>
-  <div class="steps">
-    <div class="step"><div class="step-n">1</div><div class="step-t">Abra o <strong>app do seu banco</strong></div></div>
-    <div class="step"><div class="step-n">2</div><div class="step-t">Va em <strong>Pix — Pagar — Copia e Cola</strong></div></div>
-    <div class="step"><div class="step-n">3</div><div class="step-t">Cole o codigo e <strong>confirme o pagamento</strong></div></div>
-    <div class="step"><div class="step-n">4</div><div class="step-t"><strong>Acesso liberado automaticamente</strong> em segundos</div></div>
+
+  <!-- ===== ESTADO: PIX EXPIROU DE VERDADE ===== -->
+  <div class="state ${expired ? 'show' : ''}" id="stateExpired">
+    <div class="state-icon">⏰</div>
+    <div class="state-h">Esse código Pix expirou</div>
+    <div class="state-p">Mas calma: <strong>seu acesso ainda está disponível</strong>.<br>Toque no botão abaixo pra entrar no app e finalizar por lá:</div>
+    <a class="btn-app" href="${MEMBERS_APP_URL}">IR PARA O APP</a>
   </div>
-  <div class="footer">Pagamento processado com seguranca via Pix — Banco Central do Brasil</div>
+
+  <!-- ===== ESTADO NORMAL: PAGAR ===== -->
+  <div id="statePay" style="${expired ? 'display:none' : ''}">
+    <div class="headline">${title}</div>
+    <div class="subline">Falta só <strong>1 passo</strong>: pague com Pix em menos de 1 minuto e receba o acesso <strong>na hora, no seu WhatsApp</strong>.</div>
+    <div class="cd-wrap">
+      <div class="cd-label">Acesso reservado pra você por</div>
+      <div class="cd-timer" id="timer">03:00</div>
+      <div class="cd-bar-wrap"><div class="cd-bar" id="cdBar"></div></div>
+      <div class="cd-after" id="cdAfter">⚡ O tempo está acabando — pague agora pra não perder seu acesso!</div>
+    </div>
+    <div class="divider"></div>
+    ${summaryHtml}
+    <div class="btn-wrap"><button class="btn" id="btnPix" onclick="copyPix()">👇 COPIAR CÓDIGO PIX</button></div>
+    <div class="btn-hint">Toque no botão verde — o código é copiado sozinho.<br>Depois é só colar no app do seu banco. Simples assim. 😉</div>
+    <div class="copied-help" id="copiedHelp">✅ <strong>Código copiado!</strong> Agora abra o app do seu banco, toque em <strong>Pix → Pagar → Copia e Cola</strong>, segure o dedo no campo e escolha <strong>Colar</strong>. Confirme e pronto!</div>
+    <div class="steps-label">Como pagar (passo a passo)</div>
+    <div class="steps">
+      <div class="step"><div class="step-n">1</div><div class="step-t">Toque no <strong>botão verde acima</strong> pra copiar o código Pix</div></div>
+      <div class="step"><div class="step-n">2</div><div class="step-t">Abra o <strong>app do seu banco</strong> e vá em <strong>Pix → Copia e Cola</strong></div></div>
+      <div class="step"><div class="step-n">3</div><div class="step-t"><strong>Cole o código</strong> (segure o dedo no campo e toque em "Colar") e confirme</div></div>
+      <div class="step"><div class="step-n">4</div><div class="step-t">Pronto! Seu <strong>acesso chega no WhatsApp em segundos</strong> ✅</div></div>
+    </div>
+    <button class="qr-toggle" onclick="toggleQr()" id="qrToggle">Vai pagar por outro celular ou computador? <u>Mostrar QR Code</u></button>
+    <div class="qr-area" id="qrArea">
+      <div class="qr-box"><img src="${qrUrl}" width="180" height="180" alt="QR Code PIX" style="display:block;border-radius:4px;"></div>
+      <div class="qr-note">Aponte a câmera do celular que tem o app do banco<br>pra esse código e confirme o pagamento.</div>
+    </div>
+    <div class="trust">
+      <div class="trust-item">🔒 Pagamento seguro</div>
+      <div class="trust-item">⚡ Aprovação na hora</div>
+      <div class="trust-item">💬 Acesso no WhatsApp</div>
+    </div>
+    <div class="footer">Pagamento processado com segurança via Pix — Banco Central do Brasil</div>
+  </div>
+
 </div>
 <script>
-${mediaUrl ? `setTimeout(()=>{document.getElementById('modelWrap').classList.add('visible');},3000);` : ''}
 ${!expired ? `
+// ===== Cronômetro de urgência (NÃO bloqueia o pagamento ao zerar) =====
 const TOTAL=3*60;let s=TOTAL;
 const timerEl=document.getElementById('timer');
 const barEl=document.getElementById('cdBar');
 const tick=setInterval(()=>{
   s--;
   if(s<=0){clearInterval(tick);timerEl.textContent='00:00';timerEl.classList.add('urgent');barEl.style.width='0%';barEl.classList.add('urgent');
-    const btn=document.getElementById('btnPix');btn.disabled=true;btn.textContent='Link expirado';btn.style.background='#d1d5db';btn.style.boxShadow='none';btn.style.cursor='default';return;}
+    document.getElementById('cdAfter').style.display='block';
+    document.querySelector('.cd-label').textContent='Corre que ainda dá tempo';
+    return;}
   timerEl.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   barEl.style.width=(s/TOTAL*100)+'%';
   if(s<=60){timerEl.classList.add('urgent');barEl.classList.add('urgent');}
 },1000);
+
 function copyPix(){
   const code=${JSON.stringify(page.pix_code)};
   const btn=document.getElementById('btnPix');
-  const done=()=>{btn.textContent='PIX copiado. Abra seu banco agora';btn.classList.add('ok');setTimeout(()=>{btn.textContent='CLIQUE AQUI PARA COPIAR O PIX';btn.classList.remove('ok');},4000);};
+  const done=()=>{
+    btn.textContent='✅ COPIADO! ABRA O APP DO SEU BANCO';btn.classList.add('ok');
+    document.getElementById('copiedHelp').style.display='block';
+    setTimeout(()=>{btn.textContent='👇 COPIAR CÓDIGO PIX';btn.classList.remove('ok');},6000);
+  };
   if(navigator.clipboard)navigator.clipboard.writeText(code).then(done).catch(()=>fb(code,done));else fb(code,done);
 }
 function fb(t,cb){const el=document.createElement('textarea');el.value=t;el.style.cssText='position:fixed;opacity:0';document.body.appendChild(el);el.select();try{document.execCommand('copy');cb();}catch(e){}document.body.removeChild(el);}
+function toggleQr(){
+  const a=document.getElementById('qrArea');
+  const show=a.style.display!=='block';
+  a.style.display=show?'block':'none';
+  document.getElementById('qrToggle').innerHTML=show?'<u>Esconder QR Code</u>':'Vai pagar por outro celular ou computador? <u>Mostrar QR Code</u>';
+}
+
+// ===== Detecção automática de pagamento: quando o Pix cai, a página vira tela de sucesso =====
+let pollCount=0;
+const poll=setInterval(async()=>{
+  pollCount++;
+  if(pollCount>360){clearInterval(poll);return;} // para depois de 30min
+  try{
+    const r=await fetch('/pix/${page.token}/status',{cache:'no-store'});
+    const d=await r.json();
+    if(d.paid){
+      clearInterval(poll);clearInterval(tick);
+      document.getElementById('statePay').style.display='none';
+      document.getElementById('statePaid').classList.add('show');
+      window.scrollTo(0,0);
+    } else if(d.expired){
+      clearInterval(poll);clearInterval(tick);
+      document.getElementById('statePay').style.display='none';
+      document.getElementById('stateExpired').classList.add('show');
+      window.scrollTo(0,0);
+    }
+  }catch(e){}
+},5000);
 ` : ''}
 </script>
 </body>
@@ -3454,7 +3544,7 @@ app.get('/api/dashboard', authMiddleware, (req, res) => {
 app.get('/api/conversations', authMiddleware, (req, res) => {
     const list = [...conversations.entries()].map(([phoneKey, conv]) => ({
         id: phoneKey, phone: (conv.remoteJid || '').replace('@s.whatsapp.net', ''), phoneKey,
-        customerName: conv.customerName, productId: conv.productId, productName: conv.productName,
+        customerName: conv.customerName, customerEmail: conv.customerEmail || null, productId: conv.productId, productName: conv.productName,
         orderBumps: conv.orderBumps || [], funnelId: conv.funnelId, stepIndex: conv.stepIndex,
         amount: conv.amount, amountDisplay: conv.amountDisplay, netValue: conv.netValue,
         pixCode: conv.pixCode, paymentMethod: conv.paymentMethod,
@@ -3469,6 +3559,67 @@ app.get('/api/conversations', authMiddleware, (req, res) => {
         pixTimeoutRemaining: pixTimeouts.has(phoneKey) ? Math.max(0, Math.round((getPixTimeoutMs() - (Date.now() - new Date(pixTimeouts.get(phoneKey).createdAt).getTime())) / 1000)) : null
     })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json({ success: true, data: list });
+});
+
+// ⭐ 20/07: ENVIO MANUAL — o Iago cadastra 1+ leads (número, nome, e-mail), escolhe o funil e o
+// sistema dispara respeitando a distribuição normal (sticky se o lead já tem número fixado; senão
+// próximo da fila). Envios espaçados (default 20s) pra não criar rajada na instância.
+app.post('/api/manual-send', authMiddleware, (req, res) => {
+    try {
+        const { funnel_id, leads, spacing_seconds } = req.body || {};
+        const funnel = db.getFunnelById(funnel_id);
+        if (!funnel) return res.status(400).json({ success: false, error: 'Funil não encontrado' });
+        if (!funnel.steps?.length) return res.status(400).json({ success: false, error: `O funil "${funnel.name || funnel_id}" está vazio — adicione mensagens nele primeiro` });
+        if (!Array.isArray(leads) || !leads.length) return res.status(400).json({ success: false, error: 'Nenhum lead informado' });
+        if (leads.length > 100) return res.status(400).json({ success: false, error: 'Máximo de 100 leads por envio' });
+
+        const spacingMs = Math.max(10, parseInt(spacing_seconds) || 20) * 1000;
+        const productId = funnel.product_id || 'GRUPO_VIP';
+        const productName = (db.getProducts().find(p => p.id === productId)?.name) || productId;
+
+        const results = [];
+        let scheduled = 0;
+        for (const lead of leads) {
+            const rawPhone = String(lead.phone || '').replace(/\D/g, '');
+            const name = String(lead.name || '').trim() || 'Cliente';
+            const email = String(lead.email || '').trim() || null;
+            const phoneKey = normalizePhoneKey(rawPhone);
+            if (!phoneKey || phoneKey.length !== 8) { results.push({ phone: lead.phone, ok: false, reason: 'Número inválido' }); continue; }
+            if (db.isBlacklisted(phoneKey)) { results.push({ phone: lead.phone, ok: false, reason: 'Na blacklist' }); continue; }
+            const existing = conversations.get(phoneKey);
+            if (existing && !existing.canceled && !existing.completed) {
+                results.push({ phone: lead.phone, ok: false, reason: `Já está em funil ativo (${existing.funnelType || existing.funnelId})` });
+                continue;
+            }
+
+            const remoteJid = phoneToRemoteJid(rawPhone);
+            const conv = {
+                phoneKey, remoteJid, funnelId: funnel_id, stepIndex: 0,
+                orderCode: 'MANUAL_' + Date.now() + '_' + scheduled,
+                customerName: name, customerEmail: email,
+                productId, productName,
+                orderBumps: [], amount: 0, amountDisplay: '', netValue: 0,
+                paymentMethod: 'PIX',
+                ddd: null, city: null, state: null,
+                waiting_for_response: false, createdAt: new Date(),
+                canceled: false, completed: false, paused: false,
+                funnelType: 'MANUAL'
+            };
+            conversations.set(phoneKey, conv);
+            bumpEpoch(phoneKey);
+            registerPhoneUniversal(rawPhone, phoneKey);
+            try { convToDb(phoneKey, conv); } catch(e) {}
+
+            const delay = scheduled * spacingMs;
+            setTimeout(() => { try { sendStep(phoneKey); } catch(e) { addLog('MANUAL_SEND_ERR', `Erro no envio manual ${phoneKey}: ${e.message}`); } }, delay);
+            scheduled++;
+            results.push({ phone: lead.phone, ok: true, phoneKey, inSeconds: Math.round(delay / 1000) });
+        }
+
+        const totalMin = Math.ceil((scheduled * spacingMs) / 60000);
+        if (scheduled > 0) addLog('MANUAL_SEND', `📤 Envio manual: ${scheduled} lead(s) → funil "${funnel.name || funnel_id}" (1 a cada ${spacingMs/1000}s, ~${totalMin}min no total)`);
+        res.json({ success: true, scheduled, results });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.post('/api/conversations/:phoneKey/pause', authMiddleware, (req, res) => {
