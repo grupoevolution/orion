@@ -8,7 +8,7 @@ const zlib = require('zlib');
 const app = express();
 
 // ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
-const APP_VERSION = '3.6.1';
+const APP_VERSION = '3.6.2';
 const APP_STARTED_AT = new Date().toISOString();
 
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============
@@ -134,7 +134,15 @@ const ADMIN_LOGIN = process.env.ADMIN_LOGIN;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH; // novo: hash bcrypt opcional
 const CLEANUP_DAYS = parseInt(process.env.CLEANUP_DAYS || '7');
-const NOTIFICATION_INSTANCE = process.env.NOTIFICATION_INSTANCE; // instância pessoal — excluída do pool de envio
+// ⭐ 20/07 v3.6.2: NOTIFICATION_INSTANCE foi DESATIVADA. Era da época em que notificações saíam
+// por um número de WhatsApp pessoal (canal removido em junho — hoje é só push no app). Em produção
+// ela estava apontando pra GABY01 e excluía a ÚNICA instância online do pool de envio, silenciosamente.
+// A env agora é ignorada (só gera aviso no boot). Instâncias de notificação continuam sendo excluídas
+// pelos nomes reservados NOTIFICACAO/NOTIFICACOES ou pela flag is_notification no banco.
+const NOTIFICATION_INSTANCE_DEPRECATED = process.env.NOTIFICATION_INSTANCE || '';
+if (NOTIFICATION_INSTANCE_DEPRECATED) {
+    console.log(`⚠️ NOTIFICATION_INSTANCE="${NOTIFICATION_INSTANCE_DEPRECATED}" está definida mas NÃO é mais usada — variável IGNORADA (a instância volta ao pool de envio). Pode remover do EasyPanel.`);
+}
 // HMAC secrets pra webhooks (opcionais; se vazios, segue sem verificação como hoje)
 const KIRVANO_WEBHOOK_SECRET = process.env.KIRVANO_WEBHOOK_SECRET;
 const PERFECTPAY_WEBHOOK_SECRET = process.env.PERFECTPAY_WEBHOOK_SECRET;
@@ -464,9 +472,8 @@ function sendSSE(event, data) {
 let abandonoInstancesCache = [];
 // ⭐ 20/07: nomes reservados pra notificação num único lugar (pool + diagnóstico usam a mesma lista)
 function getNotifNames() {
-    const names = ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES'];
-    if (NOTIFICATION_INSTANCE) names.push(NOTIFICATION_INSTANCE.toUpperCase());
-    return names;
+    // ⭐ v3.6.2: NOTIFICATION_INSTANCE não entra mais aqui — só os nomes reservados explícitos
+    return ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES'];
 }
 function refreshInstanceCache() {
     const all = db.getInstances();
@@ -500,7 +507,7 @@ function describePoolExclusions() {
             if (i.paused) reasons.push('pausada');
             if (!i.connected) reasons.push('offline no banco');
             if (i.is_notification) reasons.push('marcada como notificação');
-            else if (NOTIF_NAMES.includes(i.name.toUpperCase())) reasons.push('EXCLUÍDA pela env NOTIFICATION_INSTANCE — remova/troque essa variável no EasyPanel');
+            else if (NOTIF_NAMES.includes(i.name.toUpperCase())) reasons.push('nome reservado pra notificação');
             if (i.is_abandono) reasons.push('dedicada a abandono');
             out.push(`${i.name}: ${reasons.length ? reasons.join(' + ') : 'OK'}`);
         }
@@ -551,7 +558,8 @@ function getPoolForConversation(phoneKey) {
 
 const CONFIGURED_INSTANCES = (process.env.INSTANCES || 'F01').split(',').map(s => s.trim());
 for (const inst of CONFIGURED_INSTANCES) db.ensureInstance(inst);
-if (NOTIFICATION_INSTANCE) db.ensureInstance(NOTIFICATION_INSTANCE, true);
+// ⭐ v3.6.2: removido ensureInstance(NOTIFICATION_INSTANCE) — em banco novo ele criava a instância
+// de VENDAS com is_notification=1 se a env apontasse pra ela (mais um jeito de sumir do pool).
 // Sempre marcar variantes de notificação como is_notification=true
 // Garante que NUNCA entrem no pool de envio para clientes
 db.ensureInstance('NOTIFICACAO', true);
@@ -4258,7 +4266,7 @@ app.post('/api/instances/:name/pause', authMiddleware, (req, res) => {
 app.post('/api/instances/:name/abandono', authMiddleware, (req, res) => {
     const name = req.params.name;
     // Não permite marcar instância de notificação como abandono
-    if (name === NOTIFICATION_INSTANCE || name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
+    if (name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
         return res.status(400).json({ success: false, error: 'Instância de notificação não pode ser de abandono' });
     }
     db.setInstanceAbandono(name, !!req.body.is_abandono);
@@ -4370,7 +4378,7 @@ app.post('/api/phones/sync', authMiddleware, async (req, res) => {
 app.delete('/api/instances/:name', authMiddleware, (req, res) => {
     const name = req.params.name;
     // Não permite deletar a instância de notificação
-    if (name === NOTIFICATION_INSTANCE || name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
+    if (name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
         return res.status(400).json({ success: false, error: 'Não é possível remover instância de notificação' });
     }
     try {
