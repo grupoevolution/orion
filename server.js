@@ -8,7 +8,7 @@ const zlib = require('zlib');
 const app = express();
 
 // ⭐ Versão visível em /api/version, na tela de login e no boot — confirma qual código está em produção
-const APP_VERSION = '3.6.0';
+const APP_VERSION = '3.6.1';
 const APP_STARTED_AT = new Date().toISOString();
 
 // ============ DEPENDÊNCIAS OPCIONAIS (gracefully degrade) ============
@@ -462,10 +462,15 @@ function sendSSE(event, data) {
 
 // ============ INSTÂNCIAS ============
 let abandonoInstancesCache = [];
+// ⭐ 20/07: nomes reservados pra notificação num único lugar (pool + diagnóstico usam a mesma lista)
+function getNotifNames() {
+    const names = ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES'];
+    if (NOTIFICATION_INSTANCE) names.push(NOTIFICATION_INSTANCE.toUpperCase());
+    return names;
+}
 function refreshInstanceCache() {
     const all = db.getInstances();
-    const NOTIF_NAMES = ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES'];
-    if (NOTIFICATION_INSTANCE) NOTIF_NAMES.push(NOTIFICATION_INSTANCE.toUpperCase());
+    const NOTIF_NAMES = getNotifNames();
     // Pool principal (PIX, APROVADA): exclui notificação e dedicadas a abandono
     activeInstancesCache = all.filter(i => !i.paused && i.connected && !i.is_notification && !i.is_abandono && !NOTIF_NAMES.includes(i.name.toUpperCase())).map(i => i.name);
     // ⭐ FIX 05/05: Pool de ABANDONO inteligente
@@ -483,6 +488,52 @@ function refreshInstanceCache() {
 
 function getActiveInstances() { return activeInstancesCache; }
 function getAbandonoInstances() { return abandonoInstancesCache; }
+
+// ⭐ 20/07: diz POR QUE cada instância está fora do pool de envio (fim do "sem instâncias" cego)
+function describePoolExclusions() {
+    const NOTIF_NAMES = getNotifNames();
+    const out = [];
+    try {
+        for (const i of db.getInstances()) {
+            if (!i.name || !i.name.trim()) continue;
+            const reasons = [];
+            if (i.paused) reasons.push('pausada');
+            if (!i.connected) reasons.push('offline no banco');
+            if (i.is_notification) reasons.push('marcada como notificação');
+            else if (NOTIF_NAMES.includes(i.name.toUpperCase())) reasons.push('EXCLUÍDA pela env NOTIFICATION_INSTANCE — remova/troque essa variável no EasyPanel');
+            if (i.is_abandono) reasons.push('dedicada a abandono');
+            out.push(`${i.name}: ${reasons.length ? reasons.join(' + ') : 'OK'}`);
+        }
+    } catch(e) {}
+    return out;
+}
+
+// ⭐ 20/07: AUTO-CURA do pool vazio. Se o cache diz "nenhuma instância" na hora de enviar:
+// 1) recarrega o cache do banco (cobre cache desatualizado);
+// 2) se continuar vazio, re-verifica AO VIVO na Evolution cada instância não-pausada e
+//    atualiza o banco (cobre banco desatualizado). Rate limit 30s pra rajada de envios
+// não virar rajada de requisições na Evolution.
+let _poolHealLast = 0;
+let _noInstancesAlertAt = 0;
+async function healEmptyPool() {
+    refreshInstanceCache();
+    if (activeInstancesCache.length > 0) return true;
+    if (Date.now() - _poolHealLast < 30000) return activeInstancesCache.length > 0;
+    _poolHealLast = Date.now();
+    try {
+        const insts = db.getInstances().filter(i => i.name && i.name.trim() && !i.paused);
+        const results = await Promise.all(insts.map(async i => {
+            const ok = await checkInstanceConnected(i.name);
+            if (ok !== !!i.connected) {
+                db.setInstanceConnected(i.name, ok);
+                addLog(ok ? 'INSTANCE_UP' : 'INSTANCE_DOWN', `${ok ? '🟢' : '🔴'} ${i.name} ${ok ? 'voltou' : 'caiu'} (detectado na auto-cura do pool)`);
+            }
+            return ok;
+        }));
+        if (results.some(Boolean)) refreshInstanceCache();
+    } catch(e) {}
+    return activeInstancesCache.length > 0;
+}
 
 // Retorna o pool correto de instâncias baseado no tipo de funil do lead.
 // ABANDONO, CARTAO_RECUSADO e RECUPERACAO usam pool isolado (chip queimável);
@@ -1700,6 +1751,12 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
     }
 
     let active = getPoolForConversation(phoneKey);
+    // ⭐ 20/07: pool vazio → tenta AUTO-CURA antes de desistir (cache/banco desatualizado era
+    // a causa do NO_ACTIVE_INSTANCES com instância online no painel)
+    if (active.length === 0) {
+        await healEmptyPool();
+        active = getPoolForConversation(phoneKey);
+    }
     // ⭐ FIX 07/26: se o pool de ABANDONO/recuperação está vazio (nenhuma instância dedicada online),
     // cai pro pool principal em vez de simplesmente não enviar. Assim o abandono SEMPRE tem por onde sair.
     if (active.length === 0) {
@@ -1709,7 +1766,18 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
             addLog('ABANDONO_POOL_FALLBACK', `⚠️ Pool de ${convFT} vazio — usando pool principal pra não perder o envio`, { phoneKey });
         }
     }
-    if (active.length === 0) { addLog('NO_INSTANCES', '⚠️ Sem instâncias ativas pra enviar!', { phoneKey }); return { success: false, error: 'NO_ACTIVE_INSTANCES' }; }
+    if (active.length === 0) {
+        // ⭐ 20/07: diagnóstico por instância + alerta no celular (1x a cada 10min no máximo)
+        const diag = describePoolExclusions();
+        addLog('NO_INSTANCES', `⚠️ Sem instâncias no pool de envio! ${diag.length ? 'Diagnóstico → ' + diag.join(' · ') : 'Nenhuma instância cadastrada.'}`, { phoneKey });
+        try {
+            if (Date.now() - (_noInstancesAlertAt || 0) > 10 * 60 * 1000) {
+                _noInstancesAlertAt = Date.now();
+                await sendPushNotification('Envios parados — sem instância', diag.length ? diag.join(' · ').substring(0, 180) : 'Nenhuma instância disponível pra enviar mensagens.', 'info');
+            }
+        } catch(e) {}
+        return { success: false, error: 'NO_ACTIVE_INSTANCES' };
+    }
 
     const preferred = selectNextInstance(isFirstMessage, phoneKey);
     const stickyInstance = stickyInstances.get(phoneKey);
@@ -2470,7 +2538,10 @@ async function _checkInstancesHealthInner() {
             }
         }
     }
-    if (changed) refreshInstanceCache();
+    // ⭐ 20/07: recarrega o cache em TODO tick (antes: só quando flagrava transição — se o banco
+    // mudasse por outro caminho, o pool de envio ficava desatualizado até a próxima transição)
+    refreshInstanceCache();
+    if (changed) { /* transições já logadas acima */ }
     // ⭐ FIX 06/26: a retomada roda em TODO tick, independente de transição.
     // Antes ela só rodava quando o check FLAGRAVA a instância voltando — se a queda+volta
     // acontecia entre dois ticks, o lead ficava preso no meio do funil pra sempre.
@@ -4281,6 +4352,9 @@ app.post('/api/phones/sync', authMiddleware, async (req, res) => {
         let synced = 0;
         for (const inst of instances) {
             const connected = await checkInstanceConnected(inst.name);
+            // ⭐ 20/07: sincronizar agora TAMBÉM atualiza o status de conexão no banco (antes só o
+            // cadastro de números — instância "online" podia continuar fora do pool de envio)
+            if (connected !== !!inst.connected) db.setInstanceConnected(inst.name, connected);
             if (!connected) continue;
             const phone = await fetchInstanceOwnerNumber(inst.name);
             if (phone) {
@@ -4288,6 +4362,7 @@ app.post('/api/phones/sync', authMiddleware, async (req, res) => {
                 synced++;
             }
         }
+        refreshInstanceCache(); // pool de envio atualizado na hora
         res.json({ success: true, synced });
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
