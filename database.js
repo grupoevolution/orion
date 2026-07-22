@@ -344,10 +344,21 @@ function initDatabase() {
         "ALTER TABLE instances ADD COLUMN block_abandono INTEGER DEFAULT 0",
         // ⭐ 20/07: e-mail do cliente na conversa (variável {EMAIL} nos funis — acesso do app vai por login)
         "ALTER TABLE conversations ADD COLUMN customer_email TEXT",
+        // ⭐ 22/07: nome e telefone completo no evento (lista de números pra contato manual)
+        "ALTER TABLE events ADD COLUMN customer_name TEXT",
+        "ALTER TABLE events ADD COLUMN customer_phone TEXT",
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch(e) { /* coluna já existe, ignora */ }
     }
+
+    // ⭐ 22/07: números já contatados manualmente (lista de números marca ao copiar)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS contacted_log (
+            phone_key TEXT PRIMARY KEY,
+            contacted_at TEXT DEFAULT (datetime('now'))
+        );
+    `);
 
     // Tabela de páginas PIX únicas por cliente
     db.exec(`
@@ -680,7 +691,7 @@ function deleteOldConversations(days = 7) {
 
 // ===== EVENTOS =====
 function recordEvent(type, data) {
-    getDb().prepare('INSERT INTO events (type, phone_key, product_id, product_name, amount, net_value, payment_method, order_code, order_bumps, instance, funnel_id, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(type, data.phone_key, data.product_id, data.product_name, data.amount || 0, data.net_value || 0, data.payment_method, data.order_code, JSON.stringify(data.order_bumps || []), data.instance, data.funnel_id, data.extra ? JSON.stringify(data.extra) : null);
+    getDb().prepare('INSERT INTO events (type, phone_key, product_id, product_name, amount, net_value, payment_method, order_code, order_bumps, instance, funnel_id, extra, customer_name, customer_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(type, data.phone_key, data.product_id, data.product_name, data.amount || 0, data.net_value || 0, data.payment_method, data.order_code, JSON.stringify(data.order_bumps || []), data.instance, data.funnel_id, data.extra ? JSON.stringify(data.extra) : null, data.customer_name || null, data.customer_phone || null);
 }
 function getEventStats(days = 7) {
     // created_at é UTC; ajusta -3h para agrupar por dia do Brasil

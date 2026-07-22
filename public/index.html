@@ -384,6 +384,10 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23" stroke-width="2"/><path stroke-width="2" d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
         <span>Financeiro</span>
       </button>
+      <button class="nav-item" onclick="showPage('numbers',this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        <span>Números</span>
+      </button>
       <button class="nav-item" onclick="showPage('settings',this)">
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><path stroke-width="2" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         <span>Config.</span>
@@ -994,6 +998,58 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
       </div>
     </div>
 
+    <!-- NÚMEROS (lista de contatos por evento) -->
+    <div id="page-numbers" class="page">
+      <div class="fin-wrap">
+        <div class="fin-head">
+          <div>
+            <div class="fin-title">Números dos clientes</div>
+            <div class="fin-sub" id="num-subtitle">Carregando...</div>
+          </div>
+          <div class="fin-tabs" id="num-period-tabs">
+            <button class="fin-tab active" data-period="today" onclick="numSetPeriod('today',this)">Hoje</button>
+            <button class="fin-tab" data-period="yesterday" onclick="numSetPeriod('yesterday',this)">Ontem</button>
+            <button class="fin-tab" data-period="7d" onclick="numSetPeriod('7d',this)">7 dias</button>
+            <button class="fin-tab" data-period="30d" onclick="numSetPeriod('30d',this)">30 dias</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="num-event-chips">
+          <button class="fin-tab active" data-ev="PIX_GENERATED" onclick="numSetEvent('PIX_GENERATED',this)">PIX gerado</button>
+          <button class="fin-tab" data-ev="PAID" onclick="numSetEvent('PAID',this)">Aprovada</button>
+          <button class="fin-tab" data-ev="REFUSED" onclick="numSetEvent('REFUSED',this)">Recusado</button>
+          <button class="fin-tab" data-ev="REFUNDED" onclick="numSetEvent('REFUNDED',this)">Reembolso</button>
+          <button class="fin-tab" data-ev="ABANDONED" onclick="numSetEvent('ABANDONED',this)">Abandonado</button>
+          <button class="fin-tab" data-ev="ALL" onclick="numSetEvent('ALL',this)">Todos</button>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
+          <div class="fin-input-group" style="max-width:150px">
+            <label class="fin-input-lbl">Valor mínimo (R$)</label>
+            <input type="number" class="fin-input" id="num-min-value" placeholder="0" min="0" step="1" onchange="loadNumbers()">
+          </div>
+          <div class="fin-input-group" style="max-width:240px">
+            <label class="fin-input-lbl">Produto</label>
+            <select class="fin-input" id="num-product" onchange="loadNumbers()"><option value="ALL">Todos os produtos</option></select>
+          </div>
+          <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#94a3b8;cursor:pointer;padding-bottom:9px">
+            <input type="checkbox" id="num-hide-contacted" onchange="numRender()"> Ocultar já contatados
+          </label>
+          <button class="fin-btn ghost" onclick="loadNumbers()" style="margin-left:auto">↻ Atualizar</button>
+        </div>
+
+        <div class="fin-section" style="padding:0;overflow:hidden">
+          <div id="num-list"></div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+          <button class="fin-btn" id="num-copy-selected" onclick="numCopySelected()">Copiar selecionados (0)</button>
+          <button class="fin-btn ghost" onclick="numCopyBlock()">Copiar próximo bloco de 5</button>
+          <div style="font-size:11px;color:#64748b;align-self:center">Copiar marca o número como "já contatado" automaticamente</div>
+        </div>
+      </div>
+    </div>
+
     <!-- CONFIGURAÇÕES -->
     <div id="page-settings" class="page">
       <div class="section">
@@ -1497,9 +1553,9 @@ function showPage(p,btn){
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   if(btn)btn.classList.add('active');
-  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos','start-triggers':'Gatilhos de Início',products:'Produtos',instances:'Instâncias',blacklist:'Blacklist',analytics:'Análises',finance:'Financeiro',settings:'Configurações'};
+  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos','start-triggers':'Gatilhos de Início',products:'Produtos',instances:'Instâncias',blacklist:'Blacklist',analytics:'Análises',finance:'Financeiro',numbers:'Números',settings:'Configurações'};
   document.getElementById('pg-title').textContent=t[p]||p;
-  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,'start-triggers':loadStartTriggers,products:loadProducts,instances:loadInstances,analytics:()=>{loadAnalytics();loadPhoneHealth();},blacklist:loadBlacklist,finance:()=>finShowTab('day'),settings:loadSettings})[p]?.();
+  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,'start-triggers':loadStartTriggers,products:loadProducts,instances:loadInstances,analytics:()=>{loadAnalytics();loadPhoneHealth();},blacklist:loadBlacklist,finance:()=>finShowTab('day'),numbers:loadNumbers,settings:loadSettings})[p]?.();
 }
 
 // DASHBOARD
@@ -2638,6 +2694,123 @@ async function finExportMonth(){
   a.download = `financeiro_${year}_${String(month).padStart(2,'0')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ==================== NÚMEROS (lista de contatos por evento) ====================
+const numState = { event: 'PIX_GENERATED', period: 'today', data: [], selected: new Set() };
+const NUM_EVENT_LABELS = { PIX_GENERATED:'PIX gerado', PIX_PAID:'PIX pago', CARD_PAID:'Cartão pago', REFUSED:'Recusado', REFUNDED:'Reembolso', ABANDONED:'Abandonado' };
+const NUM_EVENT_COLORS = { PIX_GENERATED:'#fbbf24', PIX_PAID:'#10b981', CARD_PAID:'#10b981', REFUSED:'#f87171', REFUNDED:'#c084fc', ABANDONED:'#94a3b8' };
+
+function numSetEvent(ev, btn){
+  numState.event = ev;
+  document.querySelectorAll('#num-event-chips .fin-tab').forEach(b=>b.classList.toggle('active', b===btn));
+  loadNumbers();
+}
+function numSetPeriod(p, btn){
+  numState.period = p;
+  document.querySelectorAll('#num-period-tabs .fin-tab').forEach(b=>b.classList.toggle('active', b===btn));
+  loadNumbers();
+}
+function numFmtPhone(p){
+  if(p.startsWith('55') && p.length >= 12){
+    const ddd = p.slice(2,4), rest = p.slice(4);
+    return `(${ddd}) ${rest.slice(0, rest.length-4)}-${rest.slice(-4)}`;
+  }
+  return p;
+}
+function numTimeAgo(iso){
+  const secs = Math.max(0, (Date.now() - new Date(iso.replace(' ','T') + (iso.includes('Z')||iso.includes('+') ? '' : 'Z')).getTime())/1000);
+  if(secs < 3600) return `há ${Math.max(1, Math.round(secs/60))} min`;
+  if(secs < 86400) return `há ${Math.round(secs/3600)} h`;
+  return `há ${Math.round(secs/86400)} d`;
+}
+
+async function loadNumbers(){
+  try {
+    const minV = parseFloat(document.getElementById('num-min-value').value) || 0;
+    const prod = document.getElementById('num-product').value || 'ALL';
+    const qs = `event=${numState.event}&period=${numState.period}&min_value=${minV}&product_name=${encodeURIComponent(prod)}`;
+    const r = await api(`/api/contacts?${qs}`);
+    if(!r.success) return;
+    numState.data = r.data || [];
+    numState.selected = new Set();
+    // Dropdown de produtos (preserva seleção)
+    const sel = document.getElementById('num-product');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="ALL">Todos os produtos</option>' + (r.products||[]).map(p=>`<option value="${p.replace(/"/g,'&quot;')}">${p}</option>`).join('');
+    if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+    const semTel = r.without_phone > 0 ? ` · ${r.without_phone} sem número completo` : '';
+    document.getElementById('num-subtitle').textContent = `${numState.data.length} contato(s) · sem duplicados · PIX gerado só após 7 min${semTel}`;
+    numRender();
+  } catch(e){ console.error('loadNumbers:', e); }
+}
+
+function numRender(){
+  const hideContacted = document.getElementById('num-hide-contacted').checked;
+  const list = hideContacted ? numState.data.filter(c=>!c.contacted_at) : numState.data;
+  const el = document.getElementById('num-list');
+  if(!list.length){ el.innerHTML = '<div class="fin-empty" style="padding:30px">Nenhum contato com esses filtros</div>'; numUpdateFooter(); return; }
+  el.innerHTML = list.map(c=>{
+    const checked = numState.selected.has(c.phone_key) ? 'checked' : '';
+    const evColor = NUM_EVENT_COLORS[c.type] || '#94a3b8';
+    const contacted = c.contacted_at ? `<span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:1px 7px">já contatado</span>` : '';
+    const multi = c.events_count > 1 ? ` <span style="color:#64748b">· ${c.events_count} eventos, mostrando o mais caro</span>` : '';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.06);${c.contacted_at?'opacity:.55':''}">
+      <input type="checkbox" ${checked} onchange="numToggle('${c.phone_key}',this.checked)" style="width:15px;height:15px;accent-color:#10b981">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:#fff">${c.name}
+          <span style="font-size:11px;font-weight:500;color:${evColor}">· ${NUM_EVENT_LABELS[c.type]||c.type} ${numTimeAgo(c.created_at)}</span> ${contacted}
+        </div>
+        <div style="font-size:12px;color:#94a3b8">${c.product_name} · R$ ${(c.amount||0).toFixed(2).replace('.',',')}${multi}</div>
+      </div>
+      <button class="fin-btn ghost" style="font-size:12px;padding:6px 12px;font-family:var(--mono)" onclick="numCopyOne('${c.phone}','${c.phone_key}')" title="Copiar número">${numFmtPhone(c.phone)} ⧉</button>
+      <a href="https://wa.me/${c.phone}" target="_blank" rel="noopener" class="fin-btn ghost" style="font-size:12px;padding:6px 10px;text-decoration:none" title="Abrir no WhatsApp Web">WhatsApp</a>
+    </div>`;
+  }).join('');
+  numUpdateFooter();
+}
+
+function numToggle(key, on){ if(on) numState.selected.add(key); else numState.selected.delete(key); numUpdateFooter(); }
+function numUpdateFooter(){ document.getElementById('num-copy-selected').textContent = `Copiar selecionados (${numState.selected.size})`; }
+
+async function numMarkContacted(keys){
+  if(!keys.length) return;
+  try { await api('/api/contacts/contacted', { method:'POST', body: JSON.stringify({ phone_keys: keys }) }); } catch(e){}
+  const now = new Date().toISOString();
+  numState.data.forEach(c=>{ if(keys.includes(c.phone_key)) c.contacted_at = now; });
+  numRender();
+}
+
+async function numWriteClipboard(text){
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); return true; } catch(e2){ return false; } finally { ta.remove(); }
+  }
+}
+
+async function numCopyOne(phone, key){
+  if(await numWriteClipboard(phone)){ showToast(`Número ${numFmtPhone(phone)} copiado`, 'success'); numMarkContacted([key]); }
+  else showToast('Não consegui copiar', 'error');
+}
+
+async function numCopySelected(){
+  const sel = numState.data.filter(c=>numState.selected.has(c.phone_key));
+  if(!sel.length){ showToast('Nenhum número selecionado', 'error'); return; }
+  if(await numWriteClipboard(sel.map(c=>c.phone).join('\n'))){
+    showToast(`${sel.length} número(s) copiado(s)`, 'success');
+    numMarkContacted(sel.map(c=>c.phone_key));
+    numState.selected = new Set();
+  } else showToast('Não consegui copiar', 'error');
+}
+
+async function numCopyBlock(){
+  const block = numState.data.filter(c=>!c.contacted_at).slice(0,5);
+  if(!block.length){ showToast('Todos já foram contatados', 'error'); return; }
+  if(await numWriteClipboard(block.map(c=>c.phone).join('\n'))){
+    showToast(`Bloco de ${block.length} copiado`, 'success');
+    numMarkContacted(block.map(c=>c.phone_key));
+  } else showToast('Não consegui copiar', 'error');
 }
 
 async function deleteProduct(id, name){

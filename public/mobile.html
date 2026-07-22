@@ -612,12 +612,59 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
       </div>
     </div>
 
+    <!-- NÚMEROS (lista de contatos por evento) -->
+    <div id="pg-numbers" class="page">
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding:0 2px">Números dos clientes</div>
+      <div style="font-size:11px;color:var(--text3);margin:-4px 2px 10px" id="mn-subtitle">Carregando...</div>
+
+      <div class="period-pills" id="mn-event-pills" style="flex-wrap:wrap;margin-bottom:6px">
+        <button class="pill active" data-ev="PIX_GENERATED" onclick="mnSetEvent('PIX_GENERATED',this)">PIX gerado</button>
+        <button class="pill" data-ev="PAID" onclick="mnSetEvent('PAID',this)">Aprovada</button>
+        <button class="pill" data-ev="REFUSED" onclick="mnSetEvent('REFUSED',this)">Recusado</button>
+        <button class="pill" data-ev="REFUNDED" onclick="mnSetEvent('REFUNDED',this)">Reembolso</button>
+        <button class="pill" data-ev="ABANDONED" onclick="mnSetEvent('ABANDONED',this)">Abandonado</button>
+        <button class="pill" data-ev="ALL" onclick="mnSetEvent('ALL',this)">Todos</button>
+      </div>
+      <div class="period-pills" id="mn-period-pills" style="margin-bottom:10px">
+        <button class="pill active" data-p="today" onclick="mnSetPeriod('today',this)">Hoje</button>
+        <button class="pill" data-p="yesterday" onclick="mnSetPeriod('yesterday',this)">Ontem</button>
+        <button class="pill" data-p="7d" onclick="mnSetPeriod('7d',this)">7d</button>
+        <button class="pill" data-p="30d" onclick="mnSetPeriod('30d',this)">30d</button>
+      </div>
+
+      <div class="sec" style="margin-bottom:10px">
+        <div style="display:flex;gap:8px;padding:12px 14px;align-items:center;flex-wrap:wrap">
+          <input class="inp" id="mn-min-value" type="number" inputmode="decimal" placeholder="Valor mín. R$" style="flex:1;min-width:110px;margin:0" onchange="loadNumbers()">
+          <select class="inp" id="mn-product" style="flex:1.4;min-width:140px;margin:0" onchange="loadNumbers()">
+            <option value="ALL">Todos os produtos</option>
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);padding:0 14px 12px;cursor:pointer">
+          <input type="checkbox" id="mn-hide-contacted" onchange="mnRender()" style="width:15px;height:15px;accent-color:#10b981"> Ocultar já contatados
+        </label>
+      </div>
+
+      <div class="sec" style="margin-bottom:10px">
+        <div id="mn-list"></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+        <button id="mn-copy-selected" onclick="mnCopySelected()" style="width:100%;padding:13px;background:var(--accent);border:none;border-radius:12px;color:#fff;font-size:13px;font-weight:800;font-family:var(--font);cursor:pointer">Copiar selecionados (0)</button>
+        <button onclick="mnCopyBlock()" style="width:100%;padding:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:12px;color:#fff;font-size:13px;font-weight:700;font-family:var(--font);cursor:pointer">Copiar próximo bloco de 5</button>
+        <div style="font-size:10px;color:var(--text3);text-align:center;line-height:1.5">Copiar marca o número como "já contatado" automaticamente</div>
+      </div>
+    </div>
+
   </div>
 
   <nav class="bottom-nav">
     <button class="nav-btn active" id="nb-dash" onclick="showPage('dash',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg>
       Dashboard
+    </button>
+    <button class="nav-btn" id="nb-numbers" onclick="showPage('numbers',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+      Números
     </button>
     <button class="nav-btn" id="nb-inst" onclick="showPage('inst',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="10" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="17" width="20" height="4" rx="1" stroke-width="2"/></svg>
@@ -1294,6 +1341,123 @@ async function submitMobileManualSend() {
   finally { btn.disabled = false; btn.textContent = '📤 Enviar Funil'; }
 }
 
+// ============ NÚMEROS (lista de contatos por evento) ============
+const mnState = { event: 'PIX_GENERATED', period: 'today', data: [], selected: new Set() };
+const MN_EVENT_LABELS = { PIX_GENERATED:'PIX gerado', PIX_PAID:'PIX pago', CARD_PAID:'Cartão pago', REFUSED:'Recusado', REFUNDED:'Reembolso', ABANDONED:'Abandonado' };
+const MN_EVENT_COLORS = { PIX_GENERATED:'#fbbf24', PIX_PAID:'#34d399', CARD_PAID:'#34d399', REFUSED:'#f87171', REFUNDED:'#c084fc', ABANDONED:'#94a3b8' };
+
+function mnSetEvent(ev, btn){
+  mnState.event = ev;
+  document.querySelectorAll('#mn-event-pills .pill').forEach(b=>b.classList.toggle('active', b===btn));
+  loadNumbers();
+}
+function mnSetPeriod(p, btn){
+  mnState.period = p;
+  document.querySelectorAll('#mn-period-pills .pill').forEach(b=>b.classList.toggle('active', b===btn));
+  loadNumbers();
+}
+function mnFmtPhone(p){
+  if(p.startsWith('55') && p.length >= 12){
+    const ddd = p.slice(2,4), rest = p.slice(4);
+    return `(${ddd}) ${rest.slice(0, rest.length-4)}-${rest.slice(-4)}`;
+  }
+  return p;
+}
+function mnTimeAgo(iso){
+  const secs = Math.max(0, (Date.now() - new Date(iso.replace(' ','T') + (iso.includes('Z')||iso.includes('+') ? '' : 'Z')).getTime())/1000);
+  if(secs < 3600) return `há ${Math.max(1, Math.round(secs/60))} min`;
+  if(secs < 86400) return `há ${Math.round(secs/3600)} h`;
+  return `há ${Math.round(secs/86400)} d`;
+}
+
+async function loadNumbers(){
+  try {
+    const minV = parseFloat(document.getElementById('mn-min-value').value) || 0;
+    const prod = document.getElementById('mn-product').value || 'ALL';
+    const r = await api(`/api/contacts?event=${mnState.event}&period=${mnState.period}&min_value=${minV}&product_name=${encodeURIComponent(prod)}`);
+    if(!r.success) return;
+    mnState.data = r.data || [];
+    mnState.selected = new Set();
+    const sel = document.getElementById('mn-product');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="ALL">Todos os produtos</option>' + (r.products||[]).map(p=>`<option value="${p.replace(/"/g,'&quot;')}">${p}</option>`).join('');
+    if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+    const semTel = r.without_phone > 0 ? ` · ${r.without_phone} sem número` : '';
+    document.getElementById('mn-subtitle').textContent = `${mnState.data.length} contato(s) · sem duplicados · PIX só após 7 min${semTel}`;
+    mnRender();
+  } catch(e){}
+}
+
+function mnRender(){
+  const hideContacted = document.getElementById('mn-hide-contacted').checked;
+  const list = hideContacted ? mnState.data.filter(c=>!c.contacted_at) : mnState.data;
+  const el = document.getElementById('mn-list');
+  if(!list.length){ el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhum contato com esses filtros</div>'; mnUpdateFooter(); return; }
+  el.innerHTML = list.map(c=>{
+    const checked = mnState.selected.has(c.phone_key) ? 'checked' : '';
+    const evColor = MN_EVENT_COLORS[c.type] || '#94a3b8';
+    const contacted = c.contacted_at ? ` · <span style="color:var(--text3)">já contatado</span>` : '';
+    const multi = c.events_count > 1 ? ` · ${c.events_count} eventos` : '';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);${c.contacted_at?'opacity:.5':''}">
+      <input type="checkbox" ${checked} onchange="mnToggle('${c.phone_key}',this.checked)" style="width:17px;height:17px;accent-color:#10b981;flex-shrink:0">
+      <div style="flex:1;min-width:0" onclick="mnCopyOne('${c.phone}','${c.phone_key}')">
+        <div style="font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+        <div style="font-size:10.5px;color:${evColor}">${MN_EVENT_LABELS[c.type]||c.type} ${mnTimeAgo(c.created_at)} · R$ ${(c.amount||0).toFixed(2).replace('.',',')}</div>
+        <div style="font-size:10.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.product_name}${multi}${contacted}</div>
+      </div>
+      <button onclick="mnCopyOne('${c.phone}','${c.phone_key}')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:8px 9px;color:#fff;font-size:10px;font-weight:700;font-family:var(--mono);cursor:pointer;flex-shrink:0">${mnFmtPhone(c.phone)}</button>
+      <a href="https://wa.me/${c.phone}" target="_blank" rel="noopener" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:9px;padding:8px 9px;color:#34d399;font-size:14px;text-decoration:none;flex-shrink:0" aria-label="Abrir no WhatsApp">➤</a>
+    </div>`;
+  }).join('');
+  mnUpdateFooter();
+}
+
+function mnToggle(key, on){ if(on) mnState.selected.add(key); else mnState.selected.delete(key); mnUpdateFooter(); }
+function mnUpdateFooter(){ const b=document.getElementById('mn-copy-selected'); if(b) b.textContent = `Copiar selecionados (${mnState.selected.size})`; }
+
+async function mnMarkContacted(keys){
+  if(!keys.length) return;
+  try { await api('/api/contacts/contacted', { method:'POST', body: JSON.stringify({ phone_keys: keys }) }); } catch(e){}
+  const now = new Date().toISOString();
+  mnState.data.forEach(c=>{ if(keys.includes(c.phone_key)) c.contacted_at = now; });
+  mnRender();
+}
+
+async function mnWriteClipboard(text){
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); return true; } catch(e2){ return false; } finally { ta.remove(); }
+  }
+}
+
+async function mnCopyOne(phone, key){
+  haptic(8);
+  if(await mnWriteClipboard(phone)){ showToast(`${mnFmtPhone(phone)} copiado`, 'success'); mnMarkContacted([key]); }
+  else showToast('Não consegui copiar', 'error');
+}
+
+async function mnCopySelected(){
+  const sel = mnState.data.filter(c=>mnState.selected.has(c.phone_key));
+  if(!sel.length){ showToast('Nenhum número selecionado', 'error'); return; }
+  haptic(10);
+  if(await mnWriteClipboard(sel.map(c=>c.phone).join('\n'))){
+    showToast(`${sel.length} número(s) copiado(s)`, 'success');
+    mnMarkContacted(sel.map(c=>c.phone_key));
+    mnState.selected = new Set();
+  } else showToast('Não consegui copiar', 'error');
+}
+
+async function mnCopyBlock(){
+  const block = mnState.data.filter(c=>!c.contacted_at).slice(0,5);
+  if(!block.length){ showToast('Todos já foram contatados', 'error'); return; }
+  haptic(10);
+  if(await mnWriteClipboard(block.map(c=>c.phone).join('\n'))){
+    showToast(`Bloco de ${block.length} copiado`, 'success');
+    mnMarkContacted(block.map(c=>c.phone_key));
+  } else showToast('Não consegui copiar', 'error');
+}
+
 // NAV
 function showPage(page, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1301,6 +1465,7 @@ function showPage(page, btn) {
   document.getElementById('pg-' + page).classList.add('active');
   if(btn) btn.classList.add('active');
   if(page === 'inst') loadInstances();
+  if(page === 'numbers') loadNumbers();
   if(page === 'analytics') { loadAnalytics(); loadDailySummary(); loadFunnelEffectiveness(); }
   document.getElementById('content').scrollTop = 0;
 }

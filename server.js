@@ -1335,6 +1335,17 @@ function phoneToRemoteJid(phone) {
     return c + '@s.whatsapp.net';
 }
 
+// ⭐ 22/07: telefone completo pra gravar no evento (lista de números pra contato manual)
+function jidToPhone(remoteJid) {
+    const p = String(remoteJid || '').split('@')[0].replace(/\D/g, '');
+    return p || null;
+}
+function normalizeFullPhone(phone) {
+    const p = String(phone || '').replace(/\D/g, '');
+    if (!p) return null;
+    return jidToPhone(phoneToRemoteJid(p));
+}
+
 function extractMessageText(message) {
     if (!message) return '';
     if (message.conversation) return message.conversation;
@@ -2030,7 +2041,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 
     // Anti-duplicata: se recebeu funil PIX para este produto recentemente, não dispara
     if (shouldBlockFunnelByCooldown(phoneKey, productId, 'PIX')) {
-        db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
+        db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
         sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
         {
             // ⭐ FIX 06/26: PIX em cooldown não notificava nada — parecia que o sistema falhou. Agora o push avisa.
@@ -2071,7 +2082,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     registerPhoneUniversal(remoteJid, phoneKey);
     try { convToDb(phoneKey, conv); } catch(e) {} // persiste imediato pro rollback seguro
 
-    db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
+    db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
 
     sendSSE('pix_generated', { phoneKey, customerName, productName, amount: conv.amountDisplay, netValue: netValue || amount, orderCode });
     {
@@ -2116,7 +2127,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
     try { db.deletePixTimeout(phoneKey); } catch(e) {}
 
-    db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps, funnel_id: abVariant });
+    db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps, funnel_id: abVariant, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
     // ⭐ FIX 04/05: libera cooldown PIX desse produto agora que cliente pagou (permite recompra futura)
     try { db.clearFunnelReceiptOnPayment(phoneKey, productId); } catch(e) {}
     // ⭐ FIX 11/05: cliente pagou — cancela QUALQUER agendamento de recuperação pendente (proteção dupla)
@@ -2177,7 +2188,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         // ⭐ FIX 20/07 v3.6.3: cooldown checado ANTES de cancelar. Se o funil novo não vai disparar
         // (cooldown), não mata o que está rodando. Venda nova real ainda é registrada (receita).
         if (funnelType === 'APROVADA' && !isTestModeActive() && shouldBlockFunnelByCooldown(phoneKey, productId, funnelType)) {
-            db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps });
+            db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
             addLog('APROVADA_COOLDOWN_KEEP', `⏸️ APROVADA em cooldown — venda registrada, funil atual preservado`, { phoneKey, orderCode });
             return;
         }
@@ -2207,7 +2218,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
     // Anti-duplicata por cooldown (sempre registra o evento, mas não dispara mensagem se dentro do cooldown)
     if (shouldBlockFunnelByCooldown(phoneKey, productId, funnelType)) {
         if (funnelType === 'APROVADA') {
-            db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps });
+            db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
         }
         addLog('FUNNEL_SKIPPED', `⏸️ ${funnelType} registrado mas funil não disparado (cooldown) para ${phoneKey}`, { orderCode });
         // ⭐ FIX 06/26: abandono/cartão recusado em cooldown eram 100% silenciosos — agora o push avisa
@@ -2221,7 +2232,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
     }
 
     if (funnelType === 'APROVADA') {
-        db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps });
+        db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
         // ⭐ FIX 04/05: libera cooldown PIX (cliente pagou — pode receber funil PIX de novo se gerar outro)
         try { db.clearFunnelReceiptOnPayment(phoneKey, productId); } catch(e) {}
         // ⭐ FIX 11/05: cliente pagou — cancela QUALQUER agendamento de recuperação pendente
@@ -3013,7 +3024,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                 bumpEpoch(convKey); // mata o loop do funil na hora
             }
             try { db.cancelScheduledFunnelsByPhone(phoneKey, 'reembolso'); } catch(e) {}
-            db.recordEvent('REFUNDED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps });
+            db.recordEvent('REFUNDED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: normalizeFullPhone(customerPhone) });
             addLog('REFUNDED', `↩️ Reembolso: ${customerName} · R$${(netValue || amount || 0).toFixed(2)}`, { orderCode, phoneKey });
             {
                 const notif = buildPaymentNotification('refund', customerName, netValue || amount, productName);
@@ -3041,7 +3052,7 @@ app.post('/webhook/kirvano', async (req, res) => {
             // ⭐ 22/07: recusado agora cobre TODAS as formas de pagamento (antes só cartão).
             // Notifica sempre; o funil CARTAO_RECUSADO continua disparando só pra cartão sem funil ativo.
             const activeType = getActiveFunnelType(phoneKey);
-            db.recordEvent('REFUSED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps });
+            db.recordEvent('REFUSED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: normalizeFullPhone(customerPhone) });
             addLog('PAYMENT_REFUSED', `💳❌ ${isCard ? 'Cartão' : 'Pagamento'} recusado: ${customerName}${activeType ? ` (já em ${activeType} — funil não dispara)` : ''}`, { orderCode, phoneKey });
             {
                 const notif = buildPaymentNotification(isCard ? 'card_refused' : 'payment_refused', customerName, netValue || amount, productName);
@@ -3052,7 +3063,7 @@ app.post('/webhook/kirvano', async (req, res) => {
             }
         } else if (isAbandoned) {
             // ⭐ 22/07: registra o evento sempre (alimenta a lista de contatos por evento)
-            db.recordEvent('ABANDONED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps });
+            db.recordEvent('ABANDONED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: normalizeFullPhone(customerPhone) });
             // ⭐ 15/05: Toggle global — se DESLIGADO, registra em events/log mas não dispara nada.
             // Funis em andamento NÃO são tocados (regra: só bloqueia NOVOS).
             if (!isAbandonoEnabled()) {
@@ -3095,7 +3106,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                 // Registra e notifica; só o FUNIL não dispara (duplicado ou já pagou).
                 const motivo = hasPaidRecently(phoneKey, 24) ? 'já comprou' : `já em ${activeType}`;
                 addLog('PIX_GENERATED_IGNORED', `⏳ PIX gerado mas funil não disparado — ${motivo} (${customerName})`, { orderCode, phoneKey });
-                db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
+                db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: normalizeFullPhone(customerPhone) });
                 sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
                 {
                     const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount, productName);
@@ -3216,7 +3227,9 @@ app.post('/webhook/perfectpay', async (req, res) => {
                 net_value: netValue,
                 payment_method: paymentMethod,
                 order_code: orderCode,
-                order_bumps: []
+                order_bumps: [],
+                customer_name: customerName,
+                customer_phone: normalizeFullPhone(customerPhone)
             });
 
             const existingConv = findConversationUniversal(customerPhone);
@@ -3249,7 +3262,9 @@ app.post('/webhook/perfectpay', async (req, res) => {
                 net_value: netValue,
                 payment_method: 'PIX',
                 order_code: orderCode,
-                order_bumps: []
+                order_bumps: [],
+                customer_name: customerName,
+                customer_phone: normalizeFullPhone(customerPhone)
             });
             // A checagem de "já existe" é feita dentro de createPixWaitingConversation (respeita Modo Teste)
             // ⭐ FIX 10/05: passar pixExpiresAt + productsForSummary (faltavam — página PIX caía em 24h fixo e resumo vazio)
@@ -3269,7 +3284,7 @@ app.post('/webhook/perfectpay', async (req, res) => {
                 bumpEpoch(convKey);
             }
             try { db.cancelScheduledFunnelsByPhone(phoneKey, 'reembolso'); } catch(e) {}
-            db.recordEvent('REFUNDED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount: saleAmount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: [] });
+            db.recordEvent('REFUNDED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount: saleAmount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: [], customer_name: customerName, customer_phone: normalizeFullPhone(customerPhone) });
             addLog('REFUNDED', `↩️ Reembolso (PerfectPay): ${customerName} · R$${(netValue || saleAmount || 0).toFixed(2)}`, { orderCode, phoneKey });
             {
                 const notif = buildPaymentNotification('refund', customerName, netValue || saleAmount, productName);
@@ -3279,7 +3294,7 @@ app.post('/webhook/perfectpay', async (req, res) => {
         } else if (statusEnum === 5) {
             // ⭐ 22/07: pagamento recusado — notifica sempre; funil só pra cartão sem funil ativo
             const activeType = getActiveFunnelType(phoneKey);
-            db.recordEvent('REFUSED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount: saleAmount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: [] });
+            db.recordEvent('REFUSED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount: saleAmount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: [], customer_name: customerName, customer_phone: normalizeFullPhone(customerPhone) });
             addLog('PAYMENT_REFUSED', `💳❌ ${isCard ? 'Cartão' : 'Pagamento'} recusado (PerfectPay): ${customerName}`, { orderCode, phoneKey });
             {
                 const notif = buildPaymentNotification(isCard ? 'card_refused' : 'payment_refused', customerName, netValue || saleAmount, productName);
@@ -4931,6 +4946,116 @@ app.post('/api/notification-prefs', authMiddleware, (req, res) => {
     }
     const prefs = NOTIF_PREF_LIST.map(p => ({ ...p, enabled: db.getSetting(p.key, '1') !== '0' }));
     res.json({ success: true, prefs });
+});
+
+// ============ LISTA DE NÚMEROS (contato manual) ============
+// Lista clientes por evento com filtros, sem duplicados (mantém o produto mais caro por telefone).
+// PIX gerado só entra depois do timeout (7min) — antes disso o cliente ainda pode pagar sozinho.
+app.get('/api/contacts', authMiddleware, (req, res) => {
+    try {
+        const event = String(req.query.event || 'PIX_GENERATED').toUpperCase();
+        const minValue = parseFloat(req.query.min_value) || 0;
+        const productName = req.query.product_name || '';
+        const period = String(req.query.period || 'today');
+
+        const dateConds = {
+            today: "date(datetime(e.created_at,'-3 hours')) = date(datetime('now','-3 hours'))",
+            yesterday: "date(datetime(e.created_at,'-3 hours')) = date(datetime('now','-3 hours','-1 day'))",
+            '7d': "datetime(e.created_at) >= datetime('now','-7 days')",
+            '30d': "datetime(e.created_at) >= datetime('now','-30 days')"
+        };
+        const dateCond = dateConds[period] || dateConds.today;
+
+        const typeMap = {
+            PIX_GENERATED: ['PIX_GENERATED'],
+            PAID: ['PIX_PAID', 'CARD_PAID'],
+            REFUSED: ['REFUSED'],
+            REFUNDED: ['REFUNDED'],
+            ABANDONED: ['ABANDONED'],
+            ALL: ['PIX_GENERATED', 'PIX_PAID', 'CARD_PAID', 'REFUSED', 'REFUNDED', 'ABANDONED']
+        };
+        const types = typeMap[event] || typeMap.PIX_GENERATED;
+
+        const pixDelaySec = Math.max(60, Math.round(getPixTimeoutMs() / 1000));
+        let sql = `SELECT e.type, e.phone_key, e.product_id, e.product_name, e.amount, e.net_value,
+                          e.payment_method, e.created_at, e.customer_name, e.customer_phone,
+                          c.remote_jid AS conv_jid, c.customer_name AS conv_name, cl.contacted_at
+                   FROM events e
+                   LEFT JOIN conversations c ON c.phone_key = e.phone_key
+                   LEFT JOIN contacted_log cl ON cl.phone_key = e.phone_key
+                   WHERE e.type IN (${types.map(() => '?').join(',')})
+                     AND ${dateCond}
+                     AND e.phone_key IS NOT NULL
+                     AND NOT (e.type = 'PIX_GENERATED' AND datetime(e.created_at) > datetime('now', '-${pixDelaySec} seconds'))`;
+        const params = [...types];
+        if (minValue > 0) { sql += ' AND COALESCE(e.amount, 0) >= ?'; params.push(minValue); }
+        if (productName && productName !== 'ALL') { sql += ' AND e.product_name = ?'; params.push(productName); }
+        sql += ' ORDER BY e.created_at DESC LIMIT 3000';
+        const rows = db.getDb().prepare(sql).all(...params);
+
+        // Quem já pagou nas últimas 48h sai das listas de "não-pagantes" (já converteu sozinho)
+        const paidSet = new Set(
+            db.getDb().prepare("SELECT DISTINCT phone_key FROM events WHERE type IN ('PIX_PAID','CARD_PAID') AND datetime(created_at) >= datetime('now','-2 days')")
+                .all().map(r => r.phone_key)
+        );
+
+        // Dedup por telefone — mantém o evento de MAIOR valor; conta quantos eventos o cliente teve
+        const byPhone = new Map();
+        for (const r of rows) {
+            if (['PIX_GENERATED', 'ABANDONED', 'REFUSED'].includes(r.type) && paidSet.has(r.phone_key)) continue;
+            const cur = byPhone.get(r.phone_key);
+            if (!cur) { r._count = 1; byPhone.set(r.phone_key, r); }
+            else {
+                cur._count++;
+                if ((r.amount || 0) > (cur.amount || 0)) { r._count = cur._count; byPhone.set(r.phone_key, r); }
+            }
+        }
+
+        let withoutPhone = 0;
+        const contacts = [];
+        for (const r of byPhone.values()) {
+            const phone = String(r.customer_phone || (r.conv_jid || '').split('@')[0] || '').replace(/\D/g, '');
+            if (!phone) { withoutPhone++; continue; }
+            contacts.push({
+                phone_key: r.phone_key,
+                phone,
+                name: r.customer_name || r.conv_name || 'Cliente',
+                product_name: r.product_name || '—',
+                amount: r.amount || 0,
+                type: r.type,
+                payment_method: r.payment_method,
+                created_at: r.created_at,
+                events_count: r._count,
+                contacted_at: r.contacted_at || null
+            });
+        }
+        contacts.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+        // Produtos distintos do período (pro dropdown de filtro) — ignora filtro de produto atual
+        const prodSql = `SELECT DISTINCT product_name FROM events e WHERE e.type IN (${types.map(() => '?').join(',')}) AND ${dateCond} AND product_name IS NOT NULL ORDER BY product_name`;
+        const products = db.getDb().prepare(prodSql).all(...types).map(r => r.product_name);
+
+        res.json({ success: true, data: contacts, products, without_phone: withoutPhone });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Marca/desmarca números como "já contatado" (chamado quando o operador copia)
+app.post('/api/contacts/contacted', authMiddleware, (req, res) => {
+    try {
+        const keys = Array.isArray(req.body?.phone_keys)
+            ? req.body.phone_keys.filter(k => typeof k === 'string' && k.length >= 4 && k.length <= 20)
+            : [];
+        if (!keys.length) return res.status(400).json({ success: false, error: 'phone_keys vazio' });
+        const dbi = db.getDb();
+        if (req.body?.clear) {
+            const st = dbi.prepare('DELETE FROM contacted_log WHERE phone_key = ?');
+            for (const k of keys) st.run(k);
+        } else {
+            const st = dbi.prepare("INSERT INTO contacted_log (phone_key, contacted_at) VALUES (?, datetime('now')) ON CONFLICT(phone_key) DO UPDATE SET contacted_at = datetime('now')");
+            for (const k of keys) st.run(k);
+        }
+        res.json({ success: true, updated: keys.length, cleared: !!req.body?.clear });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // Backup manual sob demanda
