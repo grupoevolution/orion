@@ -101,29 +101,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .female-badge{display:inline-block;font-size:8px;font-weight:800;color:#fff;background:#dc2626;padding:2px 6px;border-radius:8px;letter-spacing:.4px;margin-left:6px;vertical-align:middle;text-transform:uppercase;box-shadow:0 0 6px rgba(220,38,38,.4)}
 .high-badge{display:inline-block;font-size:8px;font-weight:800;color:#0a0d18;background:#fbbf24;padding:2px 6px;border-radius:8px;letter-spacing:.4px;margin-left:6px;vertical-align:middle;text-transform:uppercase;box-shadow:0 0 6px rgba(251,191,36,.5)}
 
-/* ROI HERO CARD */
-.roi-hero{background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px;margin-bottom:14px;position:relative;overflow:hidden}
-.roi-hero::before{content:'';display:none}
-.roi-h-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.roi-h-lbl{font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px}
-.roi-h-status{font-size:8px;font-weight:700;padding:2px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.3px}
-.roi-h-status.up{background:rgba(34,197,94,.15);color:#34d399;border:1px solid rgba(34,197,94,.3)}
-.roi-h-status.dn{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
-.roi-h-status.neutral{background:rgba(148,163,184,.1);color:#94a3b8;border:1px solid rgba(148,163,184,.2)}
-.roi-h-roi{font-size:36px;font-weight:800;letter-spacing:-1.5px;line-height:1;background:linear-gradient(135deg,#818cf8 0%,#c084fc 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.roi-h-roi-sub{font-size:11px;color:var(--text2);margin-top:2px;font-weight:500}
-.roi-h-numbers{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(124,58,237,.18)}
-.roi-h-num{text-align:center}
-.roi-h-num-lbl{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:3px}
-.roi-h-num-val{font-size:14px;font-weight:800;letter-spacing:-.5px;font-family:var(--mono)}
-.roi-h-num-val.rev{color:#34d399}
-.roi-h-num-val.spend{color:#fbbf24}
-.roi-h-num-val.profit{color:#a78bfa}
-.roi-h-empty{font-size:11px;color:var(--text3);padding:8px 0;text-align:center;font-style:italic}
-.roi-add-btn{margin-top:10px;width:100%;padding:10px 12px;background:rgba(255,255,255,.06);color:#ffffff;border:1px solid rgba(255,255,255,.14);border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font);letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:6px}
-.roi-add-btn:active{background:rgba(124,58,237,.35)}
-
-/* MODAL OVERLAY (gasto FB, futuras ações) */
+/* MODAL OVERLAY (futuras ações) */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);z-index:9998;display:flex;align-items:flex-end;justify-content:center;padding:0;animation:fadeIn .2s ease}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .modal-sheet{background:var(--bg2);border-top:1px solid var(--border);border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:20px 18px calc(28px + var(--safe-bottom));animation:slideUp .25s ease}
@@ -322,14 +300,12 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .focus-block{margin-bottom:32px;text-align:center}
 .focus-num{font-size:60px;font-weight:800;letter-spacing:-2.5px;line-height:1;margin-bottom:6px;font-family:var(--font)}
 .focus-num.rev{color:#34d399}.focus-num.sales{color:#60a5fa}
-.focus-num.roi{background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.focus-num.roi.dn{background:linear-gradient(135deg,#f87171,#fb923c);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .focus-lbl{font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px}
 .focus-close{position:absolute;top:max(24px,calc(env(safe-area-inset-top) + 16px));right:24px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .focus-time{position:absolute;bottom:max(32px,calc(env(safe-area-inset-bottom) + 24px));left:0;right:0;text-align:center;font-size:11px;color:var(--text3);font-weight:600;font-family:var(--mono)}
 
 /* CARD ANIMATION */
-.mc, .sec, .hero-fat, .roi-hero{animation:cardIn .35s ease both}
+.mc, .sec, .hero-fat{animation:cardIn .35s ease both}
 @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
 /* LEAD DRAWER */
@@ -381,7 +357,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .leg-dot-m{width:7px;height:7px;border-radius:2px;flex-shrink:0}
 
 /* RESUMO FINANCEIRO 7 DIAS */
-.dsum-row{display:grid;grid-template-columns:62px 1fr 1fr 1fr 50px;gap:6px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);font-size:11px}
+.dsum-row{display:grid;grid-template-columns:62px 1fr 1fr 1fr;gap:6px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);font-size:11px}
 .dsum-row:last-child{border-bottom:none}
 .dsum-row.today{background:rgba(124,58,237,.08)}
 .dsum-date{font-weight:700;color:var(--text2);font-family:var(--mono);font-size:11px}
@@ -391,7 +367,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
 .dsum-profit.neg{color:#f87171}
 .dsum-roi{font-weight:800;text-align:right;font-size:12px;font-family:var(--mono)}
 .dsum-roi.up{color:#34d399}.dsum-roi.neutral{color:var(--text3)}.dsum-roi.dn{color:#f87171}
-.dsum-header{display:grid;grid-template-columns:62px 1fr 1fr 1fr 50px;gap:6px;padding:6px 12px;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;border-bottom:1px solid var(--border)}
+.dsum-header{display:grid;grid-template-columns:62px 1fr 1fr 1fr;gap:6px;padding:6px 12px;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;border-bottom:1px solid var(--border)}
 .dsum-header div:not(:first-child){text-align:right}
 
 /* TOP CIDADES */
@@ -524,15 +500,12 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
         </div>
         <div class="hero-dual-divider"></div>
         <div class="hero-dual-side">
-          <div class="hero-dual-lbl profit" id="hero-profit-lbl">Lucro</div>
-          <div class="hero-dual-val profit neutral" id="hero-profit">R$ —</div>
-          <div class="hero-dual-sub" id="hero-profit-sub">ROI —</div>
-          <div class="hero-dual-trend neutral" id="hero-profit-trend">— vs ontem</div>
+          <div class="hero-dual-lbl rev">Ticket médio</div>
+          <div class="hero-dual-val rev" id="hero-ticket">R$ —</div>
+          <div class="hero-dual-sub" id="hero-ticket-sub">líquido por venda</div>
+          <div class="hero-dual-trend neutral" id="hero-ticket-trend">— vs ontem</div>
         </div>
       </div>
-
-      <!-- ROI HERO -->
-      <div id="roi-hero-wrap"></div>
 
       <!-- ABANDONO CONTROL (15/05): toggle global + alerta de fila pendente -->
       <div id="abandono-control"></div>
@@ -626,11 +599,6 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
           <button class="pill" data-sp="custom" onclick="setSummaryPeriod('custom')">Outro</button>
         </div>
         <div id="ma-summary" style="padding:6px 0"></div>
-        <div id="meta-bm-status" style="padding:0 14px"></div>
-        <div id="meta-autosync-status" style="padding:0 14px;font-size:10px;color:var(--text3);text-align:center;line-height:1.4"></div>
-        <div style="padding:10px 14px 4px;display:flex;gap:8px">
-          <button id="sum-sync-btn" onclick="syncMetaForSummary()" style="flex:1;padding:9px;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:9px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer">Sincronizar gastos Facebook</button>
-        </div>
       </div>
 
       <div class="sec" style="margin-bottom:12px">
@@ -673,14 +641,13 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
     <div class="focus-num rev" id="focus-rev">R$ 0</div>
     <div class="focus-lbl">Faturamento líquido</div>
   </div>
-  <!-- LUCRO no Modo Foco (15/05): cor adaptativa baseada em ROI -->
   <div class="focus-block">
-    <div class="focus-num" id="focus-profit" style="color:#94a3b8">R$ —</div>
-    <div class="focus-lbl" id="focus-profit-lbl">Lucro hoje</div>
+    <div class="focus-num" id="focus-pixg" style="color:#a78bfa">0</div>
+    <div class="focus-lbl">PIX gerados hoje</div>
   </div>
   <div class="focus-block">
-    <div class="focus-num roi" id="focus-roi">—</div>
-    <div class="focus-lbl">ROI hoje</div>
+    <div class="focus-num" id="focus-conv" style="color:#fbbf24">—</div>
+    <div class="focus-lbl">Conversão hoje</div>
   </div>
   <div class="focus-time" id="focus-time">--:--</div>
 </div>
@@ -839,7 +806,8 @@ async function loadNotifPrefs() {
       notif_pix_generated: 'Cliente gerou um PIX no checkout',
       notif_payment: 'PIX pago ou cartão aprovado',
       notif_cart_abandoned: 'Cliente abandonou o carrinho',
-      notif_card_refused: 'Tentativa de cartão recusada',
+      notif_card_refused: 'Cartão, PayPal ou outra forma recusada',
+      notif_refund: 'Cliente reembolsou ou estornou a compra',
       notif_morning_summary: 'Como o dia começou, todo dia às 9h',
       notif_daily_summary: 'Fechamento financeiro às 23:59'
     };
@@ -1092,10 +1060,8 @@ function initApp() {
   initSW();
   connectSSE();
   loadDashboard();
-  loadRoiHero();
   loadAbandonoStatus();
   setInterval(loadDashboard, 20000);
-  setInterval(loadRoiHero, 30000);
   setInterval(loadAbandonoStatus, 25000);
   // Topbar greeting + clock
   updateGreeting();
@@ -1231,7 +1197,7 @@ function setupPullToRefresh() {
       ptr.style.transform = 'translateY(0)';
       ptrText.textContent = 'Atualizando...';
       haptic(15);
-      Promise.all([loadDashboard(), loadRoiHero()]).finally(() => {
+      Promise.all([loadDashboard()]).finally(() => {
         setTimeout(() => {
           ptr.classList.remove('refreshing','visible');
           ptr.style.transform = '';
@@ -1255,180 +1221,18 @@ function closeFocusMode() {
   haptic(5);
   document.getElementById('focus-mode').classList.remove('active');
 }
-// ⭐ 15/05: Cor adaptativa baseada em ROI — operador vê saúde do dia DE LONGE sem ler número
-function getRoiHealth(roi, hasSpend) {
-  if (!hasSpend) return { color: '#94a3b8', tone: 'neutral', label: 'sem dados', short: '—' };
-  if (roi >= 1.5) return { color: '#34d399', tone: 'good',    label: 'saudável',  short: '' };
-  if (roi >= 1.2) return { color: '#fbbf24', tone: 'warn',    label: 'atenção',   short: '' };
-  if (roi >= 1.0) return { color: '#fb923c', tone: 'danger',  label: 'apertado',  short: '' };
-  return                  { color: '#f87171', tone: 'loss',    label: 'prejuízo', short: '' };
-}
-
 async function refreshFocusMode() {
   try {
-    const r = await api('/api/roi-live');
+    const r = await api('/api/finance/day');
     if (!r.success) return;
     const d = r.data;
     const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
-    animateNumber(document.getElementById('focus-sales'), d.paid, { duration: 800 });
-    document.getElementById('focus-rev').textContent = fmt(d.net_revenue);
-    const roiEl = document.getElementById('focus-roi');
-    const profitEl = document.getElementById('focus-profit');
-    const profitLblEl = document.getElementById('focus-profit-lbl');
-    if (d.has_spend_data) {
-      const h = getRoiHealth(d.roi, true);
-      roiEl.textContent = d.roi.toFixed(2) + 'x';
-      roiEl.style.color = h.color;
-      roiEl.classList.toggle('dn', d.roi < 1);
-      profitEl.textContent = fmt(d.net_profit);
-      profitEl.style.color = h.color;
-      profitLblEl.textContent = 'Lucro · ' + h.label;
-    } else {
-      roiEl.textContent = '—';
-      roiEl.classList.remove('dn');
-      roiEl.style.color = '';
-      profitEl.textContent = 'R$ —';
-      profitEl.style.color = '#94a3b8';
-      profitLblEl.textContent = 'Lucro hoje · sem dados FB';
-    }
+    animateNumber(document.getElementById('focus-sales'), d.paid || 0, { duration: 800 });
+    document.getElementById('focus-rev').textContent = fmt(d.net || 0);
+    animateNumber(document.getElementById('focus-pixg'), d.pix_generated || 0, { duration: 800 });
+    const conv = (d.pix_generated || 0) > 0 ? ((d.paid || 0) / d.pix_generated * 100).toFixed(0) + '%' : '—';
+    document.getElementById('focus-conv').textContent = conv;
   } catch(e) {}
-}
-
-// ============ ROI AO VIVO ============
-async function loadRoiHero() {
-  const wrap = document.getElementById('roi-hero-wrap');
-  if (!wrap) return;
-  try {
-    const r = await api('/api/roi-live');
-    if (!r.success) return;
-    const d = r.data;
-    const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
-    // ⭐ 15/05: Lucro vira protagonista no card ROI (antes era o multiplicador)
-    const h = getRoiHealth(d.roi || 0, d.has_spend_data);
-    let statusClass, statusLabel;
-    if (!d.has_spend_data) { statusClass = 'neutral'; statusLabel = 'sem dados FB'; }
-    else if (d.roi >= 2.0) { statusClass = 'up'; statusLabel = 'forte'; }
-    else if (d.roi >= 1.5) { statusClass = 'up'; statusLabel = 'saudável'; }
-    else if (d.roi >= 1.2) { statusClass = 'neutral'; statusLabel = 'atenção'; }
-    else if (d.roi >= 1.0) { statusClass = 'dn'; statusLabel = 'apertado'; }
-    else                   { statusClass = 'dn'; statusLabel = 'prejuízo'; }
-
-    const margem = d.has_spend_data && d.net_revenue > 0 ? (d.net_profit / d.net_revenue * 100) : 0;
-    const lucroDisplay = d.has_spend_data ? fmt(d.net_profit) : 'R$ —';
-    const subline = d.has_spend_data
-      ? `ROI ${d.roi.toFixed(2)}x · margem ${margem.toFixed(0)}% · ${d.paid} vendas`
-      : 'Atualize o gasto Facebook pra calcular';
-
-    wrap.innerHTML = `
-      <div class="roi-hero" onclick="loadRoiHero()" style="cursor:pointer">
-        <div class="roi-h-top">
-          <div class="roi-h-lbl">Lucro · Hoje</div>
-          <div class="roi-h-status ${statusClass}">${statusLabel}</div>
-        </div>
-        <div class="roi-h-roi" style="color:${h.color}">${lucroDisplay}</div>
-        <div class="roi-h-roi-sub">${subline}</div>
-        <div class="roi-h-numbers">
-          <div class="roi-h-num">
-            <div class="roi-h-num-lbl">Faturei</div>
-            <div class="roi-h-num-val rev">${fmt(d.net_revenue)}</div>
-          </div>
-          <div class="roi-h-num">
-            <div class="roi-h-num-lbl">Gastei FB</div>
-            <div class="roi-h-num-val spend">${d.has_spend_data ? fmt(d.facebook_spend) : '—'}</div>
-          </div>
-          <div class="roi-h-num">
-            <div class="roi-h-num-lbl">ROI</div>
-            <div class="roi-h-num-val" style="color:${h.color}">${d.has_spend_data ? d.roi.toFixed(2)+'x' : '—'}</div>
-          </div>
-        </div>
-        <button class="roi-add-btn" onclick="event.stopPropagation(); openAddSpendModal()">+ Adicionar gasto Facebook de hoje</button>
-      </div>`;
-  } catch(e) { /* silencioso */ }
-}
-
-// ============ MODAL: ADICIONAR GASTO FACEBOOK ============
-function openAddSpendModal() {
-  // Evita abrir 2x
-  if (document.getElementById('add-spend-overlay')) return;
-  const overlay = document.createElement('div');
-  overlay.id = 'add-spend-overlay';
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal-sheet" onclick="event.stopPropagation()">
-      <div class="modal-title">Adicionar gasto Facebook</div>
-      <div class="modal-sub">Valor que você gastou agora — vai SOMAR ao gasto de hoje</div>
-      <input id="add-spend-input" class="modal-input" type="number" inputmode="decimal" placeholder="0,00" min="0.01" max="100000" step="0.01" autocomplete="off">
-      <div class="modal-quick">
-        <button class="modal-quick-btn" onclick="setSpendAmount(50)">+R$ 50</button>
-        <button class="modal-quick-btn" onclick="setSpendAmount(100)">+R$ 100</button>
-        <button class="modal-quick-btn" onclick="setSpendAmount(200)">+R$ 200</button>
-        <button class="modal-quick-btn" onclick="setSpendAmount(500)">+R$ 500</button>
-      </div>
-      <div id="add-spend-confirm" class="modal-confirm-info" style="display:none"></div>
-      <div class="modal-actions">
-        <button class="modal-btn cancel" onclick="closeAddSpendModal()">Cancelar</button>
-        <button id="add-spend-save" class="modal-btn primary" onclick="confirmAddSpend()" disabled>Adicionar</button>
-      </div>
-    </div>`;
-  overlay.onclick = (e) => { if (e.target === overlay) closeAddSpendModal(); };
-  document.body.appendChild(overlay);
-  const inp = document.getElementById('add-spend-input');
-  inp.addEventListener('input', updateSpendPreview);
-  setTimeout(() => inp.focus(), 100);
-}
-
-function closeAddSpendModal() {
-  const ov = document.getElementById('add-spend-overlay');
-  if (ov) ov.remove();
-}
-
-function setSpendAmount(v) {
-  const inp = document.getElementById('add-spend-input');
-  if (!inp) return;
-  inp.value = v;
-  updateSpendPreview();
-}
-
-function updateSpendPreview() {
-  const v = parseFloat(document.getElementById('add-spend-input').value);
-  const btn = document.getElementById('add-spend-save');
-  const info = document.getElementById('add-spend-confirm');
-  if (Number.isFinite(v) && v > 0 && v <= 100000) {
-    btn.disabled = false;
-    info.style.display = 'block';
-    info.innerHTML = `Vai somar <strong style="color:#a78bfa">R$ ${v.toFixed(2).replace('.',',')}</strong> ao gasto Facebook de hoje. Tem certeza?`;
-  } else {
-    btn.disabled = true;
-    info.style.display = 'none';
-  }
-}
-
-async function confirmAddSpend() {
-  const inp = document.getElementById('add-spend-input');
-  const v = parseFloat(inp.value);
-  if (!Number.isFinite(v) || v <= 0) return;
-  const btn = document.getElementById('add-spend-save');
-  btn.disabled = true;
-  btn.textContent = 'Salvando...';
-  try {
-    const r = await api('/api/investment-add-spend', {
-      method: 'POST',
-      body: JSON.stringify({ amount: v })
-    });
-    if (r.success) {
-      showToast(`+R$ ${v.toFixed(2).replace('.',',')} adicionado · total R$ ${r.total.toFixed(2).replace('.',',')}`, 'success');
-      closeAddSpendModal();
-      loadRoiHero();
-    } else {
-      showToast('Erro: ' + (r.error || 'falha ao salvar'), 'error');
-      btn.disabled = false;
-      btn.textContent = 'Adicionar';
-    }
-  } catch(e) {
-    showToast('Erro de conexão', 'error');
-    btn.disabled = false;
-    btn.textContent = 'Adicionar';
-  }
 }
 
 // ===== ENVIO MANUAL =====
@@ -1497,7 +1301,7 @@ function showPage(page, btn) {
   document.getElementById('pg-' + page).classList.add('active');
   if(btn) btn.classList.add('active');
   if(page === 'inst') loadInstances();
-  if(page === 'analytics') { loadAnalytics(); loadDailySummary(); loadMetaBMStatus(); loadMetaAutoSyncStatus(); loadFunnelEffectiveness(); }
+  if(page === 'analytics') { loadAnalytics(); loadDailySummary(); loadFunnelEffectiveness(); }
   document.getElementById('content').scrollTop = 0;
 }
 
@@ -2047,9 +1851,6 @@ async function loadDashboard() {
         if (sum.success && sum.data && sum.data.length >= 2) {
           _yesterdayStats = {
             net_revenue: sum.data[1].net_revenue || 0,
-            net_profit: sum.data[1].net_profit || 0,
-            facebook_spend: sum.data[1].facebook_spend || 0,
-            has_spend_data: sum.data[1].has_spend_data || false,
             paid: sum.data[1].paid || 0,
             pix_generated: sum.data[1].pix_generated || 0,
             _cachedFor: todayStr
@@ -2070,46 +1871,22 @@ async function loadDashboard() {
       revTrendEl.textContent = 'sem comparação';
     }
 
-    // LADO LUCRO — busca ROI live + cor adaptativa
+    // LADO TICKET MÉDIO — líquido por venda, com comparação vs ontem
     try {
-      const roiData = await api('/api/roi-live');
-      if (roiData.success) {
-        const rd = roiData.data;
-        const profitEl = document.getElementById('hero-profit');
-        const profitLblEl = document.getElementById('hero-profit-lbl');
-        const profitSubEl = document.getElementById('hero-profit-sub');
-        const profitTrendEl = document.getElementById('hero-profit-trend');
-        const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
-
-        if (rd.has_spend_data) {
-          const h = getRoiHealth(rd.roi, true);
-          profitEl.textContent = fmt(rd.net_profit);
-          profitEl.className = 'hero-dual-val profit ' + h.tone;
-          profitLblEl.className = 'hero-dual-lbl profit ' + (h.tone === 'good' ? '' : h.tone);
-          profitLblEl.innerHTML = 'Lucro · ' + h.label;
-          // Margem % = lucro / faturamento
-          const margem = rd.net_revenue > 0 ? (rd.net_profit / rd.net_revenue * 100) : 0;
-          profitSubEl.textContent = `ROI ${rd.roi.toFixed(2)}x · margem ${margem.toFixed(0)}%`;
-
-          // Trend Lucro vs ontem (em VALOR ABSOLUTO, mais útil que %)
-          if (_yesterdayStats && _yesterdayStats.has_spend_data) {
-            const diff = rd.net_profit - _yesterdayStats.net_profit;
-            const sign = diff >= 0 ? '+' : '';
-            profitTrendEl.className = 'hero-dual-trend ' + (diff >= 0 ? 'up' : 'dn');
-            profitTrendEl.innerHTML = (diff >= 0 ? '▲' : '▼') + ' ' + sign + 'R$ ' + Math.abs(Math.round(diff)) + ' vs ontem';
-          } else {
-            profitTrendEl.className = 'hero-dual-trend neutral';
-            profitTrendEl.textContent = 'sem comparação';
-          }
-        } else {
-          profitEl.textContent = 'R$ —';
-          profitEl.className = 'hero-dual-val profit neutral';
-          profitLblEl.className = 'hero-dual-lbl profit';
-          profitLblEl.innerHTML = 'Lucro';
-          profitSubEl.textContent = 'Adicione gasto FB pra ver';
-          profitTrendEl.className = 'hero-dual-trend neutral';
-          profitTrendEl.textContent = '—';
-        }
+      const fmt = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+      const ticketEl = document.getElementById('hero-ticket');
+      const ticketTrendEl = document.getElementById('hero-ticket-trend');
+      const ticket = (d.completed_today || 0) > 0 ? (d.revenue_today || 0) / d.completed_today : 0;
+      ticketEl.textContent = ticket > 0 ? fmt(ticket) : 'R$ —';
+      const yTicket = (_yesterdayStats && _yesterdayStats.paid > 0) ? _yesterdayStats.net_revenue / _yesterdayStats.paid : 0;
+      if (ticket > 0 && yTicket > 0) {
+        const diff = ticket - yTicket;
+        const sign = diff >= 0 ? '+' : '';
+        ticketTrendEl.className = 'hero-dual-trend ' + (diff >= 0 ? 'up' : 'dn');
+        ticketTrendEl.innerHTML = (diff >= 0 ? '▲' : '▼') + ' ' + sign + 'R$ ' + Math.abs(Math.round(diff)) + ' vs ontem';
+      } else {
+        ticketTrendEl.className = 'hero-dual-trend neutral';
+        ticketTrendEl.textContent = 'sem comparação';
       }
     } catch(e) {}
     // Trends nos cards (Pagamentos + PIX Gerados — métricas cumulativas do dia)
@@ -2452,86 +2229,6 @@ function applyCustomRange() {
   loadDailySummary();
 }
 
-// Última auto-sync Meta (15/05): mostra "atualizado há X" no card Resumo
-async function loadMetaAutoSyncStatus() {
-  const el = document.getElementById('meta-autosync-status');
-  if (!el) return;
-  try {
-    const r = await api('/api/meta/auto-sync-status');
-    if (!r.success || !r.enabled) { el.innerHTML = ''; return; }
-    if (!r.last_sync) {
-      el.innerHTML = r.in_business_hours
-        ? `<span style="color:var(--text3)">Auto-sync ligado · primeira atualização em breve</span>`
-        : `<span style="color:var(--text3)">Auto-sync pausado (fora de 08-23h) · use sync manual</span>`;
-      return;
-    }
-    const age = r.last_sync_age_sec;
-    let ageLabel;
-    if (age < 60) ageLabel = 'agora';
-    else if (age < 3600) ageLabel = `há ${Math.round(age/60)}min`;
-    else ageLabel = `há ${Math.round(age/3600)}h`;
-    const inHoursTag = r.in_business_hours ? 'Auto-sync a cada 10min' : 'Auto-sync pausado (fora de 08-23h)';
-    if (r.last_error) {
-      el.innerHTML = `<span style="color:#fbbf24">Última auto-sync falhou ${ageLabel} · ${_escapeHtml(r.last_error.slice(0,60))}</span>`;
-    } else {
-      el.innerHTML = `<span style="color:var(--text3)">${inHoursTag} · atualizado ${ageLabel}</span>`;
-    }
-  } catch(e) { el.innerHTML = ''; }
-}
-
-// Status das BMs do Facebook (15/05): badge ⚠️ se alguma falhou no health check
-async function loadMetaBMStatus() {
-  const el = document.getElementById('meta-bm-status');
-  if (!el) return;
-  try {
-    const r = await api('/api/meta/health');
-    if (!r.success || !r.configured) {
-      el.innerHTML = '';
-      return;
-    }
-    const bms = r.bmsStatus || [];
-    if (!bms.length) { el.innerHTML = ''; return; }
-    const okCount = bms.filter(b => b.ok).length;
-    const failCount = bms.length - okCount;
-    if (failCount === 0) {
-      // Tudo OK — banner verde discreto
-      el.innerHTML = `<div style="padding:6px 10px;margin:6px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;font-size:10px;color:#34d399;display:flex;align-items:center;gap:6px">
-        <span>${bms.length} BM${bms.length>1?'s':''} conectada${bms.length>1?'s':''} · ${bms.map(b => b.name).join(' · ')}</span>
-      </div>`;
-    } else {
-      // Falha — badge vermelho destacado
-      const failed = bms.filter(b => !b.ok);
-      const failedNames = failed.map(b => b.name).join(', ');
-      const errors = failed.map(b => `${b.name}: ${_escapeHtml(b.error || 'sem detalhe')}`).join('<br>');
-      el.innerHTML = `<div style="padding:8px 12px;margin:6px 0;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:9px;font-size:11px;color:#f87171" onclick="alert('Detalhes:\\n${failed.map(b => (b.name+': '+(b.error||'sem detalhe'))).join('\\n').replace(/'/g,'')}');">
-        <div style="font-weight:700">${failCount} BM(s) offline: ${failedNames}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:3px">${okCount} OK · gastos dessas BMs podem estar faltando · toca pra ver erro</div>
-      </div>`;
-    }
-  } catch(e) {}
-}
-
-async function syncMetaForSummary() {
-  const range = _summaryRange(_summaryPeriod);
-  if (!range) return;
-  if (!confirm(`Sincronizar gastos do Facebook de ${range.label}?\n\nVai puxar dia a dia da Meta Ads (~300ms cada).`)) return;
-  const btn = document.getElementById('sum-sync-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando...'; }
-  try {
-    const r = await api('/api/finance/sync-meta-range', {
-      method: 'POST',
-      body: JSON.stringify({ from: range.from, to: range.to })
-    });
-    if (r.success) {
-      alert(`${r.synced} dia(s) sincronizado(s)${r.failed > 0 ? ` · ${r.failed} falhou` : ''}`);
-      loadDailySummary();
-    } else {
-      alert(r.error || 'Erro desconhecido');
-    }
-  } catch(e) { alert('Erro: ' + e.message); }
-  finally { if (btn) { btn.disabled = false; btn.textContent = 'Sincronizar gastos Facebook'; } }
-}
-
 async function loadDailySummary() {
   const el = document.getElementById('ma-summary');
   if (!el) return;
@@ -2549,14 +2246,13 @@ async function loadDailySummary() {
     const chronological = [...r.data].reverse();
     const revSeries = chronological.map(d => d.net_revenue);
     const totalRev = totals.net_revenue || revSeries.reduce((a,b)=>a+b,0);
-    const totalSpend = totals.facebook_spend || 0;
-    const totalProfit = totals.net_profit || 0;
-    const aggRoi = totals.roi || 0;
+    const totalGross = totals.gross_revenue || 0;
+    const totalPaid = totals.paid || 0;
+    const totalPixGen = totals.pix_generated || 0;
     const days = totals.days || revSeries.length;
-    const profitColor = totalProfit >= 0 ? '#34d399' : '#f87171';
-    const roiColor = aggRoi >= 1.2 ? '#34d399' : (aggRoi >= 1.0 ? '#fbbf24' : '#f87171');
+    const ticket = totalPaid > 0 ? totalRev / totalPaid : 0;
 
-    // Hero: total agregado + ROI no período
+    // Hero: total agregado do período
     const sparkSvg = revSeries.length > 1
       ? `<svg class="spark up" style="width:70px;height:24px" viewBox="0 0 70 24" preserveAspectRatio="none"><path d="${sparklinePath(revSeries, 70, 24)}"/></svg>`
       : '';
@@ -2570,32 +2266,24 @@ async function loadDailySummary() {
           ${sparkSvg}
         </div>
         <div style="display:flex;gap:12px;padding-top:6px;border-top:1px solid var(--border);font-size:11px">
-          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">Gasto FB</div><div style="color:#a78bfa;font-weight:700;font-family:var(--mono)">${fmt(totalSpend)}</div></div>
-          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">Lucro</div><div style="color:${profitColor};font-weight:700;font-family:var(--mono)">${fmt(totalProfit)}</div></div>
-          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">ROI</div><div style="color:${roiColor};font-weight:700;font-family:var(--mono)">${totalSpend>0 ? aggRoi.toFixed(2)+'x' : '—'}</div></div>
+          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">Vendas</div><div style="color:#34d399;font-weight:700;font-family:var(--mono)">${totalPaid}</div></div>
+          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">PIX gerados</div><div style="color:#a78bfa;font-weight:700;font-family:var(--mono)">${totalPixGen}</div></div>
+          <div style="flex:1"><div style="color:var(--text3);font-size:9px;text-transform:uppercase;font-weight:700">Ticket médio</div><div style="color:#fbbf24;font-weight:700;font-family:var(--mono)">${totalPaid>0 ? fmt(ticket) : '—'}</div></div>
         </div>
       </div>`;
 
     // Tabela diária — esconde se for 1 dia só (redundante com hero)
     let rowsHtml = '';
     if (days > 1) {
-      const header = `<div class="dsum-header"><div>Dia</div><div>Fatur.</div><div>Gasto FB</div><div>Lucro</div><div>ROI</div></div>`;
+      const header = `<div class="dsum-header"><div>Dia</div><div>Fatur.</div><div>Vendas</div><div>PIX ger.</div></div>`;
       const rows = r.data.map(d => {
         const isToday = d.date === today;
         const dateLabel = isToday ? 'HOJE' : new Date(d.date+'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
-        let roiClass = 'neutral', roiText = '—';
-        if (d.has_spend_data) {
-          roiText = d.roi.toFixed(2) + 'x';
-          if (d.roi >= 1.2) roiClass = 'up';
-          else if (d.roi < 1.0) roiClass = 'dn';
-        }
-        const profitClass = d.net_profit >= 0 ? 'dsum-profit' : 'dsum-profit neg';
         return `<div class="dsum-row ${isToday?'today':''}">
           <div class="dsum-date ${isToday?'today-lbl':''}">${dateLabel}</div>
           <div class="dsum-num dsum-rev">${fmt(d.net_revenue)}</div>
-          <div class="dsum-num dsum-spend">${d.has_spend_data ? fmt(d.facebook_spend) : '—'}</div>
-          <div class="dsum-num ${profitClass}">${d.has_spend_data ? fmt(d.net_profit) : '—'}</div>
-          <div class="dsum-roi ${roiClass}">${roiText}</div>
+          <div class="dsum-num">${d.paid || 0}</div>
+          <div class="dsum-num dsum-spend">${d.pix_generated || 0}</div>
         </div>`;
       }).join('');
       rowsHtml = header + rows;

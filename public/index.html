@@ -782,10 +782,6 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         .fin-tbl td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.1);color:#cbd5e1;font-variant-numeric:tabular-nums}
         .fin-tbl tr:hover td{background:#0a0a0b}
         .fin-tbl input{width:100px;padding:6px 10px;background:#000000;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#fff;font-size:12px;font-family:var(--mono)}
-        .fin-roi-pill{display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
-        .fin-roi-green{background:rgba(16,185,129,0.15);color:#10b981}
-        .fin-roi-blue{background:rgba(59,130,246,0.15);color:#60a5fa}
-        .fin-roi-red{background:rgba(239,68,68,0.15);color:#ef4444}
         .fin-month-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
         .fin-month-card{background:#0a0a0b;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px}
         .fin-month-card-name{font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.8px}
@@ -815,14 +811,12 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <div class="fin-head">
           <div>
             <div class="fin-title">Financeiro</div>
-            <div class="fin-sub">Faturamento alimentado automaticamente · investimento manual</div>
+            <div class="fin-sub">Faturamento alimentado automaticamente pelos webhooks</div>
           </div>
           <div class="fin-tabs">
             <button class="fin-tab active" onclick="finShowTab('day',this)">Hoje</button>
             <button class="fin-tab" onclick="finShowTab('month',this)">Mês</button>
             <button class="fin-tab" onclick="finShowTab('year',this)">Ano</button>
-            <button class="fin-tab" onclick="finShowTab('campaigns',this)">Campanhas</button>
-            <button class="fin-tab" onclick="finShowTab('traffic',this)">Tráfego Pago</button>
             <button class="fin-tab" onclick="finShowTab('config',this)">Config</button>
           </div>
         </div>
@@ -830,48 +824,28 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <!-- ===== TAB HOJE ===== -->
         <div id="fin-tab-day" class="fin-tabview active">
           <div class="fin-grid cols-3">
-            <div class="fin-card hero">
-              <div class="fin-lbl">Investido (Facebook)</div>
-              <div class="fin-val huge" id="fin-d-spend">R$ 0,00</div>
-              <div class="fin-delta" id="fin-d-spend-tax">+ R$ 0,00 imposto</div>
-            </div>
             <div class="fin-card hero accent">
               <div class="fin-lbl">Faturado líquido</div>
               <div class="fin-val huge green" id="fin-d-net">R$ 0,00</div>
               <div class="fin-delta" id="fin-d-gross">Bruto: R$ 0,00</div>
             </div>
             <div class="fin-card hero">
-              <div class="fin-lbl">Lucro Real</div>
-              <div class="fin-val huge" id="fin-d-profit">R$ 0,00</div>
-              <div class="fin-delta" id="fin-d-roi">ROI: 0.00</div>
+              <div class="fin-lbl">Vendas hoje</div>
+              <div class="fin-val huge" id="fin-d-paid">0</div>
+              <div class="fin-delta" id="fin-d-paid-split">PIX 0 · Cartão 0</div>
+            </div>
+            <div class="fin-card hero">
+              <div class="fin-lbl">Ticket médio</div>
+              <div class="fin-val huge" id="fin-d-ticket">R$ 0,00</div>
+              <div class="fin-delta">líquido por venda</div>
             </div>
           </div>
 
           <div class="fin-grid cols-4">
             <div class="fin-card"><div class="fin-lbl">PIX gerados</div><div class="fin-val" id="fin-d-pixg">0</div></div>
-            <div class="fin-card"><div class="fin-lbl">Pagos hoje</div><div class="fin-val" id="fin-d-paid">0</div></div>
-            <div class="fin-card"><div class="fin-lbl">Custo total</div><div class="fin-val" id="fin-d-cost">R$ 0,00</div></div>
+            <div class="fin-card"><div class="fin-lbl">PIX pagos</div><div class="fin-val" id="fin-d-pixpaid">0</div></div>
+            <div class="fin-card"><div class="fin-lbl">Cartão pagos</div><div class="fin-val" id="fin-d-cardpaid">0</div></div>
             <div class="fin-card"><div class="fin-lbl">Conversão</div><div class="fin-val" id="fin-d-conv">0%</div></div>
-          </div>
-
-          <div class="fin-section">
-            <div class="fin-section-h">
-              <div>
-                <div class="fin-section-t">Atualizar gasto do dia</div>
-                <div class="fin-sub" style="margin-top:4px">O faturamento é atualizado automaticamente pelo webhook da Kirvano</div>
-              </div>
-            </div>
-            <div class="fin-input-row">
-              <div class="fin-input-group">
-                <label class="fin-input-lbl">Quanto gastei hoje no Facebook?</label>
-                <input type="number" class="fin-input" id="fin-d-input-spend" placeholder="0,00" step="0.01">
-              </div>
-              <div class="fin-input-group" style="max-width:140px">
-                <label class="fin-input-lbl">Imposto Meta (%)</label>
-                <input type="number" class="fin-input" id="fin-d-input-tax" placeholder="12.15" step="0.01">
-              </div>
-              <button class="fin-btn" onclick="finSaveDaySpend()">Salvar</button>
-            </div>
           </div>
 
           <div class="fin-section">
@@ -894,13 +868,11 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
               </div>
             </div>
 
-            <div class="fin-grid cols-6">
-              <div class="fin-card"><div class="fin-lbl">Investido</div><div class="fin-val" id="fin-m-spend">R$ 0</div></div>
-              <div class="fin-card"><div class="fin-lbl">Imposto</div><div class="fin-val" id="fin-m-tax">R$ 0</div></div>
-              <div class="fin-card"><div class="fin-lbl">Custo total</div><div class="fin-val" id="fin-m-cost">R$ 0</div></div>
-              <div class="fin-card"><div class="fin-lbl">Faturado bruto</div><div class="fin-val" id="fin-m-gross">R$ 0</div></div>
+            <div class="fin-grid cols-4">
               <div class="fin-card accent"><div class="fin-lbl">Faturado líquido</div><div class="fin-val green" id="fin-m-net">R$ 0</div></div>
-              <div class="fin-card accent"><div class="fin-lbl">Lucro real · ROI</div><div class="fin-val" id="fin-m-profit">R$ 0</div><div class="fin-delta" id="fin-m-roi">ROI: 0.00</div></div>
+              <div class="fin-card"><div class="fin-lbl">Faturado bruto</div><div class="fin-val" id="fin-m-gross">R$ 0</div></div>
+              <div class="fin-card"><div class="fin-lbl">Vendas no mês</div><div class="fin-val" id="fin-m-paid">0</div></div>
+              <div class="fin-card"><div class="fin-lbl">Ticket médio</div><div class="fin-val" id="fin-m-ticket">R$ 0</div></div>
             </div>
 
             <div class="fin-bestworst">
@@ -929,7 +901,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             </div>
             <div style="overflow-x:auto">
               <table class="fin-tbl" id="fin-m-tbl">
-                <thead><tr><th>Data</th><th>Investido</th><th>Imposto</th><th>Faturado bruto</th><th>Faturado líquido</th><th>Lucro</th><th>ROI</th></tr></thead>
+                <thead><tr><th>Data</th><th>Vendas</th><th>Faturado bruto</th><th>Faturado líquido</th></tr></thead>
                 <tbody id="fin-m-tbody"></tbody>
               </table>
             </div>
@@ -948,10 +920,10 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             </div>
 
             <div class="fin-grid cols-4">
-              <div class="fin-card"><div class="fin-lbl">Investido total</div><div class="fin-val" id="fin-y-spend">R$ 0</div></div>
-              <div class="fin-card"><div class="fin-lbl">Faturado líquido</div><div class="fin-val green" id="fin-y-net">R$ 0</div></div>
-              <div class="fin-card"><div class="fin-lbl">Lucro real</div><div class="fin-val" id="fin-y-profit">R$ 0</div></div>
-              <div class="fin-card"><div class="fin-lbl">ROI médio</div><div class="fin-val" id="fin-y-roi">0.00</div></div>
+              <div class="fin-card accent"><div class="fin-lbl">Faturado líquido</div><div class="fin-val green" id="fin-y-net">R$ 0</div></div>
+              <div class="fin-card"><div class="fin-lbl">Faturado bruto</div><div class="fin-val" id="fin-y-gross">R$ 0</div></div>
+              <div class="fin-card"><div class="fin-lbl">Vendas no ano</div><div class="fin-val" id="fin-y-paid">0</div></div>
+              <div class="fin-card"><div class="fin-lbl">Ticket médio</div><div class="fin-val" id="fin-y-ticket">R$ 0</div></div>
             </div>
 
             <div id="fin-y-bars" style="margin-top:8px"></div>
@@ -960,189 +932,6 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
           <div class="fin-section">
             <div class="fin-section-h"><div class="fin-section-t">Comparativo mensal</div></div>
             <div class="fin-month-grid" id="fin-y-months"></div>
-          </div>
-        </div>
-
-        <!-- ===== TAB CAMPANHAS (ROI por UTM) ===== -->
-        <div id="fin-tab-campaigns" class="fin-tabview">
-          <div class="fin-section">
-            <div class="fin-section-h">
-              <div>
-                <div class="fin-section-t">ROI por campanha</div>
-                <div class="fin-sub" style="margin-top:4px">Performance de cada campanha do Facebook Ads (via UTM)</div>
-              </div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input type="date" class="fin-input" id="fin-c-start" style="max-width:160px">
-                <span style="color:#64748b;font-size:11px">até</span>
-                <input type="date" class="fin-input" id="fin-c-end" style="max-width:160px">
-                <button class="fin-btn" onclick="finLoadCampaigns()">Atualizar</button>
-              </div>
-            </div>
-
-            <div id="fin-c-empty-warn" style="display:none;padding:22px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;font-size:13px;color:#fbbf24;line-height:1.6;margin-bottom:16px">
-              ⚠️ <strong>Nenhuma campanha rastreada ainda.</strong> Pra ver dados aqui, configura UTMs no destination URL dos teus anúncios no Facebook Ads:<br>
-              <code style="display:block;background:#000000;padding:8px 12px;border-radius:6px;margin-top:8px;font-size:11px;color:#10b981">?utm_source=facebook&amp;utm_campaign={{campaign.name}}&amp;utm_content={{ad.name}}</code>
-            </div>
-
-            <!-- Cards de resumo -->
-            <div class="fin-grid cols-4" id="fin-c-summary" style="display:none;margin-bottom:18px">
-              <div class="fin-card">
-                <div class="fin-lbl">Total Vendas</div>
-                <div class="fin-val" id="fin-c-sum-sales">0</div>
-                <div class="fin-delta" id="fin-c-sum-camps">0 campanhas</div>
-              </div>
-              <div class="fin-card accent">
-                <div class="fin-lbl">Faturamento Líquido</div>
-                <div class="fin-val green" id="fin-c-sum-net">R$0</div>
-                <div class="fin-delta" id="fin-c-sum-gross">bruto: R$0</div>
-              </div>
-              <div class="fin-card">
-                <div class="fin-lbl">Ticket Médio</div>
-                <div class="fin-val" id="fin-c-sum-ticket">R$0</div>
-                <div class="fin-delta">por venda</div>
-              </div>
-              <div class="fin-card">
-                <div class="fin-lbl">Top Campanha</div>
-                <div class="fin-val" id="fin-c-sum-top" style="font-size:14px;line-height:1.3">—</div>
-                <div class="fin-delta up" id="fin-c-sum-top-share">0% do total</div>
-              </div>
-            </div>
-
-            <!-- Barras visuais de share -->
-            <div id="fin-c-bars" style="display:none;margin-bottom:18px"></div>
-
-            <!-- Tabela detalhada -->
-            <div style="overflow-x:auto">
-              <table class="fin-tbl" id="fin-c-tbl">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Campanha</th>
-                    <th>Vendas</th>
-                    <th>Faturamento bruto</th>
-                    <th>Faturamento líquido</th>
-                    <th>Ticket médio</th>
-                    <th>Share</th>
-                  </tr>
-                </thead>
-                <tbody id="fin-c-tbody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- ===== TAB TRÁFEGO PAGO (Meta Ads) ===== -->
-        <div id="fin-tab-traffic" class="fin-tabview">
-          <div class="fin-section">
-            <div class="fin-section-h">
-              <div>
-                <div class="fin-section-t">Tráfego pago — Meta Ads</div>
-                <div class="fin-sub" style="margin-top:4px">Gasto real das campanhas + sugestões automáticas (pausa/escala) baseadas no teu histórico</div>
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <select class="fin-input" id="tp-period" style="max-width:140px" onchange="tpLoad()">
-                  <option value="today" selected>Hoje</option>
-                  <option value="yesterday">Ontem</option>
-                  <option value="last_3d">Últimos 3 dias</option>
-                  <option value="last_7d">Últimos 7 dias</option>
-                  <option value="last_14d">Últimos 14 dias</option>
-                  <option value="last_30d">Últimos 30 dias</option>
-                  <option value="this_month">Este mês</option>
-                  <option value="last_month">Mês passado</option>
-                </select>
-                <select class="fin-input" id="tp-account-filter" style="max-width:160px" onchange="tpRender()">
-                  <option value="">Todas as contas</option>
-                </select>
-                <button class="fin-btn ghost" onclick="tpLoad(true)" id="tp-refresh-btn">Atualizar</button>
-              </div>
-            </div>
-
-            <div id="tp-not-configured" style="display:none;padding:22px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;font-size:13px;color:#fbbf24;line-height:1.6">
-              ⚠️ <strong>Meta Ads não configurado.</strong> Pra ativar essa aba, adiciona no Easypanel as env vars <code style="background:#000000;padding:2px 6px;border-radius:4px;color:#10b981">META_ACCESS_TOKEN</code> e <code style="background:#000000;padding:2px 6px;border-radius:4px;color:#10b981">META_AD_ACCOUNTS</code>.
-            </div>
-
-            <div id="tp-loading" style="display:none;padding:30px;text-align:center;color:#64748b">Carregando dados da Meta...</div>
-
-            <div id="tp-content" style="display:none">
-              <!-- Cards de resumo -->
-              <div class="fin-grid cols-4" style="margin-bottom:18px">
-                <div class="fin-card hero">
-                  <div class="fin-lbl">Gasto total</div>
-                  <div class="fin-val huge" id="tp-spend">R$ 0,00</div>
-                  <div class="fin-delta" id="tp-spend-sub">— campanhas</div>
-                </div>
-                <div class="fin-card accent">
-                  <div class="fin-lbl">Vendas (pixel FB)</div>
-                  <div class="fin-val huge green" id="tp-purchases">0</div>
-                  <div class="fin-delta" id="tp-purchases-sub">CPA médio R$ 0</div>
-                </div>
-                <div class="fin-card">
-                  <div class="fin-lbl">CTR médio</div>
-                  <div class="fin-val" id="tp-ctr">0%</div>
-                  <div class="fin-delta" id="tp-ctr-sub">CPC R$ 0</div>
-                </div>
-                <div class="fin-card">
-                  <div class="fin-lbl">Status do cache</div>
-                  <div class="fin-val" id="tp-cache" style="font-size:14px;line-height:1.3">Live</div>
-                  <div class="fin-delta" id="tp-cache-sub">Atualiza a cada 2min</div>
-                </div>
-              </div>
-
-              <!-- Recomendações automáticas (3 colunas) -->
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px">
-                <div class="fin-best">
-                  <div class="fin-best-h" style="color:#10b981">ESCALAR (CPA ≤ R$ 15)</div>
-                  <div id="tp-scale-list" style="font-size:12px;line-height:1.7"></div>
-                </div>
-                <div style="background:linear-gradient(135deg,rgba(59,130,246,0.12) 0%,#0a0a0b 100%);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:16px">
-                  <div class="fin-best-h" style="color:#60a5fa">MANTER (CPA R$ 16-20)</div>
-                  <div id="tp-keep-list" style="font-size:12px;line-height:1.7"></div>
-                </div>
-                <div class="fin-worst">
-                  <div class="fin-worst-h" style="color:#ef4444">PAUSAR (R$ 30+ sem venda OU CPA &gt; R$ 25)</div>
-                  <div id="tp-pause-list" style="font-size:12px;line-height:1.7"></div>
-                </div>
-              </div>
-
-              <!-- Resumo por conta -->
-              <div class="fin-section" style="margin-bottom:18px">
-                <div class="fin-section-h"><div class="fin-section-t">Resumo por conta</div></div>
-                <div style="overflow-x:auto">
-                  <table class="fin-tbl">
-                    <thead>
-                      <tr><th>Conta</th><th>Gasto</th><th>Vendas</th><th>CPA</th><th>Campanhas</th></tr>
-                    </thead>
-                    <tbody id="tp-accounts-tbody"></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Tabela completa de campanhas -->
-              <div class="fin-section">
-                <div class="fin-section-h">
-                  <div class="fin-section-t">Todas as campanhas <span id="tp-active-count" style="color:#64748b;font-weight:400;font-size:12px"></span></div>
-                  <button class="fin-btn ghost" onclick="tpSyncToFinance()" style="font-size:11px;padding:6px 12px" id="tp-sync-btn">↗ Sincronizar com Detalhamento</button>
-                </div>
-                <div style="overflow-x:auto">
-                  <table class="fin-tbl">
-                    <thead>
-                      <tr>
-                        <th>Conta</th>
-                        <th>Campanha</th>
-                        <th>Gasto</th>
-                        <th>Vendas</th>
-                        <th>CPA</th>
-                        <th>CTR</th>
-                        <th>CPC</th>
-                        <th>Ação</th>
-                      </tr>
-                    </thead>
-                    <tbody id="tp-campaigns-tbody"></tbody>
-                    <tfoot id="tp-campaigns-tfoot" style="background:#000000;font-weight:700"></tfoot>
-                  </table>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1224,11 +1013,6 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             <label class="fe-lbl">Ticket Alto (R$)</label>
             <input type="number" class="fe-inp" id="cfg-high-ticket" placeholder="50" min="1">
             <div style="font-size:10px;color:var(--text3);margin-top:3px">Valor mínimo para destacar em dourado</div>
-          </div>
-          <div class="fe-row">
-            <label class="fe-lbl">Taxa de Imposto Facebook (%)</label>
-            <input type="number" class="fe-inp" id="cfg-tax-rate" placeholder="12.15" min="0" max="100" step="0.01">
-            <div style="font-size:10px;color:var(--text3);margin-top:3px">Percentual cobrado pelo Facebook sobre o investimento</div>
           </div>
           <div class="fe-row">
             <label class="fe-lbl">Máx. Funis por Lead por Dia</label>
@@ -2574,7 +2358,6 @@ async function savePixPage(){
 // ==================== FINANCEIRO (NOVO) ====================
 const finBRL = (v) => 'R$ ' + (Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const finBRLshort = (v) => 'R$ ' + Math.round(Number(v)||0).toLocaleString('pt-BR');
-const finRoiClass = (r) => r >= 1.67 ? 'fin-roi-green' : (r >= 1 ? 'fin-roi-blue' : 'fin-roi-red');
 const finMonthName = (m) => ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][m-1] || '';
 const finFmtDateBR = (d) => { const [y,m,dd]=String(d).split('-'); return `${dd}/${m}/${y.substring(2)}`; };
 let finCurrentMonth = null; // {year,month}
@@ -2598,8 +2381,6 @@ function finShowTab(tab, btn){
     if(!finCurrentYear) finCurrentYear = new Date().getFullYear();
     finLoadYear();
   }
-  else if(tab==='campaigns') finLoadCampaigns();
-  else if(tab==='traffic') tpLoad();
   else if(tab==='config') finLoadConfig();
 }
 
@@ -2608,57 +2389,36 @@ async function finLoadDay(){
     const r = await api('/api/finance/day');
     if(!r.success) return;
     const d = r.data;
-    const taxRate = d.tax_rate || 0.1215;
-    const tax = (d.facebook_spend || 0) * taxRate;
-    const totalCost = (d.facebook_spend || 0) + tax;
-    const profit = (d.net || 0) - totalCost;
-    const roi = totalCost > 0 ? (d.net || 0) / totalCost : 0;
     const conv = d.pix_generated > 0 ? ((d.paid || 0) / d.pix_generated * 100).toFixed(1) : '0';
+    const ticket = (d.paid || 0) > 0 ? (d.net || 0) / d.paid : 0;
 
-    document.getElementById('fin-d-spend').textContent = finBRL(d.facebook_spend);
-    document.getElementById('fin-d-spend-tax').textContent = `+ ${finBRL(tax)} imposto`;
     document.getElementById('fin-d-net').textContent = finBRL(d.net);
     document.getElementById('fin-d-gross').textContent = `Bruto: ${finBRL(d.gross)}`;
-    document.getElementById('fin-d-profit').textContent = finBRL(profit);
-    document.getElementById('fin-d-profit').className = 'fin-val huge ' + (profit >= 0 ? 'green' : 'red');
-    document.getElementById('fin-d-roi').textContent = `ROI: ${roi.toFixed(2)}`;
-    document.getElementById('fin-d-pixg').textContent = d.pix_generated || 0;
     document.getElementById('fin-d-paid').textContent = d.paid || 0;
-    document.getElementById('fin-d-cost').textContent = finBRL(totalCost);
+    document.getElementById('fin-d-paid-split').textContent = `PIX ${d.pix_paid || 0} · Cartão ${d.card_paid || 0}`;
+    document.getElementById('fin-d-ticket').textContent = finBRL(ticket);
+    document.getElementById('fin-d-pixg').textContent = d.pix_generated || 0;
+    document.getElementById('fin-d-pixpaid').textContent = d.pix_paid || 0;
+    document.getElementById('fin-d-cardpaid').textContent = d.card_paid || 0;
     document.getElementById('fin-d-conv').textContent = conv + '%';
-    document.getElementById('fin-d-input-spend').value = d.facebook_spend || '';
-    document.getElementById('fin-d-input-tax').value = (taxRate * 100).toFixed(2);
 
     // Histórico 7 dias (usa endpoint do mês e filtra os últimos 7)
     const today = new Date();
     const yyyy = today.getFullYear(), mm = today.getMonth()+1;
     const monthRes = await api(`/api/finance/month?year=${yyyy}&month=${mm}`);
     const days = (monthRes.days || []).slice(-7);
-    const investments = monthRes.investments || {};
     const histEl = document.getElementById('fin-d-history');
     if(!days.length){ histEl.innerHTML = '<div class="fin-empty">Sem dados ainda</div>'; return; }
     const max = Math.max(...days.map(d => d.net || 0), 1);
     histEl.innerHTML = days.map(d => {
-      const inv = investments[d.date] || {};
-      const cost = (inv.facebook_spend || 0) * (1 + (inv.tax_rate || 0.1215));
-      const lucro = (d.net || 0) - cost;
       const pct = (d.net || 0) / max * 100;
       return `<div class="fin-bar">
         <div class="fin-bar-label">${finFmtDateBR(d.date)}</div>
         <div class="fin-bar-track"><div class="fin-bar-fill" style="width:${pct}%"></div></div>
-        <div class="fin-bar-val">${finBRL(d.net)} · <span style="color:${lucro>=0?'#10b981':'#ef4444'}">${finBRL(lucro)}</span></div>
+        <div class="fin-bar-val">${finBRL(d.net)} · ${d.paid || 0} vendas</div>
       </div>`;
     }).join('');
   } catch(e) { console.error('finLoadDay:', e); }
-}
-
-async function finSaveDaySpend(){
-  const spend = parseFloat(document.getElementById('fin-d-input-spend').value) || 0;
-  const taxPct = parseFloat(document.getElementById('fin-d-input-tax').value);
-  const tax_rate = !isNaN(taxPct) ? taxPct / 100 : 0.1215;
-  const r = await api('/api/finance/day', { method:'POST', body: JSON.stringify({ facebook_spend: spend, tax_rate }) });
-  if(r.success){ showToast('Salvo!', 'success'); finLoadDay(); }
-  else showToast('Erro: ' + (r.error||''), 'error');
 }
 
 async function finLoadMonth(){
@@ -2678,52 +2438,31 @@ async function finLoadMonth(){
   const r = await api(`/api/finance/month?year=${year}&month=${month}`);
   if(!r.success) return;
   const days = r.days || [];
-  const inv = r.investments || {};
 
-  let totalSpend=0, totalGross=0, totalNet=0, taxRate=0.1215, daysWithData=0;
-  let bestDay=null, worstDay=null, bestRoi=-Infinity, worstRoi=Infinity;
+  let totalGross=0, totalNet=0, totalPaid=0, daysWithData=0;
+  let bestDay=null, worstDay=null, bestNet=-Infinity, worstNet=Infinity;
 
-  // Junta dias de eventos com dias de investimento
-  const allDates = new Set([...days.map(d=>d.date), ...Object.keys(inv)]);
-  const rows = [];
-  Array.from(allDates).sort().forEach(date => {
-    const d = days.find(x=>x.date===date) || {gross:0, net:0};
-    const i = inv[date] || {facebook_spend:0, tax_rate:0.1215};
-    const tr = i.tax_rate || 0.1215;
-    if(i.tax_rate) taxRate = i.tax_rate;
-    const tax = (i.facebook_spend || 0) * tr;
-    const cost = (i.facebook_spend || 0) + tax;
+  days.forEach(d => {
     const net = d.net || 0;
-    const lucro = net - cost;
-    const roi = cost > 0 ? net / cost : 0;
-    rows.push({date, spend: i.facebook_spend||0, tax, cost, gross: d.gross||0, net, lucro, roi});
-    totalSpend += (i.facebook_spend || 0);
     totalGross += d.gross || 0;
     totalNet += net;
-    if(net > 0 || (i.facebook_spend||0) > 0){
+    totalPaid += d.paid || 0;
+    if(net > 0){
       daysWithData++;
-      if(roi > bestRoi){ bestRoi = roi; bestDay = date; }
-      if(roi < worstRoi){ worstRoi = roi; worstDay = date; }
+      if(net > bestNet){ bestNet = net; bestDay = d.date; }
+      if(net < worstNet){ worstNet = net; worstDay = d.date; }
     }
   });
 
-  const totalTax = totalSpend * taxRate;
-  const totalCost = totalSpend + totalTax;
-  const totalProfit = totalNet - totalCost;
-  const totalRoi = totalCost > 0 ? totalNet / totalCost : 0;
-
-  document.getElementById('fin-m-spend').textContent = finBRLshort(totalSpend);
-  document.getElementById('fin-m-tax').textContent = finBRLshort(totalTax);
-  document.getElementById('fin-m-cost').textContent = finBRLshort(totalCost);
+  const ticket = totalPaid > 0 ? totalNet / totalPaid : 0;
   document.getElementById('fin-m-gross').textContent = finBRLshort(totalGross);
   document.getElementById('fin-m-net').textContent = finBRLshort(totalNet);
-  document.getElementById('fin-m-profit').textContent = finBRLshort(totalProfit);
-  document.getElementById('fin-m-profit').className = 'fin-val ' + (totalProfit >= 0 ? 'green' : 'red');
-  document.getElementById('fin-m-roi').textContent = `ROI: ${totalRoi.toFixed(2)}`;
+  document.getElementById('fin-m-paid').textContent = totalPaid;
+  document.getElementById('fin-m-ticket').textContent = finBRLshort(ticket);
 
-  if(bestDay){ document.getElementById('fin-m-best-d').textContent = finFmtDateBR(bestDay); document.getElementById('fin-m-best-r').textContent = `ROI ${bestRoi.toFixed(2)}`; }
+  if(bestDay){ document.getElementById('fin-m-best-d').textContent = finFmtDateBR(bestDay); document.getElementById('fin-m-best-r').textContent = finBRL(bestNet); }
   else { document.getElementById('fin-m-best-d').textContent = '—'; document.getElementById('fin-m-best-r').textContent = '—'; }
-  if(worstDay){ document.getElementById('fin-m-worst-d').textContent = finFmtDateBR(worstDay); document.getElementById('fin-m-worst-r').textContent = `ROI ${worstRoi.toFixed(2)}`; }
+  if(worstDay){ document.getElementById('fin-m-worst-d').textContent = finFmtDateBR(worstDay); document.getElementById('fin-m-worst-r').textContent = finBRL(worstNet); }
   else { document.getElementById('fin-m-worst-d').textContent = '—'; document.getElementById('fin-m-worst-r').textContent = '—'; }
 
   // Projeção do mês baseada na média diária
@@ -2733,9 +2472,8 @@ async function finLoadMonth(){
     const lastDay = new Date(year, month, 0).getDate();
     const dayNow = now.getDate();
     const projecaoNet = (totalNet / dayNow) * lastDay;
-    const projecaoLucro = (totalProfit / dayNow) * lastDay;
     document.getElementById('fin-m-projection-banner').style.display = 'flex';
-    document.getElementById('fin-m-projection-text').innerHTML = `Projeção do mês no ritmo atual: <strong>${finBRL(projecaoNet)}</strong> faturado · <strong>${finBRL(projecaoLucro)}</strong> de lucro`;
+    document.getElementById('fin-m-projection-text').innerHTML = `Projeção do mês no ritmo atual: <strong>${finBRL(projecaoNet)}</strong> faturado`;
   } else {
     document.getElementById('fin-m-projection-banner').style.display = 'none';
   }
@@ -2746,28 +2484,16 @@ async function finLoadMonth(){
   tbody.innerHTML = '';
   for(let day=1; day<=lastDayOfMonth; day++){
     const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const r = rows.find(x=>x.date===dateStr) || {date:dateStr, spend:0, tax:0, cost:0, gross:0, net:0, lucro:0, roi:0};
+    const d = days.find(x=>x.date===dateStr) || {paid:0, gross:0, net:0};
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}</td>
-      <td><input type="number" step="0.01" value="${r.spend || ''}" placeholder="0.00" data-date="${dateStr}" onchange="finSaveDayCell(this)"></td>
-      <td style="color:#f59e0b">${finBRL(r.tax)}</td>
-      <td>${finBRL(r.gross)}</td>
-      <td style="color:${r.net>0?'#10b981':'#cbd5e1'}">${finBRL(r.net)}</td>
-      <td style="color:${r.lucro>=0?'#10b981':'#ef4444'};font-weight:600">${finBRL(r.lucro)}</td>
-      <td><span class="fin-roi-pill ${finRoiClass(r.roi)}">${r.roi.toFixed(2)}</span></td>
+      <td>${d.paid || 0}</td>
+      <td>${finBRL(d.gross)}</td>
+      <td style="color:${(d.net||0)>0?'#10b981':'#cbd5e1'}">${finBRL(d.net)}</td>
     `;
     tbody.appendChild(tr);
   }
-}
-
-async function finSaveDayCell(input){
-  const date = input.dataset.date;
-  const facebook_spend = parseFloat(input.value) || 0;
-  const taxPct = parseFloat(document.getElementById('fin-d-input-tax').value);
-  const tax_rate = !isNaN(taxPct) ? taxPct / 100 : 0.1215;
-  await api('/api/finance/day', { method:'POST', body: JSON.stringify({ date, facebook_spend, tax_rate }) });
-  finLoadMonth();
 }
 
 function finChangeMonth(delta){
@@ -2788,64 +2514,41 @@ async function finLoadYear(){
   if(!r.success) return;
   const months = r.months || [];
 
-  // Soma totais
-  let totalGross=0, totalNet=0, totalSpend=0, totalRoi=0, monthsWithData=0;
-  // Pra calcular total spend e lucro precisamos buscar os investimentos de cada mês
-  const monthDataPromises = [];
-  for(let m=1; m<=12; m++){
-    monthDataPromises.push(api(`/api/finance/month?year=${finCurrentYear}&month=${m}`).catch(()=>null));
-  }
-  const allMonths = await Promise.all(monthDataPromises);
+  let totalGross=0, totalNet=0, totalPaid=0;
   const monthCards = [];
   for(let m=1; m<=12; m++){
-    const md = allMonths[m-1];
-    if(!md || !md.success){ monthCards.push(null); continue; }
-    let mSpend=0, mGross=0, mNet=0, taxRate=0.1215;
-    (md.days || []).forEach(d=>{ mGross += d.gross || 0; mNet += d.net || 0; });
-    Object.values(md.investments || {}).forEach(i=>{ mSpend += (i.facebook_spend||0); if(i.tax_rate) taxRate = i.tax_rate; });
-    const mTax = mSpend * taxRate;
-    const mCost = mSpend + mTax;
-    const mProfit = mNet - mCost;
-    const mRoi = mCost > 0 ? mNet / mCost : 0;
-    if(mNet > 0 || mSpend > 0){
-      totalSpend += mSpend; totalGross += mGross; totalNet += mNet;
-      totalRoi += mRoi; monthsWithData++;
-    }
-    monthCards.push({m, name: finMonthName(m), spend: mSpend, tax: mTax, gross: mGross, net: mNet, profit: mProfit, roi: mRoi, hasData: mNet>0||mSpend>0});
+    const key = `${finCurrentYear}-${String(m).padStart(2,'0')}`;
+    const md = months.find(x => x.month === key);
+    const mGross = md?.gross || 0, mNet = md?.net || 0, mPaid = md?.paid || 0;
+    totalGross += mGross; totalNet += mNet; totalPaid += mPaid;
+    monthCards.push({m, name: finMonthName(m), gross: mGross, net: mNet, paid: mPaid, hasData: mNet > 0 || mPaid > 0});
   }
-  const totalTax = totalSpend * 0.1215;
-  const totalCost = totalSpend + totalTax;
-  const totalProfit = totalNet - totalCost;
-  const avgRoi = monthsWithData > 0 ? totalRoi / monthsWithData : 0;
 
-  document.getElementById('fin-y-spend').textContent = finBRLshort(totalSpend);
+  const ticket = totalPaid > 0 ? totalNet / totalPaid : 0;
   document.getElementById('fin-y-net').textContent = finBRLshort(totalNet);
-  document.getElementById('fin-y-profit').textContent = finBRLshort(totalProfit);
-  document.getElementById('fin-y-profit').className = 'fin-val ' + (totalProfit >= 0 ? 'green' : 'red');
-  document.getElementById('fin-y-roi').textContent = avgRoi.toFixed(2);
+  document.getElementById('fin-y-gross').textContent = finBRLshort(totalGross);
+  document.getElementById('fin-y-paid').textContent = totalPaid;
+  document.getElementById('fin-y-ticket').textContent = finBRLshort(ticket);
 
   // Bars
-  const maxNet = Math.max(...monthCards.filter(x=>x).map(x=>x.net), 1);
+  const maxNet = Math.max(...monthCards.map(x=>x.net), 1);
   document.getElementById('fin-y-bars').innerHTML = monthCards.map(c => {
-    if(!c) return '';
     const pct = c.net / maxNet * 100;
     return `<div class="fin-bar">
       <div class="fin-bar-label">${c.name}</div>
       <div class="fin-bar-track"><div class="fin-bar-fill" style="width:${pct}%"></div></div>
-      <div class="fin-bar-val">${finBRLshort(c.net)} · ROI ${c.roi.toFixed(2)}</div>
+      <div class="fin-bar-val">${finBRLshort(c.net)} · ${c.paid} vendas</div>
     </div>`;
   }).join('');
 
   // Cards
-  document.getElementById('fin-y-months').innerHTML = monthCards.filter(c=>c && c.hasData).map(c => `
+  document.getElementById('fin-y-months').innerHTML = monthCards.filter(c=>c.hasData).map(c => `
     <div class="fin-month-card">
       <div class="fin-month-card-name">${c.name} ${finCurrentYear}</div>
-      <div class="fin-month-stat"><span>Investido</span><span>${finBRL(c.spend)}</span></div>
-      <div class="fin-month-stat"><span>Imposto</span><span style="color:#f59e0b">${finBRL(c.tax)}</span></div>
+      <div class="fin-month-stat"><span>Vendas</span><span>${c.paid}</span></div>
       <div class="fin-month-stat"><span>Faturado bruto</span><span>${finBRL(c.gross)}</span></div>
       <div class="fin-month-stat"><span>Faturado líquido</span><span style="color:#10b981">${finBRL(c.net)}</span></div>
-      <div class="fin-month-stat"><span>Lucro</span><span style="color:${c.profit>=0?'#10b981':'#ef4444'};font-weight:700">${finBRL(c.profit)}</span></div>
-      <div class="fin-month-stat"><span>ROI</span><span><span class="fin-roi-pill ${finRoiClass(c.roi)}">${c.roi.toFixed(2)}</span></span></div>
+      <div class="fin-month-stat"><span>Ticket médio</span><span>${finBRL(c.paid > 0 ? c.net / c.paid : 0)}</span></div>
     </div>
   `).join('') || '<div class="fin-empty">Sem dados no ano</div>';
 }
@@ -2854,345 +2557,6 @@ function finChangeYear(delta){
   if(!finCurrentYear) finCurrentYear = new Date().getFullYear();
   finCurrentYear += delta;
   finLoadYear();
-}
-
-async function finLoadCampaigns(){
-  const startEl = document.getElementById('fin-c-start');
-  const endEl = document.getElementById('fin-c-end');
-  if(!startEl.value || !endEl.value){
-    const today = new Date();
-    const end = today.toISOString().split('T')[0];
-    const start = new Date(today.getTime() - 30*24*60*60*1000).toISOString().split('T')[0];
-    startEl.value = start;
-    endEl.value = end;
-  }
-  const start = startEl.value;
-  const end = endEl.value;
-
-  const tbody = document.getElementById('fin-c-tbody');
-  const warn = document.getElementById('fin-c-empty-warn');
-  const summary = document.getElementById('fin-c-summary');
-  const bars = document.getElementById('fin-c-bars');
-
-  try {
-    const r = await api(`/api/finance/campaigns?start=${start}&end=${end}`);
-    if(!r.success) return;
-    const data = r.data || [];
-
-    const filtered = data.filter(c => c.campaign && c.campaign !== '(sem campanha)' && c.sales > 0);
-    const semCampanha = data.find(c => c.campaign === '(sem campanha)' && c.sales > 0);
-
-    if(filtered.length === 0){
-      warn.style.display = 'block';
-      summary.style.display = 'none';
-      bars.style.display = 'none';
-      tbody.innerHTML = semCampanha
-        ? `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">${semCampanha.sales} venda(s) registrada(s) sem UTM. Configure UTMs nos anúncios pra ver atribuição.</td></tr>`
-        : '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">Sem vendas no período</td></tr>';
-      return;
-    }
-    warn.style.display = 'none';
-
-    // Totais
-    const totalNet = filtered.reduce((s, c) => s + (c.net || 0), 0);
-    const totalGross = filtered.reduce((s, c) => s + (c.gross || 0), 0);
-    const totalSales = filtered.reduce((s, c) => s + (c.sales || 0), 0);
-    const avgTicket = totalSales > 0 ? totalNet / totalSales : 0;
-    const top = filtered[0];
-    const topShare = totalNet > 0 ? ((top.net / totalNet) * 100) : 0;
-
-    // Cards de resumo
-    summary.style.display = 'grid';
-    document.getElementById('fin-c-sum-sales').textContent = totalSales;
-    document.getElementById('fin-c-sum-camps').textContent = filtered.length + ' campanha' + (filtered.length>1?'s':'');
-    document.getElementById('fin-c-sum-net').textContent = finBRL(totalNet);
-    document.getElementById('fin-c-sum-gross').textContent = 'bruto: ' + finBRL(totalGross);
-    document.getElementById('fin-c-sum-ticket').textContent = finBRL(avgTicket);
-    document.getElementById('fin-c-sum-top').textContent = top.campaign.length > 28 ? top.campaign.slice(0,26)+'…' : top.campaign;
-    document.getElementById('fin-c-sum-top-share').textContent = topShare.toFixed(1) + '% do total · ' + top.sales + ' vendas';
-
-    // Barras visuais (top 5)
-    bars.style.display = 'block';
-    const topFive = filtered.slice(0, 5);
-    bars.innerHTML = `<div class="fin-section-t" style="margin-bottom:12px;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px">Top 5 — Share de receita</div>` +
-      topFive.map(c => {
-        const sharePct = totalNet > 0 ? (c.net / totalNet) * 100 : 0;
-        const label = c.campaign.length > 36 ? c.campaign.slice(0,34)+'…' : c.campaign;
-        return `<div class="fin-bar">
-          <div class="fin-bar-label" style="min-width:200px">${label}</div>
-          <div class="fin-bar-track"><div class="fin-bar-fill" style="width:${sharePct}%"></div></div>
-          <div class="fin-bar-val">${finBRL(c.net)}</div>
-        </div>`;
-      }).join('');
-
-    // Tabela
-    tbody.innerHTML = filtered.map((c, i) => {
-      const ticket = c.sales > 0 ? c.net / c.sales : 0;
-      const sharePct = totalNet > 0 ? ((c.net / totalNet) * 100) : 0;
-      const isTop = i === 0;
-      return `<tr>
-        <td><span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:${isTop?'rgba(16,185,129,0.2)':'rgba(255,255,255,.1)'};color:${isTop?'#10b981':'#94a3b8'};font-weight:700;font-size:11px;text-align:center;line-height:22px">${i+1}</span></td>
-        <td style="font-weight:600;color:#fff">${c.campaign}</td>
-        <td><b style="color:#10b981">${c.sales}</b></td>
-        <td>${finBRL(c.gross)}</td>
-        <td><b style="color:#10b981">${finBRL(c.net)}</b></td>
-        <td>${finBRL(ticket)}</td>
-        <td><span class="fin-roi-pill ${sharePct>=30?'fin-roi-green':sharePct>=10?'fin-roi-blue':'fin-roi-red'}">${sharePct.toFixed(1)}%</span></td>
-      </tr>`;
-    }).join('');
-  } catch(e) { console.error('finLoadCampaigns:', e); }
-}
-
-// ============ TRÁFEGO PAGO (Meta Ads) ============
-let tpLastData = null;
-let tpAutoRefreshTimer = null;
-// Ordem fixa das contas (preferência do operador)
-const TP_ACCOUNT_ORDER = [
-  '1461614615629400', '1629089901623558', '1622718682182464', '2191256211690806', '1155819999945859', // RELÍQUIA 01-05
-  '1039293134421426', '566851802209516',  // BM03 06, 01
-  '1300248702004312', '1219579496722870', '2445042322587028' // ORION 01, 02, 03
-];
-function tpOrderIdx(accId) {
-  const i = TP_ACCOUNT_ORDER.indexOf(accId);
-  return i === -1 ? 999 : i;
-}
-
-async function tpLoad(forceRefresh){
-  const period = document.getElementById('tp-period').value || 'today';
-  const loading = document.getElementById('tp-loading');
-  const content = document.getElementById('tp-content');
-  const notConfig = document.getElementById('tp-not-configured');
-  const refreshBtn = document.getElementById('tp-refresh-btn');
-
-  loading.style.display = 'block';
-  if (refreshBtn) refreshBtn.disabled = true;
-
-  try {
-    const url = `/api/meta/insights?period=${period}${forceRefresh ? '&_t=' + Date.now() : ''}`;
-    const r = await api(url);
-
-    if (!r.success) {
-      loading.style.display = 'none';
-      if (r.error && r.error.includes('META_ACCESS_TOKEN')) {
-        notConfig.style.display = 'block';
-        content.style.display = 'none';
-      } else {
-        notConfig.style.display = 'block';
-        notConfig.innerHTML = `❌ Erro: ${r.error || 'desconhecido'}`;
-        content.style.display = 'none';
-      }
-      return;
-    }
-
-    notConfig.style.display = 'none';
-    tpLastData = r;
-
-    // Popula dropdown de contas na ORDEM fixa do operador (uma vez)
-    const accSel = document.getElementById('tp-account-filter');
-    if (accSel.options.length <= 1) {
-      const sortedAccs = [...r.accounts].sort((a, b) => tpOrderIdx(a.id) - tpOrderIdx(b.id));
-      sortedAccs.forEach(a => {
-        const opt = document.createElement('option');
-        opt.value = a.id;
-        opt.textContent = a.label;
-        accSel.appendChild(opt);
-      });
-    }
-
-    tpRender();
-    loading.style.display = 'none';
-    content.style.display = 'block';
-
-    // Auto-sync silencioso com Detalhamento Diário (today/yesterday só)
-    if (period === 'today' || period === 'yesterday') {
-      api('/api/finance/sync-meta-day', { method:'POST', body: JSON.stringify({period}) })
-        .catch(()=>{ /* silent */ });
-    }
-
-    // Auto-refresh a cada 5min se essa aba estiver ativa
-    if (tpAutoRefreshTimer) clearTimeout(tpAutoRefreshTimer);
-    tpAutoRefreshTimer = setTimeout(() => {
-      const stillActive = document.getElementById('fin-tab-traffic')?.classList.contains('active');
-      if (stillActive) tpLoad();
-    }, 5 * 60 * 1000);
-
-  } catch (e) {
-    console.error('tpLoad:', e);
-    loading.style.display = 'none';
-    notConfig.style.display = 'block';
-    notConfig.innerHTML = `❌ Erro ao carregar: ${e.message}`;
-  } finally {
-    if (refreshBtn) refreshBtn.disabled = false;
-  }
-}
-
-function tpRender(){
-  if (!tpLastData) return;
-  const filterAcc = document.getElementById('tp-account-filter').value;
-  let camps = tpLastData.campaigns || [];
-  if (filterAcc) camps = camps.filter(c => c.account_id === filterAcc);
-
-  // Recalcula totais aplicando filtro
-  const totals = camps.reduce((a, c) => {
-    a.spend += c.spend; a.impressions += c.impressions; a.clicks += c.clicks; a.purchases += c.purchases;
-    return a;
-  }, { spend: 0, impressions: 0, clicks: 0, purchases: 0 });
-  const cpa = totals.purchases > 0 ? totals.spend / totals.purchases : null;
-  const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-  const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
-
-  // Cards superiores
-  document.getElementById('tp-spend').textContent = finBRL(totals.spend);
-  document.getElementById('tp-spend-sub').textContent = `${camps.length} campanhas`;
-  document.getElementById('tp-purchases').textContent = totals.purchases;
-  document.getElementById('tp-purchases-sub').textContent = `CPA médio ${cpa ? finBRL(cpa) : '—'}`;
-  document.getElementById('tp-ctr').textContent = ctr.toFixed(2) + '%';
-  document.getElementById('tp-ctr-sub').textContent = `CPC R$ ${cpc.toFixed(3)}`;
-
-  // Status do cache
-  if (tpLastData.cached) {
-    document.getElementById('tp-cache').textContent = `Cache (${tpLastData.cache_age_sec}s)`;
-    document.getElementById('tp-cache-sub').textContent = 'TTL 2min';
-  } else {
-    document.getElementById('tp-cache').textContent = 'Live';
-    document.getElementById('tp-cache-sub').textContent = new Date(tpLastData.fetched_at).toLocaleTimeString('pt-BR');
-  }
-
-  // Listas de recomendação
-  const scaleList = camps.filter(c => c.action === 'scale').sort((a,b) => (a.cpa||999) - (b.cpa||999));
-  const keepList = camps.filter(c => c.action === 'keep').sort((a,b) => (a.cpa||999) - (b.cpa||999));
-  const pauseList = camps.filter(c => c.action === 'pause').sort((a,b) => b.spend - a.spend);
-
-  const renderRecList = (list, color) => {
-    if (list.length === 0) return `<div style="color:#64748b;font-style:italic">Nenhuma campanha nessa categoria</div>`;
-    return list.slice(0, 8).map(c => {
-      const name = c.campaign_name.length > 38 ? c.campaign_name.slice(0,36)+'…' : c.campaign_name;
-      const cpaTxt = c.cpa ? `CPA ${finBRL(c.cpa)}` : `R$ ${c.spend.toFixed(2)} sem venda`;
-      return `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px">
-        <div style="font-weight:600;color:#fff;font-size:11px">${name}</div>
-        <div style="color:${color};font-size:10px">${c.account_label} · ${cpaTxt} · ${c.purchases}v</div>
-      </div>`;
-    }).join('') + (list.length > 8 ? `<div style="color:#64748b;font-size:10px;margin-top:4px">+${list.length - 8} mais</div>` : '');
-  };
-
-  document.getElementById('tp-scale-list').innerHTML = renderRecList(scaleList, '#10b981');
-  document.getElementById('tp-keep-list').innerHTML = renderRecList(keepList, '#60a5fa');
-  document.getElementById('tp-pause-list').innerHTML = renderRecList(pauseList, '#ef4444');
-
-  // Resumo por conta — ordem fixa do operador
-  const byAcc = {};
-  camps.forEach(c => {
-    if (!byAcc[c.account_id]) byAcc[c.account_id] = { id: c.account_id, label: c.account_label, spend: 0, purchases: 0, count: 0 };
-    byAcc[c.account_id].spend += c.spend;
-    byAcc[c.account_id].purchases += c.purchases;
-    byAcc[c.account_id].count += 1;
-  });
-  const orderedAccs = Object.values(byAcc).sort((a,b) => tpOrderIdx(a.id) - tpOrderIdx(b.id));
-  const accRows = orderedAccs.map(a => {
-    const accCpa = a.purchases > 0 ? a.spend / a.purchases : null;
-    const cpaColor = accCpa === null ? '#64748b' : (accCpa <= 15 ? '#10b981' : accCpa <= 25 ? '#60a5fa' : '#ef4444');
-    return `<tr>
-      <td style="font-weight:600;color:#fff">${a.label}</td>
-      <td>${finBRL(a.spend)}</td>
-      <td><b style="color:#10b981">${a.purchases}</b></td>
-      <td style="color:${cpaColor};font-weight:700">${accCpa ? finBRL(accCpa) : '—'}</td>
-      <td style="color:#94a3b8">${a.count}</td>
-    </tr>`;
-  }).join('');
-  // Linha TOTAL do resumo por conta
-  const accTotalCpa = totals.purchases > 0 ? totals.spend / totals.purchases : null;
-  const accTotalCpaColor = accTotalCpa === null ? '#64748b' : (accTotalCpa <= 15 ? '#10b981' : accTotalCpa <= 25 ? '#60a5fa' : '#ef4444');
-  const accFooter = `<tr style="background:#000000;font-weight:700;border-top:2px solid #10b981">
-    <td style="color:#10b981">TOTAL</td>
-    <td style="color:#fff">${finBRL(totals.spend)}</td>
-    <td><b style="color:#10b981">${totals.purchases}</b></td>
-    <td style="color:${accTotalCpaColor}">${accTotalCpa ? finBRL(accTotalCpa) : '—'}</td>
-    <td style="color:#fff">${camps.length}</td>
-  </tr>`;
-  document.getElementById('tp-accounts-tbody').innerHTML = (accRows + accFooter) || `<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px">Sem dados no período</td></tr>`;
-
-  // Tabela completa de campanhas — ORDENADA POR CONTA (na ordem fixa) e dentro da conta por gasto desc
-  const sorted = [...camps].sort((a, b) => {
-    const oa = tpOrderIdx(a.account_id);
-    const ob = tpOrderIdx(b.account_id);
-    if (oa !== ob) return oa - ob;
-    return b.spend - a.spend;
-  });
-
-  // Renderiza com SEPARADOR entre contas
-  const campRowsParts = [];
-  let lastAcc = null;
-  for (const c of sorted) {
-    if (c.account_id !== lastAcc) {
-      // Cabeçalho de seção da conta
-      campRowsParts.push(`<tr style="background:rgba(16,185,129,0.05)"><td colspan="8" style="padding:10px 16px;color:#10b981;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-top:1px solid rgba(255,255,255,.1)">━━━ ${c.account_label} ━━━</td></tr>`);
-      lastAcc = c.account_id;
-    }
-    const actionConf = {
-      scale: { color: '#10b981', label: '🚀 Escalar', bg: 'rgba(16,185,129,0.1)' },
-      keep: { color: '#60a5fa', label: '✅ Manter', bg: 'rgba(59,130,246,0.1)' },
-      pause: { color: '#ef4444', label: '🛑 Pausar', bg: 'rgba(239,68,68,0.1)' },
-      monitor: { color: '#94a3b8', label: '⏳ Monitorar', bg: 'rgba(148,163,184,0.1)' }
-    }[c.action] || { color: '#94a3b8', label: '—', bg: 'transparent' };
-    const cpaColor = c.cpa === null ? '#64748b' : (c.cpa <= 15 ? '#10b981' : c.cpa <= 25 ? '#60a5fa' : '#ef4444');
-    const name = c.campaign_name.length > 50 ? c.campaign_name.slice(0,48)+'…' : c.campaign_name;
-    campRowsParts.push(`<tr>
-      <td style="color:#94a3b8;font-size:11px">${c.account_label}</td>
-      <td style="font-weight:600;color:#fff" title="${c.action_reason}">${name}</td>
-      <td>${finBRL(c.spend)}</td>
-      <td><b style="color:#10b981">${c.purchases}</b></td>
-      <td style="color:${cpaColor};font-weight:700">${c.cpa ? finBRL(c.cpa) : '—'}</td>
-      <td>${c.ctr.toFixed(1)}%</td>
-      <td>R$ ${c.cpc.toFixed(3)}</td>
-      <td><span style="display:inline-block;padding:3px 8px;background:${actionConf.bg};color:${actionConf.color};border-radius:6px;font-size:10px;font-weight:700;white-space:nowrap" title="${c.action_reason}">${actionConf.label}</span></td>
-    </tr>`);
-  }
-  document.getElementById('tp-campaigns-tbody').innerHTML = campRowsParts.join('') || `<tr><td colspan="8" style="text-align:center;color:#64748b;padding:20px">Sem campanhas no período</td></tr>`;
-
-  // Linha TOTAL no tfoot
-  const totalCpa = totals.purchases > 0 ? totals.spend / totals.purchases : null;
-  const totalCpaColor = totalCpa === null ? '#64748b' : (totalCpa <= 15 ? '#10b981' : totalCpa <= 25 ? '#60a5fa' : '#ef4444');
-  document.getElementById('tp-campaigns-tfoot').innerHTML = `<tr style="background:#000000;border-top:2px solid #10b981">
-    <td colspan="2" style="color:#10b981;font-weight:700;font-size:13px;padding:14px 16px">📊 TOTAL DO PERÍODO</td>
-    <td style="color:#fff;font-size:14px">${finBRL(totals.spend)}</td>
-    <td><b style="color:#10b981;font-size:14px">${totals.purchases}</b></td>
-    <td style="color:${totalCpaColor};font-size:14px">${totalCpa ? finBRL(totalCpa) : '—'}</td>
-    <td style="color:#94a3b8">${ctr.toFixed(2)}%</td>
-    <td style="color:#94a3b8">R$ ${cpc.toFixed(3)}</td>
-    <td style="color:#94a3b8;font-size:11px">${camps.length} camp.</td>
-  </tr>`;
-
-  // Contagem de campanhas no header
-  const activeCount = camps.length;
-  const sellingCount = camps.filter(c => c.purchases > 0).length;
-  document.getElementById('tp-active-count').textContent = `· ${activeCount} ativas (${sellingCount} venderam)`;
-}
-
-// Sincroniza gasto Meta com Detalhamento Diário do dia atual
-async function tpSyncToFinance() {
-  const btn = document.getElementById('tp-sync-btn');
-  const period = document.getElementById('tp-period').value;
-  if (!['today','yesterday'].includes(period)) {
-    showToast('Sincronização só funciona pra Hoje ou Ontem', 'error');
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = '⏳ Sincronizando...';
-  try {
-    const r = await api('/api/finance/sync-meta-day', { method:'POST', body: JSON.stringify({period}) });
-    if (r.success) {
-      showToast(`Sincronizado: ${r.date} = ${finBRL(r.facebook_spend)}`, 'success');
-      // Recarrega aba "Hoje" do financeiro caso ela esteja visível
-      if (document.getElementById('fin-tab-day').classList.contains('active')) finLoadDay();
-    } else {
-      showToast(`Erro: ${r.error}`, 'error');
-    }
-  } catch(e) {
-    showToast(`Erro: ${e.message}`, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '↗ Sincronizar com Detalhamento';
-  }
 }
 
 async function finLoadConfig(){
@@ -3259,18 +2623,12 @@ async function finExportMonth(){
   const {year, month} = finCurrentMonth;
   const r = await api(`/api/finance/month?year=${year}&month=${month}`);
   if(!r.success) return;
-  const lines = [['Data','Investido','Imposto','Faturado Bruto','Faturado Líquido','Lucro','ROI']];
-  const inv = r.investments || {};
+  const lines = [['Data','Vendas','Faturado Bruto','Faturado Líquido']];
   const lastDay = new Date(year, month, 0).getDate();
   for(let day=1; day<=lastDay; day++){
     const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const d = (r.days || []).find(x=>x.date===dateStr) || {gross:0, net:0};
-    const i = inv[dateStr] || {facebook_spend:0, tax_rate:0.1215};
-    const tax = (i.facebook_spend||0) * (i.tax_rate||0.1215);
-    const cost = (i.facebook_spend||0) + tax;
-    const lucro = (d.net||0) - cost;
-    const roi = cost > 0 ? (d.net||0)/cost : 0;
-    lines.push([finFmtDateBR(dateStr), (i.facebook_spend||0).toFixed(2), tax.toFixed(2), (d.gross||0).toFixed(2), (d.net||0).toFixed(2), lucro.toFixed(2), roi.toFixed(2)]);
+    const d = (r.days || []).find(x=>x.date===dateStr) || {paid:0, gross:0, net:0};
+    lines.push([finFmtDateBR(dateStr), String(d.paid||0), (d.gross||0).toFixed(2), (d.net||0).toFixed(2)]);
   }
   const csv = lines.map(r=>r.join(';')).join('\n');
   const blob = new Blob([new TextEncoder().encode('﻿'+csv)], {type:'text/csv;charset=utf-8'});
@@ -3925,7 +3283,6 @@ async function loadSettings() {
   document.getElementById('cfg-pix-timeout').value = pix;
   document.getElementById('cfg-reactivation').value = d.REACTIVATION_DAYS||3;
   document.getElementById('cfg-high-ticket').value = d.HIGH_TICKET_MIN||50;
-  document.getElementById('cfg-tax-rate').value = parseFloat(d.TAX_RATE||0.1215)*100;
   document.getElementById('cfg-max-funnels').value = d.MAX_FUNNELS_PER_LEAD_PER_DAY||3;
   document.getElementById('cfg-cleanup').value = d.CLEANUP_DAYS||7;
   const cd = document.getElementById('cfg-cooldown'); if(cd) cd.value = d.FUNNEL_COOLDOWN_DAYS||7;
@@ -3980,7 +3337,6 @@ async function saveSettings() {
   }
   const payload = {
     HIGH_TICKET_MIN: document.getElementById('cfg-high-ticket').value,
-    TAX_RATE: (parseFloat(document.getElementById('cfg-tax-rate').value||12.15)/100).toString(),
     MAX_FUNNELS_PER_LEAD_PER_DAY: document.getElementById('cfg-max-funnels').value,
     REACTIVATION_DAYS: document.getElementById('cfg-reactivation').value,
     FUNNEL_COOLDOWN_DAYS: document.getElementById('cfg-cooldown')?.value || '7',

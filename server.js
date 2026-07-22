@@ -61,9 +61,6 @@ function getPixTimeoutMs() {
     if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
     return 7 * 60 * 1000; // default mantido 7min (retrocompat) — Iago muda no admin pra 5min
 }
-// Mantido pra retrocompat. Code novo usa getPixTimeoutMs() pra valor dinâmico.
-let PIX_TIMEOUT = 7 * 60 * 1000;
-
 // ⭐ 12/05: delays opcionais pra primeira msg de funis ABANDONO e APROVADA.
 //          Default 0 = INSTANTÂNEO (comportamento atual preservado).
 //          Pra ativar, setar no admin/env: ABANDONO_DELAY_MS=150000 (2:30) e APROVADA_DELAY_MS=120000 (2:00)
@@ -155,12 +152,6 @@ const EVOLUTION_WEBHOOK_TOKEN = process.env.EVOLUTION_WEBHOOK_TOKEN || '';
 // LinkRotator integration (opcional — se vazio, não faz relay)
 const LINKROTATOR_URL = process.env.LINKROTATOR_URL || '';
 const LINKROTATOR_TOKEN = process.env.LINKROTATOR_TOKEN || '';
-// Meta Ads integration (opcional — se vazio, aba Tráfego Pago fica desabilitada)
-const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || '';
-// Formato: "id1:Nome 1,id2:Nome 2" (sem prefixo act_; nome é livre pra label)
-const META_AD_ACCOUNTS = process.env.META_AD_ACCOUNTS || '';
-const META_API_VERSION = process.env.META_API_VERSION || 'v19.0';
-const META_PAUSE_THRESHOLD = parseFloat(process.env.META_PAUSE_THRESHOLD || '30'); // R$ sem venda = sugerir pausar
 if (!JWT_SECRET || !ADMIN_LOGIN || (!ADMIN_PASSWORD && !ADMIN_PASSWORD_HASH)) {
   throw new Error("Variáveis de ambiente obrigatórias não definidas!");
 }
@@ -591,6 +582,7 @@ const PUSH_PREF_KEYS = {
     card: 'notif_payment',
     cart_abandoned: 'notif_cart_abandoned',
     card_refused: 'notif_card_refused',
+    refund: 'notif_refund',
     daily_summary: 'notif_daily_summary',
     morning_summary: 'notif_morning_summary'
 };
@@ -646,20 +638,14 @@ async function sendDailySummaryPush(period) {
     try {
         const finance = db.getFinanceDay(todayBR());
         const netRev = parseFloat(finance.net) || 0;
-        const fbSpend = parseFloat(finance.facebook_spend) || 0;
-        const taxRate = parseFloat(finance.tax_rate) || 0.1215;
-        const netProfit = netRev - fbSpend - (fbSpend * taxRate);
-        const roi = fbSpend > 0 ? (netRev / (fbSpend * (1 + taxRate))) : 0;
 
         if (period === 'morning') {
             const title = `Bom dia · ${totalSales} vendas · ${fmt(netRev)}`;
-            const body = `PIX gerados ${today.pix_generated} · Conversão ${convRate}%` + (fbSpend > 0 ? ` · Gasto ${fmt(fbSpend)} · ROI ${roi.toFixed(2)}x` : '');
+            const body = `PIX gerados ${today.pix_generated} · Conversão ${convRate}%`;
             await sendPushNotification(title, body, 'morning_summary');
         } else {
             const title = `Fechamento · ${totalSales} vendas · ${fmt(netRev)}`;
-            const body = fbSpend > 0
-                ? `Faturou ${fmt(netRev)} · Gastou ${fmt(fbSpend)} · Lucro ${fmt(netProfit)} · ROI ${roi.toFixed(2)}x`
-                : `Faturou ${fmt(netRev)} · ${totalSales} vendas · Conversão ${convRate}% (sem gasto FB hoje)`;
+            const body = `Faturou ${fmt(netRev)} · ${totalSales} vendas · Conversão ${convRate}%`;
             await sendPushNotification(title, body, 'daily_summary');
         }
     } catch(e) { /* não pode bloquear cron */ }
@@ -850,7 +836,7 @@ function getHighValueThreshold() {
     return parseFloat(db.getSetting('high_value_threshold', '50')) || 50;
 }
 
-function buildPaymentNotification(type, customerName, netValue) {
+function buildPaymentNotification(type, customerName, netValue, productName = null) {
     const valor = formatBRL(netValue);
     const nome = formatName(customerName) || 'Cliente';
     // Detecção mantida apenas para diferenciar vibração/som no service worker.
@@ -874,18 +860,31 @@ function buildPaymentNotification(type, customerName, netValue) {
     } else if (type === 'card_refused') {
         title = `Cartão Recusado · ${valor}`;
         pushType = 'card_refused';
+    } else if (type === 'payment_refused') {
+        // Recusa em métodos que não são cartão (PayPal, boleto etc.) — mesma preferência do recusado
+        title = `Pagamento Recusado · ${valor}`;
+        pushType = 'card_refused';
+    } else if (type === 'refund') {
+        title = `Reembolso · ${valor}`;
+        pushType = 'refund';
     } else {
         // fallback (compatibilidade com chamadas antigas)
         title = `Venda Aprovada · ${valor}`;
         pushType = 'payment';
     }
 
+    // Corpo em linha única: "Produto · Nome" (produto longo é cortado pra não quebrar em 2 linhas)
+    let produto = productName ? String(productName).trim() : '';
+    if (produto.length > 32) produto = produto.slice(0, 31).trimEnd() + '…';
+    const body = produto ? `${produto} · ${nome}` : nome;
+
     return {
         title,
-        body: nome,
+        body,
         pushType,
-        isFemale,
-        highValue: isHighValue
+        // Reembolso/recusa não usam vibração comemorativa
+        isFemale: (type === 'refund') ? false : isFemale,
+        highValue: (type === 'refund' || type === 'card_refused' || type === 'payment_refused') ? false : isHighValue
     };
 }
 
@@ -2035,7 +2034,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
         sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
         {
             // ⭐ FIX 06/26: PIX em cooldown não notificava nada — parecia que o sistema falhou. Agora o push avisa.
-            const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount);
+            const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount, productName);
             await sendPushNotification(notif.title, notif.body + ' · repetido, funil não disparado', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
         }
         addLog('PIX_SKIPPED', `⏸️ PIX registrado mas funil não disparado (cooldown) para ${phoneKey}`, { orderCode });
@@ -2076,7 +2075,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 
     sendSSE('pix_generated', { phoneKey, customerName, productName, amount: conv.amountDisplay, netValue: netValue || amount, orderCode });
     {
-        const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount);
+        const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount, productName);
         await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
     }
     addLog('PIX_WAITING', `⏳ PIX aguardando para ${phoneKey}`, { orderCode });
@@ -2125,8 +2124,6 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
         const cancelled = db.cancelScheduledFunnelsByPhone(phoneKey, 'cliente_pagou');
         if (cancelled > 0) addLog('RECOVERY_CANCEL_PAID_LIVE', `🚫 ${cancelled} agendamento(s) de recuperação cancelado(s) — cliente acabou de pagar`, { phoneKey });
     } catch(e) {}
-    // Atualiza receita automática do dia para o módulo de investimentos
-    try { db.updateDailyAutoRevenue(todayBR(), netValue || amount || 0); } catch(e) {}
     if (abVariant) db.recordABResult(abVariant, true);
     if (existingSticky) db.updateInstanceStats(existingSticky, 0, true);
 
@@ -2134,7 +2131,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amountDisplay, netValue: netValue || amount, paymentMethod: paymentMethod || 'PIX' });
     {
         const isCard = paymentMethod === 'CREDIT_CARD';
-        const notif = buildPaymentNotification(isCard ? 'card_paid' : 'pix_paid', customerName, netValue || amount);
+        const notif = buildPaymentNotification(isCard ? 'card_paid' : 'pix_paid', customerName, netValue || amount, productName);
         await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
     }
 
@@ -2216,7 +2213,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         // ⭐ FIX 06/26: abandono/cartão recusado em cooldown eram 100% silenciosos — agora o push avisa
         if (funnelType === 'ABANDONO' || funnelType === 'CARTAO_RECUSADO') {
             try {
-                const notif = buildPaymentNotification(funnelType === 'ABANDONO' ? 'cart_abandoned' : 'card_refused', customerName, netValue || amount);
+                const notif = buildPaymentNotification(funnelType === 'ABANDONO' ? 'cart_abandoned' : 'card_refused', customerName, netValue || amount, productName);
                 await sendPushNotification(notif.title, notif.body + ' · repetido, funil não disparado', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
             } catch(e) {}
         }
@@ -2236,7 +2233,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amtDisplay, netValue: netValue || amount, paymentMethod: paymentMethod || 'PIX' });
         {
             const isCard = paymentMethod === 'CREDIT_CARD';
-            const notif = buildPaymentNotification(isCard ? 'card_paid' : 'pix_paid', customerName, netValue || amount);
+            const notif = buildPaymentNotification(isCard ? 'card_paid' : 'pix_paid', customerName, netValue || amount, productName);
             await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
         }
     }
@@ -2905,10 +2902,12 @@ app.post('/webhook/kirvano', async (req, res) => {
         const orderBumps = (data.products || []).filter(p => p.is_order_bump).map(p => p.name);
         // Lista completa de produtos pra resumo do pedido na página PIX (principal primeiro)
         const productsForSummary = extractProductsForSummary(data.products);
-        const mainOfferId = (data.products || []).find(p => !p.is_order_bump)?.offer_id;
+        const mainProduct = (data.products || []).find(p => !p.is_order_bump) || null;
+        const mainOfferId = mainProduct?.offer_id;
         const productDb = mainOfferId ? db.getProductByOfferId(mainOfferId) : null;
         const productId = productDb?.id || 'GRUPO_VIP';
-        const productName = productDb?.name || 'GRUPO VIP';
+        // ⭐ 22/07: produto não cadastrado usa o NOME REAL vindo do webhook (antes tudo virava "GRUPO VIP")
+        const productName = productDb?.name || mainProduct?.name || 'GRUPO VIP';
 
         // VALOR BRUTO: o que o cliente pagou (fiscal.total_value é o mais confiável)
         const amount = parseFloat(data.fiscal?.total_value) ||
@@ -2980,6 +2979,9 @@ app.post('/webhook/kirvano', async (req, res) => {
 
         const isAbandoned = event.includes('ABANDON') || status === 'ABANDONED' || event === 'CHECKOUT_ABANDONED';
         const isRefused = event.includes('REFUSED') || event.includes('DECLINED') || event.includes('FAILED') || status === 'REFUSED' || status === 'DECLINED' || status === 'FAILED';
+        // ⭐ 22/07: reembolso/estorno/chargeback (antes eram ignorados em silêncio)
+        const isRefunded = event.includes('REFUND') || event.includes('CHARGEBACK') || event.includes('CHARGEDBACK') ||
+                           status === 'REFUNDED' || status === 'CHARGEBACK' || status === 'CHARGEDBACK';
 
         // Relay pro LinkRotator (fire-and-forget — não atrasa nem trava o webhook)
         const relayPayload = {
@@ -2997,7 +2999,27 @@ app.post('/webhook/kirvano', async (req, res) => {
             utm_campaign: utmCampaign
         };
 
-        if (isApproved) {
+        if (isRefunded) {
+            // ⭐ 22/07: reembolso — cancela funil/timers ativos, registra evento e notifica
+            const existingConv = findConversationUniversal(customerPhone);
+            const convKey = existingConv?.phoneKey || phoneKey;
+            for (const k of new Set([phoneKey, convKey])) {
+                const pt = pixTimeouts.get(k); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(k); try { db.deletePixTimeout(k); } catch(e) {} }
+            }
+            if (existingConv && !existingConv.canceled && !existingConv.completed) {
+                existingConv.canceled = true; existingConv.canceledAt = new Date(); existingConv.cancelReason = 'reembolso';
+                conversations.set(convKey, existingConv);
+                try { convToDb(convKey, existingConv); } catch(e) {}
+                bumpEpoch(convKey); // mata o loop do funil na hora
+            }
+            try { db.cancelScheduledFunnelsByPhone(phoneKey, 'reembolso'); } catch(e) {}
+            db.recordEvent('REFUNDED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps });
+            addLog('REFUNDED', `↩️ Reembolso: ${customerName} · R$${(netValue || amount || 0).toFixed(2)}`, { orderCode, phoneKey });
+            {
+                const notif = buildPaymentNotification('refund', customerName, netValue || amount, productName);
+                await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+            }
+        } else if (isApproved) {
             const existingConv = findConversationUniversal(customerPhone);
             // ⭐ FIX 06/26: usa a chave REAL da conversa encontrada (pode viver sob outra variação do número)
             const convKey = existingConv?.phoneKey || phoneKey;
@@ -3015,20 +3037,22 @@ app.post('/webhook/kirvano', async (req, res) => {
             }
             // Repassa pro LinkRotator (sem await — fire-and-forget)
             relayToLinkRotator(isCard ? 'CARD_PAID' : 'SALE_APPROVED', relayPayload);
-        } else if (isRefused && isCard) {
-            // ⭐ FIX 10/05: cartão recusado só dispara se cliente NÃO está em funil ativo
+        } else if (isRefused) {
+            // ⭐ 22/07: recusado agora cobre TODAS as formas de pagamento (antes só cartão).
+            // Notifica sempre; o funil CARTAO_RECUSADO continua disparando só pra cartão sem funil ativo.
             const activeType = getActiveFunnelType(phoneKey);
-            if (activeType) {
-                addLog('CARD_REFUSED_IGNORED', `💳❌ Cartão recusado IGNORADO — cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
-            } else {
-                addLog('CARD_REFUSED', `💳❌ Cartão recusado: ${customerName}`, { orderCode, phoneKey });
-                {
-                    const notif = buildPaymentNotification('card_refused', customerName, netValue || amount);
-                    await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
-                }
+            db.recordEvent('REFUSED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps });
+            addLog('PAYMENT_REFUSED', `💳❌ ${isCard ? 'Cartão' : 'Pagamento'} recusado: ${customerName}${activeType ? ` (já em ${activeType} — funil não dispara)` : ''}`, { orderCode, phoneKey });
+            {
+                const notif = buildPaymentNotification(isCard ? 'card_refused' : 'payment_refused', customerName, netValue || amount, productName);
+                await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+            }
+            if (isCard && !activeType) {
                 await startFunnel(phoneKey, remoteJid, 'CARTAO_RECUSADO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'CREDIT_CARD', location, null, customerEmail);
             }
         } else if (isAbandoned) {
+            // ⭐ 22/07: registra o evento sempre (alimenta a lista de contatos por evento)
+            db.recordEvent('ABANDONED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: orderBumps });
             // ⭐ 15/05: Toggle global — se DESLIGADO, registra em events/log mas não dispara nada.
             // Funis em andamento NÃO são tocados (regra: só bloqueia NOVOS).
             if (!isAbandonoEnabled()) {
@@ -3044,7 +3068,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                     addLog('ABANDONED_IGNORED', `🛒 Carrinho abandonado — funil bloqueado, cliente já em ${activeType} (${customerName})`, { orderCode, phoneKey });
                     sendSSE('cart_abandoned', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
                     {
-                        const notif = buildPaymentNotification('cart_abandoned', customerName, amount);
+                        const notif = buildPaymentNotification('cart_abandoned', customerName, amount, productName);
                         await sendPushNotification(notif.title, notif.body + ' · já está em outro funil', notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
                     }
                 } else if (hasPaidRecently(phoneKey, 24)) {
@@ -3056,7 +3080,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                     sendSSE('cart_abandoned', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode });
                     // ⭐ FIX 10/05: push notification no celular com emoji 🛒 distinto (iPhone web push)
                     {
-                        const notif = buildPaymentNotification('cart_abandoned', customerName, amount);
+                        const notif = buildPaymentNotification('cart_abandoned', customerName, amount, productName);
                         await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
                     }
                     await startFunnel(phoneKey, remoteJid, 'ABANDONO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location, null, customerEmail);
@@ -3074,7 +3098,7 @@ app.post('/webhook/kirvano', async (req, res) => {
                 db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
                 sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
                 {
-                    const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount);
+                    const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount, productName);
                     await sendPushNotification(notif.title, notif.body + ` · ${motivo}`, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
                 }
             } else {
@@ -3140,7 +3164,12 @@ app.post('/webhook/perfectpay', async (req, res) => {
         const utmTerm = data.utm_term || data.marketing_utm_term || data.tracking?.utm_term || null;
 
         // Determina o evento que vai pro logWebhook
-        const ppEvent = statusEnum === 2 ? 'SALE_APPROVED' : (statusEnum === 1 ? 'PIX_GENERATED' : `STATUS_${statusEnum}`);
+        // sale_status_enum PerfectPay: 1=pendente · 2=aprovada · 5=recusada · 7=reembolsada · 9=chargeback
+        const ppEvent = statusEnum === 2 ? 'SALE_APPROVED'
+            : statusEnum === 1 ? 'PIX_GENERATED'
+            : statusEnum === 5 ? 'SALE_REFUSED'
+            : (statusEnum === 7 || statusEnum === 9) ? 'SALE_REFUNDED'
+            : `STATUS_${statusEnum}`;
 
         // Auditoria — grava TODO webhook (mesmo recusado/abandono) pra ROI por campanha
         try {
@@ -3225,6 +3254,40 @@ app.post('/webhook/perfectpay', async (req, res) => {
             // A checagem de "já existe" é feita dentro de createPixWaitingConversation (respeita Modo Teste)
             // ⭐ FIX 10/05: passar pixExpiresAt + productsForSummary (faltavam — página PIX caía em 24h fixo e resumo vazio)
             await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], 'PIX', location, pixExpiresAt, ppProductsForSummary, customerEmail);
+            res.json({ success: true });
+        } else if (statusEnum === 7 || statusEnum === 9) {
+            // ⭐ 22/07: reembolso/chargeback — cancela funil ativo, registra e notifica
+            const existingConv = findConversationUniversal(customerPhone);
+            const convKey = existingConv?.phoneKey || phoneKey;
+            for (const k of new Set([phoneKey, convKey])) {
+                const pt = pixTimeouts.get(k); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(k); try { db.deletePixTimeout(k); } catch(e) {} }
+            }
+            if (existingConv && !existingConv.canceled && !existingConv.completed) {
+                existingConv.canceled = true; existingConv.canceledAt = new Date(); existingConv.cancelReason = 'reembolso';
+                conversations.set(convKey, existingConv);
+                try { convToDb(convKey, existingConv); } catch(e) {}
+                bumpEpoch(convKey);
+            }
+            try { db.cancelScheduledFunnelsByPhone(phoneKey, 'reembolso'); } catch(e) {}
+            db.recordEvent('REFUNDED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount: saleAmount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: [] });
+            addLog('REFUNDED', `↩️ Reembolso (PerfectPay): ${customerName} · R$${(netValue || saleAmount || 0).toFixed(2)}`, { orderCode, phoneKey });
+            {
+                const notif = buildPaymentNotification('refund', customerName, netValue || saleAmount, productName);
+                await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+            }
+            res.json({ success: true });
+        } else if (statusEnum === 5) {
+            // ⭐ 22/07: pagamento recusado — notifica sempre; funil só pra cartão sem funil ativo
+            const activeType = getActiveFunnelType(phoneKey);
+            db.recordEvent('REFUSED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount: saleAmount, net_value: netValue, payment_method: paymentMethod, order_code: orderCode, order_bumps: [] });
+            addLog('PAYMENT_REFUSED', `💳❌ ${isCard ? 'Cartão' : 'Pagamento'} recusado (PerfectPay): ${customerName}`, { orderCode, phoneKey });
+            {
+                const notif = buildPaymentNotification(isCard ? 'card_refused' : 'payment_refused', customerName, netValue || saleAmount, productName);
+                await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+            }
+            if (isCard && !activeType) {
+                await startFunnel(phoneKey, remoteJid, 'CARTAO_RECUSADO', orderCode, customerName, productId, productName, saleAmount, netValue, pixCode, [], 'CREDIT_CARD', location, null, customerEmail);
+            }
             res.json({ success: true });
         } else res.json({ success: true });
         } finally { releaseWebhookLock(phoneKey); }
@@ -3907,8 +3970,6 @@ app.post('/api/cleanup-day', authMiddleware, (req, res) => {
         summary.instance_stats = r3.changes;
         const r4 = db.getDb().prepare(`DELETE FROM phone_messages_daily WHERE date = ?`).run(date);
         summary.phone_messages = r4.changes;
-        // Zera auto_revenue do dia (pra recontagem)
-        db.getDb().prepare(`UPDATE daily_investment SET auto_revenue = 0 WHERE date = ?`).run(date);
 
         addLog('CLEANUP_DAY', `🧹 Stats de ${date} zeradas: ${r1.changes} eventos, ${r2.changes} mensagens`);
         res.json({ success: true, summary });
@@ -4748,15 +4809,10 @@ app.get('/api/daily-summary', authMiddleware, (req, res) => {
         }
 
         const result = [];
-        let aggGross = 0, aggNet = 0, aggSpend = 0, aggTax = 0, aggProfit = 0, aggPaid = 0, aggPixGen = 0;
+        let aggGross = 0, aggNet = 0, aggPaid = 0, aggPixGen = 0;
         for (const dateStr of dates) {
             const finance = db.getFinanceDay(dateStr);
             const netRev = parseFloat(finance.net) || 0;
-            const fbSpend = parseFloat(finance.facebook_spend) || 0;
-            const taxRate = parseFloat(finance.tax_rate) || 0.1215;
-            const taxAmount = netRev * taxRate;
-            const netProfit = netRev - fbSpend - taxAmount;
-            const roi = fbSpend > 0 ? (netRev / fbSpend) : 0;
             const row = {
                 date: dateStr,
                 paid: finance.paid || 0,
@@ -4764,23 +4820,14 @@ app.get('/api/daily-summary', authMiddleware, (req, res) => {
                 card_paid: finance.card_paid || 0,
                 pix_generated: finance.pix_generated || 0,
                 gross_revenue: parseFloat(finance.gross) || 0,
-                net_revenue: netRev,
-                facebook_spend: fbSpend,
-                tax_amount: taxAmount,
-                net_profit: netProfit,
-                roi: parseFloat(roi.toFixed(2)),
-                has_spend_data: fbSpend > 0
+                net_revenue: netRev
             };
             aggGross += row.gross_revenue;
             aggNet += netRev;
-            aggSpend += fbSpend;
-            aggTax += taxAmount;
-            aggProfit += netProfit;
             aggPaid += row.paid;
             aggPixGen += row.pix_generated;
             result.push(row);
         }
-        const aggRoi = aggSpend > 0 ? parseFloat((aggNet / aggSpend).toFixed(2)) : 0;
         res.json({
             success: true,
             data: result,
@@ -4789,120 +4836,12 @@ app.get('/api/daily-summary', authMiddleware, (req, res) => {
                 paid: aggPaid,
                 pix_generated: aggPixGen,
                 gross_revenue: aggGross,
-                net_revenue: aggNet,
-                facebook_spend: aggSpend,
-                tax_amount: aggTax,
-                net_profit: aggProfit,
-                roi: aggRoi
+                net_revenue: aggNet
             }
         });
     } catch(e) {
         res.status(500).json({ success: false, error: e.message });
     }
-});
-
-// ===== ADICIONAR GASTO FACEBOOK PELO APP MOBILE =====
-// POST /api/investment-add-spend { amount: number, date?: 'YYYY-MM-DD' }
-// ADICIONA (não substitui) ao facebook_spend do dia. Idempotência fica por conta do operador.
-app.post('/api/investment-add-spend', authMiddleware, (req, res) => {
-    try {
-        const amount = parseFloat(req.body?.amount);
-        if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
-            return res.status(400).json({ success: false, error: 'amount inválido (precisa ser número entre 0.01 e 100000)' });
-        }
-        const date = req.body?.date || todayBR();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            return res.status(400).json({ success: false, error: 'date precisa ser YYYY-MM-DD' });
-        }
-        const existing = db.getDb().prepare('SELECT * FROM daily_investment WHERE date = ?').get(date) || {};
-        const previous = parseFloat(existing.facebook_spend) || 0;
-        const newSpend = previous + amount;
-        const todayEvents = db.getDb().prepare("SELECT SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as rev FROM events WHERE date(datetime(created_at, '-3 hours')) = ?").get(date);
-        const autoRev = todayEvents?.rev || existing.auto_revenue || 0;
-        const result = db.saveDailyInvestment({
-            date,
-            facebook_spend: newSpend,
-            extra_revenue: existing.extra_revenue || 0,
-            auto_revenue: autoRev,
-            tax_rate: existing.tax_rate || 0.1215,
-            notes: existing.notes ? (existing.notes + ` · +R$${amount.toFixed(2)} via app`) : `+R$${amount.toFixed(2)} via app`
-        });
-        addLog('INVESTMENT_ADD', `📈 Gasto FB +R$${amount.toFixed(2)} (total ${newSpend.toFixed(2)}) via app mobile`, { date });
-        res.json({ success: true, date, added: amount, previous, total: newSpend, data: result });
-    } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-// ===== ROI AO VIVO (otimizado pra app mobile) =====
-// Retorna ROI, lucro, gasto e receita do dia atual num único call.
-// Chamado a cada 20s pelo mobile junto do dashboard.
-app.get('/api/roi-live', authMiddleware, (req, res) => {
-    try {
-        const today = todayBR();
-        const finance = db.getFinanceDay(today);
-        const netRevenue = parseFloat(finance.net) || 0;
-        const grossRevenue = parseFloat(finance.gross) || 0;
-        const fbSpend = parseFloat(finance.facebook_spend) || 0;
-        const taxRate = parseFloat(finance.tax_rate) || 0.1215;
-        const taxAmount = netRevenue * taxRate;
-        const netProfit = netRevenue - fbSpend - taxAmount;
-        // ROI = receita líquida / gasto Facebook (não considera taxa — métrica de tráfego puro)
-        const roi = fbSpend > 0 ? (netRevenue / fbSpend) : 0;
-        // ROI líquido = lucro / gasto (considera taxa do gateway)
-        const roiNet = fbSpend > 0 ? (netProfit / fbSpend) : 0;
-        res.json({
-            success: true,
-            data: {
-                date: today,
-                paid: finance.paid || 0,
-                pix_paid: finance.pix_paid || 0,
-                card_paid: finance.card_paid || 0,
-                gross_revenue: grossRevenue,
-                net_revenue: netRevenue,
-                facebook_spend: fbSpend,
-                tax_rate: taxRate,
-                tax_amount: taxAmount,
-                net_profit: netProfit,
-                roi: parseFloat(roi.toFixed(2)),
-                roi_net: parseFloat(roiNet.toFixed(2)),
-                has_spend_data: fbSpend > 0
-            }
-        });
-    } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-// ===== DAILY INVESTMENT API =====
-app.get('/api/investment', authMiddleware, (req, res) => {
-    const { from, to } = req.query;
-    const startDate = from || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
-    const endDate = to || new Date().toISOString().split('T')[0];
-    const data = db.getDailyInvestmentRange(startDate, endDate);
-    // Preenche dias sem dados com zeros
-    const result = [];
-    const current = new Date(startDate);
-    const end = new Date(endDate);
-    while (current <= end) {
-        const dateStr = current.toISOString().split('T')[0];
-        const existing = data.find(d => d.date === dateStr);
-        // Pega receita automática do dia nos eventos
-        const todayEvents = db.getDb().prepare("SELECT SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as rev FROM events WHERE date(created_at) = ?").get(dateStr);
-        const autoRev = todayEvents?.rev || existing?.auto_revenue || 0;
-        result.push(existing ? { ...existing, auto_revenue: autoRev } : { date: dateStr, facebook_spend: 0, extra_revenue: 0, auto_revenue: autoRev, tax_rate: 0.1215, tax_amount: 0, total_cost: 0, total_revenue: autoRev, net_profit: autoRev, roi: 0, notes: '' });
-        current.setDate(current.getDate() + 1);
-    }
-    res.json({ success: true, data: result });
-});
-app.post('/api/investment/:date', authMiddleware, (req, res) => {
-    const { date } = req.params;
-    const { facebook_spend, extra_revenue, notes, tax_rate } = req.body;
-    // Pega receita automática do dia
-    const todayEvents = db.getDb().prepare("SELECT SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as rev FROM events WHERE date(created_at) = ?").get(date);
-    const autoRev = todayEvents?.rev || 0;
-    const result = db.saveDailyInvestment({ date, facebook_spend: parseFloat(facebook_spend)||0, extra_revenue: parseFloat(extra_revenue)||0, auto_revenue: autoRev, tax_rate: parseFloat(tax_rate)||0.1215, notes });
-    res.json({ success: true, data: result });
 });
 
 // ===== INSTANCE HEALTH API =====
@@ -4957,8 +4896,9 @@ app.post('/api/test/notification', authMiddleware, async (req, res) => {
     const type = req.body?.type || 'pix_paid';
     const netValue = parseFloat(req.body?.netValue) || 30;
     const customerName = req.body?.customerName || 'Cliente Teste';
+    const productName = req.body?.productName || 'Produto Teste';
     try {
-        const notif = buildPaymentNotification(type, customerName, netValue);
+        const notif = buildPaymentNotification(type, customerName, netValue, productName);
         await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
         res.json({ success: true, preview: notif });
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
@@ -4974,7 +4914,8 @@ const NOTIF_PREF_LIST = [
     { key: 'notif_pix_generated', label: 'PIX gerado' },
     { key: 'notif_payment', label: 'Pagamento aprovado' },
     { key: 'notif_cart_abandoned', label: 'Carrinho abandonado' },
-    { key: 'notif_card_refused', label: 'Cartão recusado' },
+    { key: 'notif_card_refused', label: 'Pagamento recusado' },
+    { key: 'notif_refund', label: 'Reembolso' },
     { key: 'notif_morning_summary', label: 'Resumo da manhã (9h)' },
     { key: 'notif_daily_summary', label: 'Fechamento do dia (23:59)' }
 ];
@@ -5044,609 +4985,15 @@ app.get('/api/finance/day', authMiddleware, (req, res) => {
     const date = req.query.date || todayBR();
     res.json({ success: true, data: db.getFinanceDay(date) });
 });
-app.post('/api/finance/day', authMiddleware, (req, res) => {
-    try {
-        const date = req.body?.date || todayBR();
-        const facebook_spend = parseFloat(req.body?.facebook_spend) || 0;
-        const tax_rate = parseFloat(req.body?.tax_rate);
-        const notes = req.body?.notes || '';
-        const auto_revenue = db.getFinanceDay(date).net || 0;
-        const result = db.saveDailyInvestment({ date, facebook_spend, tax_rate: isNaN(tax_rate) ? 0.1215 : tax_rate, auto_revenue, notes });
-        res.json({ success: true, data: { date, ...result } });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
 app.get('/api/finance/month', authMiddleware, (req, res) => {
     const year = req.query.year || new Date().getFullYear();
     const month = req.query.month || (new Date().getMonth() + 1);
     const days = db.getFinanceMonth(year, month);
-    const investments = db.getDailyInvestmentByMonth(year, month);
-    const invByDate = {};
-    for (const inv of investments) invByDate[inv.date] = inv;
-    res.json({ success: true, year, month, days, investments: invByDate });
+    res.json({ success: true, year, month, days });
 });
 app.get('/api/finance/year', authMiddleware, (req, res) => {
     const year = req.query.year || new Date().getFullYear();
     res.json({ success: true, year, months: db.getFinanceYear(year) });
-});
-app.get('/api/finance/campaigns', authMiddleware, (req, res) => {
-    const start = req.query.start || todayBR();
-    const end = req.query.end || todayBR();
-    res.json({ success: true, data: db.getCampaignROI(start, end) });
-});
-
-// ============ META ADS — TRÁFEGO PAGO ============
-// Cache simples em memória (TTL 2min) pra não bater na Meta a cada refresh
-const metaCache = new Map();
-const META_CACHE_TTL = 2 * 60 * 1000;
-
-// ⭐ 15/05: MULTI-BM SUPPORT
-// Lê dinamicamente META_ACCESS_TOKEN (BM1, sem sufixo) + META_ACCESS_TOKEN_BM2/BM3/... (até BM20).
-// Cada BM tem seu próprio System User token (permanente, não expira). Isolamento de falha: 1 BM cai, outras seguem.
-// Uso é 100% leitura (gasto diário por conta) — operador confere manual no FB.
-
-// Filtra token de qualquer mensagem antes de logar/serializar
-function _sanitizeMetaError(msg) {
-    if (msg == null) return msg;
-    return String(msg)
-        .replace(/access_token=[^&\s"']+/gi, 'access_token=REDACTED')
-        .replace(/Bearer\s+[A-Za-z0-9_\-\.]+/gi, 'Bearer REDACTED');
-}
-
-function _normalizeAccountId(id) {
-    return String(id || '').trim().replace(/^act_/i, '').trim();
-}
-
-function _parseAccountsString(str) {
-    if (!str) return [];
-    return str.split(',').map(s => {
-        const parts = s.trim().split(':');
-        const id = _normalizeAccountId(parts[0]);
-        const label = (parts.slice(1).join(':') || id).trim();
-        return { id, label };
-    }).filter(a => a.id && /^\d+$/.test(a.id));
-}
-
-// State global construído no boot — populado por initMetaBMs() + atualizado por checkAllBMsHealth()
-let _metaBMs = []; // [{name, token, accounts: [{id, label}], status: 'ok'|'invalid'|'unchecked', healthError, healthName}]
-let _accountToBM = new Map(); // accountId (sem act_) → {token, bmName, label}
-
-function initMetaBMs() {
-    _metaBMs = [];
-    _accountToBM.clear();
-
-    // BM1 (legado, sem sufixo) — retrocompat: se só ele existir, comportamento idêntico ao antigo
-    const bm1Token = (process.env.META_ACCESS_TOKEN || '').trim();
-    const bm1Accounts = (process.env.META_AD_ACCOUNTS || '').trim();
-    if (bm1Token && bm1Accounts) {
-        _metaBMs.push({ name: 'BM1', token: bm1Token, accounts: _parseAccountsString(bm1Accounts), status: 'unchecked', healthError: null });
-    } else if (bm1Token && !bm1Accounts) {
-        console.warn('[META] ⚠️ META_ACCESS_TOKEN definido mas META_AD_ACCOUNTS vazio — BM1 ignorada');
-    }
-
-    // BM2..BM20 — varre sufixos numerados
-    for (let i = 2; i <= 20; i++) {
-        const tk = (process.env[`META_ACCESS_TOKEN_BM${i}`] || '').trim();
-        const ac = (process.env[`META_AD_ACCOUNTS_BM${i}`] || '').trim();
-        if (!tk && !ac) continue;
-        if (!tk || !ac) {
-            console.warn(`[META] ⚠️ BM${i} mal configurada (${!tk ? 'TOKEN' : 'ACCOUNTS'} vazio) — ignorando`);
-            continue;
-        }
-        _metaBMs.push({ name: `BM${i}`, token: tk, accounts: _parseAccountsString(ac), status: 'unchecked', healthError: null });
-    }
-
-    // Sanity check: BM2+ existe mas BM1 vazio = provável typo do operador
-    if (_metaBMs.length > 0 && !_metaBMs.find(b => b.name === 'BM1') && (process.env.META_ACCESS_TOKEN_BM2 || process.env.META_ACCESS_TOKEN_BM3)) {
-        console.warn('[META] ⚠️ ATENÇÃO: BM2/BM3 detectada(s) mas META_ACCESS_TOKEN (BM1) está VAZIO. Confirma se isso é intencional ou typo no .env.');
-    }
-
-    // Detecta typos da convenção (var META_ACCESS_TOKEN_* ou META_AD_ACCOUNTS_* fora do padrão _BM<n>)
-    for (const key of Object.keys(process.env)) {
-        if (/^META_ACCESS_TOKEN_/.test(key) && !/^META_ACCESS_TOKEN_BM\d+$/.test(key)) {
-            console.warn(`[META] ⚠️ Variável "${key}" não casa padrão "_BM<n>" — ignorada. Use META_ACCESS_TOKEN_BM2, _BM3, etc.`);
-        }
-        if (/^META_AD_ACCOUNTS_/.test(key) && !/^META_AD_ACCOUNTS_BM\d+$/.test(key)) {
-            console.warn(`[META] ⚠️ Variável "${key}" não casa padrão "_BM<n>" — ignorada. Use META_AD_ACCOUNTS_BM2, _BM3, etc.`);
-        }
-    }
-
-    // Constrói mapa accountId → BM. Detecta duplicidade: primeira BM ganha + WARN
-    for (const bm of _metaBMs) {
-        for (const acc of bm.accounts) {
-            if (_accountToBM.has(acc.id)) {
-                const existing = _accountToBM.get(acc.id);
-                console.warn(`[META] ⚠️ Conta "${acc.id}" duplicada em ${existing.bmName} e ${bm.name} — usando ${existing.bmName}`);
-                try { addLog('META_ACCOUNT_DUP', `⚠️ Conta ${acc.id} declarada em ${existing.bmName} e ${bm.name} — usando ${existing.bmName}`); } catch(e) {}
-                continue;
-            }
-            _accountToBM.set(acc.id, { token: bm.token, bmName: bm.name, label: acc.label });
-        }
-    }
-
-    // Log final do boot (sem token)
-    if (_metaBMs.length > 0) {
-        const total = _metaBMs.reduce((a, b) => a + b.accounts.length, 0);
-        const summary = _metaBMs.map(b => `${b.name} (${b.accounts.length} contas)`).join(' · ');
-        console.log(`[META] ${_metaBMs.length} BM(s): ${summary} · ${total} contas no total`);
-    } else {
-        console.log('[META] Nenhuma BM configurada — aba Tráfego Pago desabilitada');
-    }
-}
-
-// Valida cada token via /me da Graph API. Async, roda no boot mas não bloqueia.
-async function checkAllBMsHealth() {
-    if (!_metaBMs.length) return;
-    await Promise.allSettled(_metaBMs.map(async (bm) => {
-        try {
-            const resp = await axios.get(`https://graph.facebook.com/${META_API_VERSION}/me`, {
-                headers: { Authorization: `Bearer ${bm.token}` },
-                timeout: 10000
-            });
-            if (resp.data?.id) {
-                bm.status = 'ok';
-                bm.healthError = null;
-                bm.healthName = resp.data.name || resp.data.id;
-                console.log(`[META] ${bm.name}: token válido ✓ (${bm.healthName})`);
-            } else {
-                bm.status = 'invalid';
-                bm.healthError = 'resposta /me sem id';
-                console.warn(`[META] ${bm.name}: resposta inesperada de /me`);
-            }
-        } catch(e) {
-            bm.status = 'invalid';
-            const rawMsg = e.response?.data?.error?.message || e.message || 'erro desconhecido';
-            bm.healthError = _sanitizeMetaError(rawMsg);
-            console.error(`[META] ${bm.name}: TOKEN INVÁLIDO — ${bm.healthError}`);
-            try { addLog('META_TOKEN_INVALID', `❌ ${bm.name}: ${bm.healthError}`); } catch(_) {}
-        }
-    }));
-}
-
-// Retorna { token, bmName, label } pra uma conta. Fallback: BM1 (caso conta não declarada no env).
-function getTokenForAccount(accountId) {
-    const normalized = _normalizeAccountId(accountId);
-    const found = _accountToBM.get(normalized);
-    if (found) return found;
-    // Fallback transparente — útil quando descobre conta nova via /me/adaccounts
-    const bm1 = _metaBMs.find(b => b.name === 'BM1');
-    if (bm1) return { token: bm1.token, bmName: 'BM1', label: normalized, fallback: true };
-    return null;
-}
-
-function parseMetaAccounts() {
-    // Retorna union de todas as BMs. Mantém ordem das BMs (BM1 primeiro).
-    const out = [];
-    for (const bm of _metaBMs) {
-        for (const acc of bm.accounts) {
-            out.push({ id: acc.id, label: acc.label, bm: bm.name });
-        }
-    }
-    return out;
-}
-
-function getMetaBMsStatus() {
-    return _metaBMs.map(bm => ({
-        name: bm.name,
-        status: bm.status,
-        ok: bm.status === 'ok',
-        error: bm.healthError || null,
-        accounts: bm.accounts.length,
-        identity: bm.healthName || null
-    }));
-}
-
-function isMetaConfigured() {
-    return _metaBMs.length > 0;
-}
-
-// Inicialização do módulo Meta
-initMetaBMs();
-// Health check async — não bloqueia startup
-setTimeout(() => { checkAllBMsHealth().catch(e => console.error('[META] health check erro:', _sanitizeMetaError(e.message))); }, 1000);
-// Revalida tokens a cada 30min (BM cai → operador vê ⚠️ no painel)
-setInterval(() => { checkAllBMsHealth().catch(() => {}); }, 30 * 60 * 1000);
-
-// ⭐ 15/05: Auto-sync Meta → daily_investment a cada 10min, das 8h-23h BR.
-// Atualiza gasto FB do dia atual em background — operador vê gasto fresco no Hero sem tocar em "🔄 Sincronizar".
-// Fora do horário comercial (23h-8h) NÃO roda — economiza ~9h de requests/dia.
-// Pra desligar: META_AUTO_SYNC_ENABLED=0 no .env.
-let _lastMetaAutoSync = null;
-let _lastMetaAutoSyncError = null;
-let _lastMetaAutoSyncSpend = null;
-
-async function autoSyncMetaToday() {
-    if (!isMetaConfigured()) return;
-    if (process.env.META_AUTO_SYNC_ENABLED === '0') return;
-
-    // Horário comercial BR: 8h-23h. UTC = BR + 3h.
-    const now = new Date();
-    const brHour = (now.getUTCHours() - 3 + 24) % 24;
-    if (brHour < 8 || brHour >= 23) return;
-
-    try {
-        const data = await getMetaInsights('today');
-        if (!data.success) {
-            _lastMetaAutoSyncError = _sanitizeMetaError(data.error || 'sem detalhe');
-            return;
-        }
-
-        // dateBR usando o mesmo helper que /api/finance/sync-meta-day
-        const brOffset = -3 * 60 * 60 * 1000;
-        const dateBR = new Date(now.getTime() + brOffset).toISOString().split('T')[0];
-
-        const totalSpend = data.totals.spend || 0;
-        const existing = db.getDb().prepare('SELECT * FROM daily_investment WHERE date = ?').get(dateBR);
-        const taxRate = existing?.tax_rate || 0.1215;
-        const auto_revenue = db.getFinanceDay(dateBR).net || 0;
-        const oldSpend = existing?.facebook_spend || 0;
-
-        db.saveDailyInvestment({
-            date: dateBR,
-            facebook_spend: totalSpend,
-            tax_rate: taxRate,
-            auto_revenue,
-            notes: existing?.notes || '[auto-sync Meta cron 10min]'
-        });
-
-        _lastMetaAutoSync = new Date();
-        _lastMetaAutoSyncError = null;
-        _lastMetaAutoSyncSpend = totalSpend;
-
-        // Só loga se houve mudança relevante (≥ R$0,50 de diferença)
-        if (Math.abs(totalSpend - oldSpend) >= 0.5) {
-            const diff = totalSpend - oldSpend;
-            const sign = diff > 0 ? '+' : '';
-            console.log(`[META auto-sync] ${dateBR}: R$${oldSpend.toFixed(2)} → R$${totalSpend.toFixed(2)} (${sign}R$${diff.toFixed(2)})`);
-        }
-    } catch(e) {
-        _lastMetaAutoSyncError = _sanitizeMetaError(e.message);
-        try { addLog('META_AUTO_SYNC_ERR', _sanitizeMetaError(e.message)); } catch(_) {}
-    }
-}
-
-// Primeira sync 60s depois do boot (dá tempo do health check rodar)
-setTimeout(() => { autoSyncMetaToday().catch(() => {}); }, 60000);
-// Depois a cada 10min
-setInterval(() => { autoSyncMetaToday().catch(() => {}); }, 10 * 60 * 1000);
-
-async function fetchInsightsForAccount(accountId, datePreset, timeRange) {
-    const tk = getTokenForAccount(accountId);
-    if (!tk) {
-        addLog('META_NO_TOKEN', `❌ Sem token pra conta ${accountId}`);
-        return [];
-    }
-    const params = {
-        fields: 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,actions',
-        level: 'campaign',
-        limit: 200
-    };
-    if (timeRange) params.time_range = JSON.stringify(timeRange);
-    else params.date_preset = datePreset || 'today';
-
-    try {
-        const resp = await axios.get(`https://graph.facebook.com/${META_API_VERSION}/act_${accountId}/insights`, {
-            headers: { Authorization: `Bearer ${tk.token}` },
-            params,
-            timeout: 15000
-        });
-        return resp.data.data || [];
-    } catch (e) {
-        const errMsg = _sanitizeMetaError(e.response?.data?.error?.message || e.message);
-        addLog('META_FETCH_ERR', `${tk.bmName}/${accountId}: ${errMsg}`);
-        return [];
-    }
-}
-
-// Busca campanhas ATIVAS (mesmo sem gasto/impressões hoje)
-async function fetchActiveCampaignsForAccount(accountId) {
-    const tk = getTokenForAccount(accountId);
-    if (!tk) return [];
-    const filtering = JSON.stringify([{field:'effective_status',operator:'IN',value:['ACTIVE']}]);
-    try {
-        const resp = await axios.get(`https://graph.facebook.com/${META_API_VERSION}/act_${accountId}/campaigns`, {
-            headers: { Authorization: `Bearer ${tk.token}` },
-            params: {
-                fields: 'id,name,daily_budget,status,effective_status',
-                filtering,
-                limit: 200
-            },
-            timeout: 15000
-        });
-        return resp.data.data || [];
-    } catch (e) {
-        const errMsg = _sanitizeMetaError(e.response?.data?.error?.message || e.message);
-        addLog('META_CAMPAIGNS_ERR', `${tk.bmName}/${accountId}: ${errMsg}`);
-        return [];
-    }
-}
-
-function extractPurchases(actions) {
-    if (!Array.isArray(actions)) return 0;
-    const a = actions.find(x => x.action_type === 'omni_purchase')
-        || actions.find(x => x.action_type === 'purchase')
-        || actions.find(x => x.action_type === 'offsite_conversion.fb_pixel_purchase');
-    return a ? parseInt(a.value, 10) || 0 : 0;
-}
-
-async function getMetaInsights(datePreset, timeRange) {
-    const cacheKey = timeRange ? `range:${JSON.stringify(timeRange)}` : `preset:${datePreset || 'today'}`;
-    const cached = metaCache.get(cacheKey);
-    if (cached && (Date.now() - cached.at) < META_CACHE_TTL) {
-        return { ...cached.data, cached: true, cache_age_sec: Math.floor((Date.now() - cached.at) / 1000) };
-    }
-
-    const accounts = parseMetaAccounts();
-    if (accounts.length === 0) {
-        return { success: false, error: 'Meta Ads não configurado', accounts: [], totals: {}, campaigns: [], bmsStatus: getMetaBMsStatus() };
-    }
-
-    // Busca em paralelo (insights + lista de campanhas ativas).
-    // ⭐ 15/05: allSettled — falha de 1 conta não derruba o agregado. fetchInsightsForAccount/Campaigns já tratam erro internamente.
-    const settled = await Promise.allSettled(accounts.map(async (acc) => {
-        const [insights, activeCamps] = await Promise.all([
-            fetchInsightsForAccount(acc.id, datePreset, timeRange),
-            fetchActiveCampaignsForAccount(acc.id)
-        ]);
-        // MERGE: insights tem dados; activeCamps tem todas ativas (mesmo sem gasto)
-        const insightsByCampId = {};
-        for (const ins of insights) insightsByCampId[ins.campaign_id] = ins;
-        const merged = [];
-        // Primeiro, adiciona TODAS as campanhas ATIVAS (com ou sem insights)
-        for (const ac of activeCamps) {
-            const ins = insightsByCampId[ac.id];
-            if (ins) {
-                merged.push(ins);
-                delete insightsByCampId[ac.id];
-            } else {
-                // Campanha ativa sem gasto/impressões hoje — entra com zeros
-                merged.push({
-                    campaign_id: ac.id,
-                    campaign_name: ac.name,
-                    spend: '0', impressions: '0', clicks: '0', ctr: '0', cpc: '0', cpm: '0',
-                    actions: []
-                });
-            }
-        }
-        // Depois, adiciona insights "órfãos" (de campanhas pausadas/inativas que ainda gastaram hoje)
-        for (const id in insightsByCampId) merged.push(insightsByCampId[id]);
-        return { account: acc, campaigns: merged };
-    }));
-
-    // allSettled: extrai resultados ok, descarta rejected (que já foi logado pelas fetch* funções)
-    const results = settled.filter(s => s.status === 'fulfilled').map(s => s.value);
-
-    let totals = { spend: 0, impressions: 0, clicks: 0, purchases: 0, accounts_count: 0, campaigns_count: 0 };
-    const allCampaigns = [];
-
-    for (const r of results) {
-        let accSpend = 0, accPurch = 0, accClicks = 0, accImpr = 0, accCamps = 0;
-        for (const c of r.campaigns) {
-            const spend = parseFloat(c.spend || 0);
-            const impressions = parseInt(c.impressions || 0, 10);
-            const clicks = parseInt(c.clicks || 0, 10);
-            const ctr = parseFloat(c.ctr || 0);
-            const cpc = parseFloat(c.cpc || 0);
-            const cpm = parseFloat(c.cpm || 0);
-            const purchases = extractPurchases(c.actions);
-            const cpa = purchases > 0 ? +(spend / purchases).toFixed(2) : null;
-
-            // Sugestão automática (régua de pausa baseada no histórico de abril do Iago)
-            let action = 'monitor';
-            let actionReason = '';
-            if (purchases === 0 && spend >= META_PAUSE_THRESHOLD) {
-                action = 'pause';
-                actionReason = `R$${spend.toFixed(2)} sem venda — passou do limite de R$${META_PAUSE_THRESHOLD}`;
-            } else if (purchases >= 1 && cpa && cpa <= 15) {
-                action = 'scale';
-                actionReason = `CPA R$${cpa.toFixed(2)} ≤ R$15 — duplicar 3x amanhã`;
-            } else if (purchases >= 1 && cpa && cpa > 25) {
-                action = 'pause';
-                actionReason = `CPA R$${cpa.toFixed(2)} acima da faixa lucrativa (>R$20)`;
-            } else if (purchases >= 1 && cpa && cpa <= 20) {
-                action = 'keep';
-                actionReason = `CPA R$${cpa.toFixed(2)} dentro da faixa boa`;
-            } else if (purchases === 0 && spend < META_PAUSE_THRESHOLD) {
-                action = 'monitor';
-                actionReason = `Aguardando: gastou R$${spend.toFixed(2)} de R$${META_PAUSE_THRESHOLD}`;
-            }
-
-            allCampaigns.push({
-                account_id: r.account.id,
-                account_label: r.account.label,
-                campaign_id: c.campaign_id,
-                campaign_name: c.campaign_name,
-                spend, impressions, clicks, ctr, cpc, cpm, purchases, cpa,
-                action, action_reason: actionReason
-            });
-
-            accSpend += spend;
-            accPurch += purchases;
-            accClicks += clicks;
-            accImpr += impressions;
-            accCamps += 1;
-            totals.spend += spend;
-            totals.purchases += purchases;
-            totals.clicks += clicks;
-            totals.impressions += impressions;
-            totals.campaigns_count += 1;
-        }
-        if (accCamps > 0) totals.accounts_count += 1;
-        r.account.totals = {
-            spend: +accSpend.toFixed(2),
-            purchases: accPurch,
-            clicks: accClicks,
-            impressions: accImpr,
-            campaigns: accCamps,
-            cpa: accPurch > 0 ? +(accSpend / accPurch).toFixed(2) : null
-        };
-    }
-
-    totals.cpa = totals.purchases > 0 ? +(totals.spend / totals.purchases).toFixed(2) : null;
-    totals.spend = +totals.spend.toFixed(2);
-
-    const bmsStatus = getMetaBMsStatus();
-    const data = {
-        success: true,
-        fetched_at: new Date().toISOString(),
-        totals,
-        accounts: results.map(r => ({ ...r.account })),
-        campaigns: allCampaigns,
-        bmsStatus,
-        cached: false
-    };
-    metaCache.set(cacheKey, { at: Date.now(), data });
-    return data;
-}
-
-// Endpoint de health check rápido pra UI mostrar status sem buscar insights
-app.get('/api/meta/health', authMiddleware, (req, res) => {
-    res.json({
-        success: true,
-        configured: isMetaConfigured(),
-        bmsStatus: getMetaBMsStatus(),
-        total_accounts: parseMetaAccounts().length
-    });
-});
-
-// Status do auto-sync — pro app mostrar "última atualização há X min" perto do botão de sync manual
-app.get('/api/meta/auto-sync-status', authMiddleware, (req, res) => {
-    const enabled = isMetaConfigured() && process.env.META_AUTO_SYNC_ENABLED !== '0';
-    const now = new Date();
-    const brHour = (now.getUTCHours() - 3 + 24) % 24;
-    const inHours = brHour >= 8 && brHour < 23;
-    res.json({
-        success: true,
-        enabled,
-        in_business_hours: inHours,
-        interval_min: 10,
-        window: '08:00-23:00 BR',
-        last_sync: _lastMetaAutoSync ? _lastMetaAutoSync.toISOString() : null,
-        last_sync_age_sec: _lastMetaAutoSync ? Math.floor((Date.now() - _lastMetaAutoSync.getTime()) / 1000) : null,
-        last_spend: _lastMetaAutoSyncSpend,
-        last_error: _lastMetaAutoSyncError
-    });
-});
-
-// Endpoint admin: força recheck dos tokens (usar quando trocar BM no .env)
-app.post('/api/meta/recheck', authMiddleware, async (req, res) => {
-    try {
-        await checkAllBMsHealth();
-        res.json({ success: true, bmsStatus: getMetaBMsStatus() });
-    } catch (e) {
-        res.status(500).json({ success: false, error: _sanitizeMetaError(e.message) });
-    }
-});
-
-// GET /api/meta/insights?period=today|yesterday|last_7d|last_30d
-app.get('/api/meta/insights', authMiddleware, async (req, res) => {
-    try {
-        if (!isMetaConfigured()) return res.json({ success: false, error: 'Meta Ads não configurado' });
-        const period = req.query.period || 'today';
-        const allowed = ['today', 'yesterday', 'last_3d', 'last_7d', 'last_14d', 'last_30d', 'this_month', 'last_month'];
-        const datePreset = allowed.includes(period) ? period : 'today';
-        const data = await getMetaInsights(datePreset);
-        res.json(data);
-    } catch (e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-// POST /api/finance/sync-meta-day — sincroniza gasto Meta com daily_investment de um dia
-// Chamado automaticamente quando o painel Tráfego Pago carrega "today" / "yesterday"
-app.post('/api/finance/sync-meta-day', authMiddleware, async (req, res) => {
-    try {
-        if (!isMetaConfigured()) return res.json({ success: false, error: 'Meta Ads não configurado' });
-        const period = req.body?.period || 'today';
-        if (!['today', 'yesterday'].includes(period)) {
-            return res.status(400).json({ success: false, error: 'period precisa ser today ou yesterday' });
-        }
-        const data = await getMetaInsights(period);
-        if (!data.success) return res.json({ success: false, error: data.error });
-
-        // Determina a data BR
-        const now = new Date();
-        const brOffset = -3 * 60 * 60 * 1000;
-        let dateBR;
-        if (period === 'today') {
-            dateBR = new Date(now.getTime() + brOffset).toISOString().split('T')[0];
-        } else {
-            dateBR = new Date(now.getTime() + brOffset - 24*60*60*1000).toISOString().split('T')[0];
-        }
-
-        const totalSpend = data.totals.spend || 0;
-        const existing = db.getDb().prepare('SELECT * FROM daily_investment WHERE date = ?').get(dateBR);
-        const taxRate = existing?.tax_rate || 0.1215;
-        const auto_revenue = db.getFinanceDay(dateBR).net || 0;
-        const result = db.saveDailyInvestment({
-            date: dateBR,
-            facebook_spend: totalSpend,
-            tax_rate: taxRate,
-            auto_revenue,
-            notes: existing?.notes || '[auto-sync Meta]'
-        });
-        res.json({ success: true, date: dateBR, facebook_spend: totalSpend, ...result });
-    } catch (e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-// POST /api/finance/sync-meta-range — sincroniza gasto Meta de um range de datas (uso pra histórico mensal)
-// Body: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' } — itera dia a dia, popula daily_investment.
-// Rate-limited internamente (300ms entre requests) pra não bater no rate limit da Meta Graph API.
-app.post('/api/finance/sync-meta-range', authMiddleware, async (req, res) => {
-    try {
-        if (!isMetaConfigured()) return res.json({ success: false, error: 'Meta Ads não configurado' });
-        const { from, to } = req.body || {};
-        if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-            return res.status(400).json({ success: false, error: 'from/to no formato YYYY-MM-DD obrigatórios' });
-        }
-        const start = new Date(from + 'T00:00:00');
-        const end = new Date(to + 'T00:00:00');
-        if (end < start) return res.status(400).json({ success: false, error: 'to precisa ser ≥ from' });
-        const diffDays = Math.floor((end - start) / 86400000) + 1;
-        if (diffDays > 92) return res.status(400).json({ success: false, error: 'range máximo 92 dias' });
-
-        const dates = [];
-        for (let i = 0; i < diffDays; i++) {
-            const d = new Date(start.getTime() + i * 86400000);
-            dates.push(d.toISOString().split('T')[0]);
-        }
-
-        const results = [];
-        let synced = 0, failed = 0;
-        for (const dateBR of dates) {
-            try {
-                const insights = await getMetaInsights(null, { since: dateBR, until: dateBR });
-                if (!insights.success) {
-                    failed++;
-                    results.push({ date: dateBR, ok: false, error: insights.error });
-                    continue;
-                }
-                const totalSpend = insights.totals.spend || 0;
-                const existing = db.getDb().prepare('SELECT * FROM daily_investment WHERE date = ?').get(dateBR);
-                const taxRate = existing?.tax_rate || 0.1215;
-                const auto_revenue = db.getFinanceDay(dateBR).net || 0;
-                db.saveDailyInvestment({
-                    date: dateBR,
-                    facebook_spend: totalSpend,
-                    tax_rate: taxRate,
-                    auto_revenue,
-                    notes: existing?.notes || '[auto-sync Meta range]'
-                });
-                synced++;
-                results.push({ date: dateBR, ok: true, spend: totalSpend });
-            } catch (e) {
-                failed++;
-                results.push({ date: dateBR, ok: false, error: e.message });
-            }
-            // Rate limit: 300ms entre dias (evita esgotar quota Meta)
-            await new Promise(r => setTimeout(r, 300));
-        }
-        addLog('META_SYNC_RANGE', `📊 Sync Meta range ${from}→${to}: ${synced} OK · ${failed} falhas`);
-        res.json({ success: true, synced, failed, days: diffDays, results });
-    } catch (e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
 });
 
 // ============ DEBUG — LISTA VENDAS DO DIA (cruzar com gateways) ============

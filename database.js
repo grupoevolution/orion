@@ -761,31 +761,6 @@ function setInstanceConnected(name, connected) {
 function getFunnelDropoff() {
     return getDb().prepare('SELECT funnel_id, step_index, COUNT(*) as count FROM conversations WHERE waiting_for_response = 1 AND canceled = 0 AND completed = 0 GROUP BY funnel_id, step_index ORDER BY count DESC').all();
 }
-// ===== DAILY INVESTMENT =====
-function getDailyInvestment(date) {
-    return getDb().prepare('SELECT * FROM daily_investment WHERE date = ?').get(date) || null;
-}
-function getDailyInvestmentRange(startDate, endDate) {
-    return getDb().prepare('SELECT * FROM daily_investment WHERE date BETWEEN ? AND ? ORDER BY date ASC').all(startDate, endDate);
-}
-function saveDailyInvestment(data) {
-    const tax = (data.facebook_spend || 0) * (data.tax_rate || 0.1215);
-    const totalCost = (data.facebook_spend || 0) + tax;
-    const totalRevenue = (data.auto_revenue || 0) + (data.extra_revenue || 0);
-    const netProfit = totalRevenue - totalCost;
-    const roi = totalCost > 0 ? totalRevenue / totalCost : 0;
-    getDb().prepare(`INSERT OR REPLACE INTO daily_investment 
-        (date, facebook_spend, extra_revenue, auto_revenue, tax_rate, tax_amount, total_cost, total_revenue, net_profit, roi, notes, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`)
-    .run(data.date, data.facebook_spend||0, data.extra_revenue||0, data.auto_revenue||0, data.tax_rate||0.1215, tax, totalCost, totalRevenue, netProfit, roi, data.notes||'');
-    return { tax, totalCost, totalRevenue, netProfit, roi };
-}
-function updateDailyAutoRevenue(date, amount) {
-    getDb().prepare(`INSERT INTO daily_investment (date, auto_revenue, updated_at) VALUES (?, ?, datetime('now'))
-        ON CONFLICT(date) DO UPDATE SET auto_revenue=auto_revenue+?, updated_at=datetime('now')`)
-    .run(date, amount, amount);
-}
-
 // ===== SYSTEM SETTINGS =====
 function getSetting(key, defaultValue = null) {
     const row = getDb().prepare('SELECT value FROM system_settings WHERE key = ?').get(key);
@@ -1445,19 +1420,6 @@ function logWebhook(data) {
 function cleanOldWebhookLogs(days = 90) {
     return getDb().prepare("DELETE FROM webhook_logs WHERE datetime(created_at) < datetime('now', '-' || ? || ' days')").run(days).changes;
 }
-function getCampaignROI(startDate, endDate) {
-    return getDb().prepare(`SELECT
-        COALESCE(utm_campaign, '(sem campanha)') as campaign,
-        COUNT(*) as sales,
-        SUM(COALESCE(amount_gross, 0)) as gross,
-        SUM(COALESCE(amount_net, 0)) as net
-        FROM webhook_logs
-        WHERE event IN ('SALE_APPROVED', 'PIX_PAID', 'CARD_PAID', 'APPROVED', 'PAID')
-          AND date(datetime(created_at, '-3 hours')) BETWEEN ? AND ?
-        GROUP BY COALESCE(utm_campaign, '(sem campanha)')
-        ORDER BY net DESC`).all(startDate, endDate);
-}
-
 // ===== RECONCILIAÇÃO HISTÓRICA (corrige net_value de vendas antigas) =====
 function reconcileHistoricalNetValue(commissionPercent) {
     if (typeof commissionPercent !== 'number' || commissionPercent < 0 || commissionPercent > 100) {
@@ -1485,7 +1447,6 @@ function getFinanceDay(dateBR) {
         SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(amount,0) ELSE 0 END) as gross,
         SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as net
         FROM events WHERE date(datetime(created_at, '-3 hours')) = ?`).get(dateBR) || {};
-    const inv = getDb().prepare('SELECT * FROM daily_investment WHERE date = ?').get(dateBR) || {};
     return {
         date: dateBR,
         pix_generated: stats.pix_generated || 0,
@@ -1493,10 +1454,7 @@ function getFinanceDay(dateBR) {
         pix_paid: stats.pix_paid || 0,
         card_paid: stats.card_paid || 0,
         gross: stats.gross || 0,
-        net: stats.net || 0,
-        facebook_spend: inv.facebook_spend || 0,
-        tax_rate: inv.tax_rate || 0.1215,
-        notes: inv.notes || ''
+        net: stats.net || 0
     };
 }
 function getFinanceMonth(year, month) {
@@ -1526,13 +1484,6 @@ function getFinanceYear(year) {
         GROUP BY substr(date(datetime(created_at, '-3 hours')), 1, 7)
         ORDER BY month ASC`).all(String(year));
 }
-function getDailyInvestmentByMonth(year, month) {
-    const m = String(month).padStart(2, '0');
-    const startDate = `${year}-${m}-01`;
-    const endDate = `${year}-${m}-31`;
-    return getDb().prepare('SELECT * FROM daily_investment WHERE date BETWEEN ? AND ? ORDER BY date ASC').all(startDate, endDate);
-}
-
 // ===== PIX PAGES =====
 function createPixPage(token, phoneKey, pixCode, customerName, amountDisplay, productName, expiresAt, productId, productsJson) {
     getDb().prepare(`INSERT OR REPLACE INTO pix_pages (token, phone_key, pix_code, customer_name, amount_display, product_name, expires_at, product_id, products_json)
@@ -1564,7 +1515,6 @@ module.exports = {
     logMessage, processWordFrequency, getTopWords,
     ensureInstance, getInstances, updateInstanceStats, getInstanceStats,
     setInstancePaused, setInstanceConnected, getFunnelDropoff,
-    getDailyInvestment, getDailyInvestmentRange, saveDailyInvestment, updateDailyAutoRevenue,
     getSetting, setSetting, getAllSettings,
     logPhoneVariation, getWorkingVariation,
     updateInstanceHealth, getInstanceHealth,
@@ -1580,7 +1530,7 @@ module.exports = {
     getStartTriggers, getActiveStartTriggers, saveStartTrigger, deleteStartTrigger, toggleStartTrigger, incrementStartTriggerCount, logStartTriggerFire, getStartTriggerStats,
     toggleFunnelEnabled,
     createPixPage, getPixPage, cleanExpiredPixPages, updateProductPixPage,
-    logWebhook, cleanOldWebhookLogs, getCampaignROI,
+    logWebhook, cleanOldWebhookLogs,
     reconcileHistoricalNetValue,
-    getFinanceDay, getFinanceMonth, getFinanceYear, getDailyInvestmentByMonth
+    getFinanceDay, getFinanceMonth, getFinanceYear
 };
