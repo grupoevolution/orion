@@ -100,6 +100,29 @@ function isAbandonoEnabled() {
     } catch(e) { return true; }
 }
 
+// ⭐ 22/07: KILL SWITCH universal do envio automático (default LIGADO).
+// Quando desligado: TODO o resto continua (webhooks, eventos, notificações, página PIX,
+// lista de Números) — só os FUNIS automáticos não disparam e os em andamento são interrompidos.
+// Envio Manual (funnelType MANUAL) NUNCA é bloqueado — é ação deliberada do operador.
+function isAutoSendEnabled() {
+    try { return db.getSetting('AUTO_SEND_ENABLED', '1') !== '0'; } catch(e) { return true; }
+}
+
+// Regras de envio automático por valor (bruto — o que o cliente paga).
+// Retorna null se pode enviar, ou o motivo do bloqueio (pra log).
+function autoSendBlockReason(funnelType, amount) {
+    if (funnelType === 'MANUAL') return null;
+    if (!isAutoSendEnabled()) return 'envio automático DESLIGADO no painel';
+    let key = null;
+    if (funnelType === 'PIX') key = 'AUTO_SEND_MIN_PIX';
+    else if (funnelType === 'APROVADA') key = 'AUTO_SEND_MIN_APROVADA';
+    if (key) {
+        const min = parseFloat(db.getSetting(key, '0')) || 0;
+        if (min > 0 && (amount || 0) < min) return `valor R$${(amount || 0).toFixed(2)} abaixo do mínimo R$${min.toFixed(2)}`;
+    }
+    return null;
+}
+
 // Helper: dispara sendStep com delay configurável. Re-checa conv viva antes de enviar.
 async function scheduleFirstStep(phoneKey, funnelType) {
     let delayMs = 0;
@@ -2068,6 +2091,20 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
         } catch(e) { console.error('Erro ao criar página PIX:', e.message); }
     }
 
+    // ⭐ 22/07: kill switch / regra de valor — registra evento, notifica e gera a página PIX
+    // (o link continua disponível na aba Números pro envio manual), mas NÃO cria funil nem timer.
+    const pixBlockReason = autoSendBlockReason('PIX', amount);
+    if (pixBlockReason) {
+        db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
+        sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
+        try {
+            const notif = buildPaymentNotification('pix_generated', customerName, netValue || amount, productName);
+            await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+        } catch(e) {}
+        addLog('AUTO_SEND_BLOCKED', `⏸️ Funil PIX não disparado — ${pixBlockReason} (${customerName})`, { phoneKey, orderCode });
+        return;
+    }
+
     const conv = {
         phoneKey, remoteJid, funnelId: productId + '_PIX', stepIndex: -1, orderCode, customerName, customerEmail,
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','),
@@ -2093,7 +2130,15 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 
     const timeout = setTimeout(async () => {
         const c = conversations.get(phoneKey);
-        if (c && c.orderCode === orderCode && !c.canceled && c.pixWaiting) {
+        // ⭐ 22/07: re-checa o kill switch na hora do disparo (pode ter sido desligado durante os 7min)
+        const fireBlockReason = c ? autoSendBlockReason('PIX', amount) : null;
+        if (c && fireBlockReason && c.orderCode === orderCode && !c.canceled && c.pixWaiting) {
+            c.canceled = true; c.canceledAt = new Date(); c.cancelReason = 'envio_desligado';
+            conversations.set(phoneKey, c);
+            try { convToDb(phoneKey, c); } catch(e) {}
+            bumpEpoch(phoneKey);
+            addLog('AUTO_SEND_BLOCKED', `⏸️ Funil PIX cancelado no disparo — ${fireBlockReason} (${c.customerName || phoneKey})`, { phoneKey, orderCode });
+        } else if (c && c.orderCode === orderCode && !c.canceled && c.pixWaiting) {
             c.pixWaiting = false; c.stepIndex = 0;
             const selectedFunnel = selectABFunnel(productId, 'PIX');
             c.funnelId = selectedFunnel; c.abFunnelVariant = selectedFunnel;
@@ -2144,6 +2189,13 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
         const isCard = paymentMethod === 'CREDIT_CARD';
         const notif = buildPaymentNotification(isCard ? 'card_paid' : 'pix_paid', customerName, netValue || amount, productName);
         await sendPushNotification(notif.title, notif.body, notif.pushType, { isFemale: notif.isFemale, highValue: notif.highValue });
+    }
+
+    // ⭐ 22/07: kill switch / valor mínimo — a venda JÁ foi registrada e notificada acima; só o funil não sai
+    const aprovadaBlockReason = autoSendBlockReason('APROVADA', amount);
+    if (aprovadaBlockReason) {
+        addLog('AUTO_SEND_BLOCKED', `⏸️ Funil APROVADA não disparado — ${aprovadaBlockReason} (${customerName})`, { phoneKey, orderCode });
+        return;
     }
 
     const selectedFunnel = selectABFunnel(productId, 'APROVADA');
@@ -2249,6 +2301,13 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         }
     }
 
+    // ⭐ 22/07: kill switch / valor mínimo — eventos/notificações acima já saíram; só o funil não dispara
+    const blockReason = autoSendBlockReason(funnelType, amount);
+    if (blockReason) {
+        addLog('AUTO_SEND_BLOCKED', `⏸️ Funil ${funnelType} não disparado — ${blockReason} (${customerName})`, { phoneKey, orderCode });
+        return;
+    }
+
     // ⭐ FIX 11/05: aceita customFunnelId (usado por job de RECUPERAÇÃO pra forçar o funil escolhido no admin)
     const selectedFunnel = customFunnelId || selectABFunnel(productId, funnelType);
     const amountDisplay = 'R$ ' + (netValue || amount || 0).toFixed(2).replace('.', ',');
@@ -2282,6 +2341,16 @@ function isConvAlive(phoneKey) {
 async function sendStep(phoneKey) {
     const conversation = conversations.get(phoneKey);
     if (!conversation || conversation.canceled || conversation.pixWaiting || conversation.paused || conversation.invalidNumber) return;
+
+    // ⭐ 22/07: kill switch universal — interrompe funil automático em andamento (Envio Manual passa)
+    if (conversation.funnelType !== 'MANUAL' && !isAutoSendEnabled()) {
+        conversation.canceled = true; conversation.canceledAt = new Date(); conversation.cancelReason = 'envio_desligado';
+        conversations.set(phoneKey, conversation);
+        try { convToDb(phoneKey, conversation); } catch(e) {}
+        bumpEpoch(phoneKey);
+        addLog('AUTO_SEND_BLOCKED', `⏸️ Envio automático desligado — funil ${conversation.funnelType || conversation.funnelId} interrompido (${conversation.customerName || phoneKey})`, { phoneKey });
+        return;
+    }
 
     // ⭐ FIX 07/26: guard por EPOCH. Captura o epoch do funil na entrada; se ele mudar (funil novo
     // começou, ou a conversa foi transferida/cancelada), este loop aborta na próxima checagem.
@@ -4629,6 +4698,34 @@ app.get('/api/abandono/status', authMiddleware, (req, res) => {
             else inFlight++;
         }
         res.json({ success: true, enabled, pending, inFlight });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ============ ENVIO AUTOMÁTICO — kill switch universal + regras de valor ============
+app.get('/api/auto-send', authMiddleware, (req, res) => {
+    res.json({
+        success: true,
+        enabled: isAutoSendEnabled(),
+        min_pix: parseFloat(db.getSetting('AUTO_SEND_MIN_PIX', '0')) || 0,
+        min_aprovada: parseFloat(db.getSetting('AUTO_SEND_MIN_APROVADA', '0')) || 0
+    });
+});
+app.post('/api/auto-send', authMiddleware, (req, res) => {
+    try {
+        const b = req.body || {};
+        if (b.enabled !== undefined) {
+            db.setSetting('AUTO_SEND_ENABLED', b.enabled ? '1' : '0');
+            addLog(b.enabled ? 'AUTO_SEND_ON' : 'AUTO_SEND_OFF',
+                b.enabled ? '✅ Envio automático de mensagens LIGADO' : '🚫 Envio automático de mensagens DESLIGADO (funis em andamento serão interrompidos; Envio Manual continua funcionando)');
+        }
+        if (b.min_pix !== undefined) db.setSetting('AUTO_SEND_MIN_PIX', String(Math.max(0, parseFloat(b.min_pix) || 0)));
+        if (b.min_aprovada !== undefined) db.setSetting('AUTO_SEND_MIN_APROVADA', String(Math.max(0, parseFloat(b.min_aprovada) || 0)));
+        res.json({
+            success: true,
+            enabled: isAutoSendEnabled(),
+            min_pix: parseFloat(db.getSetting('AUTO_SEND_MIN_PIX', '0')) || 0,
+            min_aprovada: parseFloat(db.getSetting('AUTO_SEND_MIN_APROVADA', '0')) || 0
+        });
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 

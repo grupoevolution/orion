@@ -507,6 +507,9 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
         </div>
       </div>
 
+      <!-- ENVIO AUTOMÁTICO (22/07): kill switch universal + regras de valor mínimo -->
+      <div id="autosend-control"></div>
+
       <!-- ABANDONO CONTROL (15/05): toggle global + alerta de fila pendente -->
       <div id="abandono-control"></div>
 
@@ -1108,8 +1111,10 @@ function initApp() {
   initSW();
   connectSSE();
   loadDashboard();
+  loadAutoSendStatus();
   loadAbandonoStatus();
   setInterval(loadDashboard, 20000);
+  setInterval(loadAutoSendStatus, 30000);
   setInterval(loadAbandonoStatus, 25000);
   // Topbar greeting + clock
   updateGreeting();
@@ -1888,6 +1893,90 @@ function renderTrend(elId, todayVal, yesterdayVal, opts = {}) {
 
 // ===== ABANDONO CONTROL (15/05) =====
 let _abanState = { enabled: true, pending: 0, inFlight: 0 };
+
+// ============ ENVIO AUTOMÁTICO — kill switch universal ============
+let _autoSendState = { enabled: true, min_pix: 0, min_aprovada: 0 };
+let _autoSendRulesOpen = false;
+
+async function loadAutoSendStatus() {
+  try {
+    const r = await api('/api/auto-send');
+    if (!r.success) return;
+    _autoSendState = { enabled: !!r.enabled, min_pix: r.min_pix || 0, min_aprovada: r.min_aprovada || 0 };
+    if (!_autoSendRulesOpen) renderAutoSendCard(); // não re-renderiza com o painel de regras aberto (usuário digitando)
+  } catch(e) {}
+}
+
+function _autoSendRulesLabel() {
+  const parts = [];
+  parts.push(_autoSendState.min_pix > 0 ? `PIX ≥ R$ ${_autoSendState.min_pix.toFixed(0)}` : 'PIX: todos');
+  parts.push(_autoSendState.min_aprovada > 0 ? `Aprovada ≥ R$ ${_autoSendState.min_aprovada.toFixed(0)}` : 'Aprovada: todas');
+  return parts.join(' · ');
+}
+
+function renderAutoSendCard() {
+  const wrap = document.getElementById('autosend-control');
+  if (!wrap) return;
+  const { enabled } = _autoSendState;
+  const dotColor = enabled ? '#34d399' : '#f87171';
+  const title = enabled ? 'Envio Automático · Ligado' : 'Envio Automático · Desligado';
+  const sub = enabled ? _autoSendRulesLabel() : 'Nenhuma mensagem sai pros clientes · notificações e listas continuam';
+  wrap.innerHTML = `
+    <div class="aban-card ${enabled ? 'on' : 'off'}">
+      <div style="width:10px;height:10px;border-radius:50%;background:${dotColor};box-shadow:0 0 8px ${dotColor};flex-shrink:0"></div>
+      <div class="aban-body" onclick="toggleAutoSendRules()" style="cursor:pointer">
+        <div class="aban-title">${title}</div>
+        <div class="aban-sub">${sub} · <u>regras</u></div>
+      </div>
+      <div class="aban-sw ${enabled ? 'on' : ''}" onclick="toggleAutoSend()" title="${enabled ? 'Desligar' : 'Ligar'} envio automático"></div>
+    </div>
+    <div id="autosend-rules" style="display:${_autoSendRulesOpen ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;margin:-6px 0 14px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Regras do envio automático (0 = enviar pra todos)</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div style="flex:1">
+          <div style="font-size:10px;color:var(--text2);margin-bottom:4px">PIX gerado ≥ R$</div>
+          <input class="inp" id="as-min-pix" type="number" inputmode="decimal" min="0" step="1" value="${_autoSendState.min_pix || ''}" placeholder="0" style="margin:0">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Venda aprovada ≥ R$</div>
+          <input class="inp" id="as-min-aprovada" type="number" inputmode="decimal" min="0" step="1" value="${_autoSendState.min_aprovada || ''}" placeholder="0" style="margin:0">
+        </div>
+      </div>
+      <button onclick="saveAutoSendRules()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:10px;color:#fff;font-size:12px;font-weight:800;font-family:var(--font);cursor:pointer">Salvar regras</button>
+      <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">Abaixo do valor mínimo o funil automático não dispara — mas o evento é registrado, notifica e entra na aba Números pro contato manual.</div>
+    </div>`;
+}
+
+function toggleAutoSendRules() {
+  _autoSendRulesOpen = !_autoSendRulesOpen;
+  renderAutoSendCard();
+}
+
+async function toggleAutoSend() {
+  const newState = !_autoSendState.enabled;
+  if (!newState) {
+    if (!confirm('Desligar o envio automático de mensagens?\n\nNENHUMA mensagem automática sai pros clientes (funis em andamento são interrompidos). Notificações, eventos e a aba Números continuam funcionando. O Envio Manual também continua.')) return;
+  }
+  if (navigator.vibrate) navigator.vibrate(20);
+  try {
+    const r = await api('/api/auto-send', { method: 'POST', body: JSON.stringify({ enabled: newState }) });
+    if (r.success) { _autoSendState.enabled = !!r.enabled; renderAutoSendCard(); showToast(newState ? 'Envio automático LIGADO' : 'Envio automático DESLIGADO', 'success'); }
+  } catch(e) { alert('Erro ao alternar: ' + e.message); }
+}
+
+async function saveAutoSendRules() {
+  const min_pix = parseFloat(document.getElementById('as-min-pix').value) || 0;
+  const min_aprovada = parseFloat(document.getElementById('as-min-aprovada').value) || 0;
+  try {
+    const r = await api('/api/auto-send', { method: 'POST', body: JSON.stringify({ min_pix, min_aprovada }) });
+    if (r.success) {
+      _autoSendState.min_pix = r.min_pix; _autoSendState.min_aprovada = r.min_aprovada;
+      _autoSendRulesOpen = false;
+      renderAutoSendCard();
+      showToast('Regras salvas', 'success');
+    }
+  } catch(e) { showToast('Erro ao salvar', 'error'); }
+}
 
 async function loadAbandonoStatus() {
   try {

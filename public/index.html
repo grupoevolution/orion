@@ -1052,6 +1052,26 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 
     <!-- CONFIGURAÇÕES -->
     <div id="page-settings" class="page">
+      <div class="section" style="margin-bottom:16px">
+        <div class="sh"><div class="sh-title">Envio Automático de Mensagens</div><div class="sh-sub">Interruptor universal — desligado, nenhuma mensagem automática sai (notificações, eventos e a aba Números continuam; Envio Manual também)</div></div>
+        <div style="padding:20px;display:flex;gap:24px;align-items:end;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding-bottom:8px">
+            <label class="sw"><input type="checkbox" id="as-enabled" onchange="asToggle(this.checked)"><span class="sl"></span></label>
+            <span id="as-enabled-lbl" style="font-size:13px;font-weight:700">—</span>
+          </label>
+          <div class="fe-row" style="max-width:200px">
+            <label class="fe-lbl">Funil de PIX gerado só a partir de (R$)</label>
+            <input type="number" class="fe-inp" id="as-min-pix" placeholder="0" min="0" step="1">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">0 = envia pra todos os valores</div>
+          </div>
+          <div class="fe-row" style="max-width:200px">
+            <label class="fe-lbl">Funil de venda aprovada só a partir de (R$)</label>
+            <input type="number" class="fe-inp" id="as-min-aprovada" placeholder="0" min="0" step="1">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">0 = envia pra todas as vendas</div>
+          </div>
+          <button class="fin-btn" onclick="asSaveRules()" style="margin-bottom:8px">Salvar regras</button>
+        </div>
+      </div>
       <div class="section">
         <div class="sh"><div class="sh-title">Configurações do Sistema</div><div class="sh-sub">Alterações são aplicadas imediatamente sem precisar de deploy</div></div>
         <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px" id="settings-form">
@@ -3454,8 +3474,41 @@ async function submitManualSend(){
 }
 function showToast(msg,type='info'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200);}
 
+// ==================== ENVIO AUTOMÁTICO (kill switch + regras) ====================
+async function loadAutoSend(){
+  try {
+    const r = await api('/api/auto-send');
+    if(!r.success) return;
+    document.getElementById('as-enabled').checked = !!r.enabled;
+    document.getElementById('as-enabled-lbl').textContent = r.enabled ? 'LIGADO' : 'DESLIGADO';
+    document.getElementById('as-enabled-lbl').style.color = r.enabled ? '#34d399' : '#f87171';
+    document.getElementById('as-min-pix').value = r.min_pix || '';
+    document.getElementById('as-min-aprovada').value = r.min_aprovada || '';
+  } catch(e){}
+}
+async function asToggle(on){
+  if(!on && !confirm('Desligar o envio automático de mensagens?\n\nNENHUMA mensagem automática sai pros clientes (funis em andamento são interrompidos). Notificações, eventos e a aba Números continuam. O Envio Manual também continua.')){
+    document.getElementById('as-enabled').checked = true;
+    return;
+  }
+  const r = await api('/api/auto-send', { method:'POST', body: JSON.stringify({ enabled: on }) });
+  if(r.success){
+    document.getElementById('as-enabled-lbl').textContent = r.enabled ? 'LIGADO' : 'DESLIGADO';
+    document.getElementById('as-enabled-lbl').style.color = r.enabled ? '#34d399' : '#f87171';
+    showToast(r.enabled ? 'Envio automático LIGADO' : 'Envio automático DESLIGADO', 'success');
+  }
+}
+async function asSaveRules(){
+  const min_pix = parseFloat(document.getElementById('as-min-pix').value) || 0;
+  const min_aprovada = parseFloat(document.getElementById('as-min-aprovada').value) || 0;
+  const r = await api('/api/auto-send', { method:'POST', body: JSON.stringify({ min_pix, min_aprovada }) });
+  if(r.success) showToast('Regras de envio salvas', 'success');
+  else showToast('Erro: ' + (r.error||''), 'error');
+}
+
 // CONFIGURAÇÕES
 async function loadSettings() {
+  loadAutoSend();
   const r = await api('/api/settings');
   if(!r.success) return;
   const d = r.data;
