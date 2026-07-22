@@ -575,7 +575,8 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
         <div class="mc mc-green"><div class="mc-lbl">Pagos</div><div class="mc-val" id="ma-paid" style="font-size:20px">—</div></div>
         <div class="mc mc-purple"><div class="mc-lbl">Conv.</div><div class="mc-val" id="ma-conv" style="font-size:20px">—</div></div>
       </div>
-      <div class="mc mc-green" style="margin-bottom:14px"><div class="mc-lbl">Faturamento Hoje</div><div class="mc-val" id="ma-rev" style="font-size:24px">—</div></div>
+      <div class="mc mc-green" style="margin-bottom:8px"><div class="mc-lbl">Faturamento Hoje</div><div class="mc-val" id="ma-rev" style="font-size:24px">—</div></div>
+      <div class="mc mc-amber" style="margin-bottom:14px"><div class="mc-lbl">Se todos os PIX de hoje pagassem</div><div class="mc-val" id="ma-potential" style="font-size:24px">—</div><div class="mc-sub" id="ma-potential-sub">PIX gerados ainda não pagos</div></div>
 
       <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:14px 2px 8px">Últimos 7 dias</div>
       <div class="sec" style="margin-bottom:12px">
@@ -1405,7 +1406,10 @@ function mnRender(){
         <div style="font-size:10.5px;color:${evColor}">${MN_EVENT_LABELS[c.type]||c.type} ${mnTimeAgo(c.created_at)} · R$ ${(c.amount||0).toFixed(2).replace('.',',')}</div>
         <div style="font-size:10.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.product_name}${multi}${contacted}</div>
       </div>
-      <button onclick="mnCopyOne('${c.phone}','${c.phone_key}')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:8px 9px;color:#fff;font-size:10px;font-weight:700;font-family:var(--mono);cursor:pointer;flex-shrink:0">${mnFmtPhone(c.phone)}</button>
+      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+        <button onclick="mnCopyOne('${c.phone}','${c.phone_key}')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:7px 9px;color:#fff;font-size:10px;font-weight:700;font-family:var(--mono);cursor:pointer">${mnFmtPhone(c.phone)}</button>
+        ${c.pix_url ? `<button onclick="mnCopyLink('${c.pix_url}')" style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:6px 9px;color:#fbbf24;font-size:10px;font-weight:700;font-family:var(--font);cursor:pointer">Link PIX</button>` : ''}
+      </div>
       <a href="https://wa.me/${c.phone}" target="_blank" rel="noopener" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:9px;padding:8px 9px;color:#34d399;font-size:14px;text-decoration:none;flex-shrink:0" aria-label="Abrir no WhatsApp">➤</a>
     </div>`;
   }).join('');
@@ -1434,6 +1438,12 @@ async function mnWriteClipboard(text){
 async function mnCopyOne(phone, key){
   haptic(8);
   if(await mnWriteClipboard(phone)){ showToast(`${mnFmtPhone(phone)} copiado`, 'success'); mnMarkContacted([key]); }
+  else showToast('Não consegui copiar', 'error');
+}
+
+async function mnCopyLink(url){
+  haptic(8);
+  if(await mnWriteClipboard(url)) showToast('Link da página PIX copiado', 'success');
   else showToast('Não consegui copiar', 'error');
 }
 
@@ -2476,6 +2486,16 @@ async function loadAnalytics() {
     animateNumber(document.getElementById('ma-paid'), todayPaid);
     document.getElementById('ma-conv').textContent = todayConv;
     document.getElementById('ma-rev').textContent = 'R$ ' + todayRev.toFixed(2).replace('.',',');
+
+    // Potencial dos PIX gerados e não pagos ("se todos pagassem")
+    try {
+      const fd = await api('/api/finance/day');
+      if (fd.success) {
+        const pot = fd.data.pix_potential || 0;
+        document.getElementById('ma-potential').textContent = '+ R$ ' + pot.toFixed(2).replace('.', ',');
+        document.getElementById('ma-potential-sub').textContent = pot > 0 ? 'PIX gerados ainda não pagos — recupere na aba Números' : 'nenhum PIX pendente agora';
+      }
+    } catch(e) {}
 
     // Gráfico
     const mx = Math.max(...eventStats.map(d=>Math.max(d.pix_generated||0,d.paid||0)),1);

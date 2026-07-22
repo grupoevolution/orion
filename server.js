@@ -3465,45 +3465,27 @@ app.get('/pix/:token', (req, res) => {
     if (!page) return res.status(404).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Link expirado</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fff;color:#111;text-align:center;padding:24px}a.btn{display:inline-block;margin-top:18px;background:#111;color:#fff;text-decoration:none;font-weight:800;padding:16px 28px;border-radius:14px;font-size:15px}</style></head><body><div><h2 style="margin-bottom:8px">Esse link expirou</h2><p style="color:#6b7280;line-height:1.5">Mas calma — seu acesso ainda está disponível.<br>Toque abaixo pra entrar no app:</p><a class="btn" href="${MEMBERS_APP_URL}">IR PARA O APP</a></div></body></html>`);
 
     const expired = new Date(page.expires_at) < new Date();
-    const prod = page.product_id ? db.getProducts().find(p => p.id === page.product_id) : null;
 
+    // ⭐ 22/07: página GENÉRICA — sem nome de produto/grupo (os produtos agora são vários).
     const firstName = formatName(page.customer_name || '');
-    const title = prod?.pix_page_title || (firstName ? `${firstName}, seu acesso está reservado!` : 'Seu acesso está reservado!');
+    const title = firstName ? `${firstName}, falta pouco pra você receber seu acesso!` : 'Falta pouco pra você receber seu acesso!';
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encodeURIComponent(page.pix_code)}`;
 
-    // Resumo do pedido (lista de produtos + total). Se não tiver products_json, mostra fallback simples.
+    // Só o total — sem listar nomes de produto
     let products = [];
     try { products = JSON.parse(page.products_json || '[]'); } catch(e) {}
     const fmtBRL = (v) => 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ',');
     const totalValue = products.length ? products.reduce((s, p) => s + (Number(p.price) || 0), 0) : null;
-    const summaryHtml = products.length
+    // amount_display vem do valor REAL da venda (fiscal.total_value do webhook) — fonte mais confiável que a soma dos itens
+    const totalDisplay = page.amount_display || (totalValue != null ? fmtBRL(totalValue) : null);
+    const summaryHtml = totalDisplay
         ? `<div class="summary">
-              <div class="summary-h">Resumo do pedido</div>
-              ${products.map(p => `
-                <div class="summary-item ${p.is_bump ? 'bump' : 'main'}">
-                  <span>${p.name}</span>
-                  <span class="price">${fmtBRL(p.price)}</span>
-                </div>`).join('')}
-              <div class="summary-divider"></div>
               <div class="summary-total">
                 <span>Total a pagar</span>
-                <span class="total-value">${fmtBRL(totalValue)}</span>
+                <span class="total-value">${totalDisplay}</span>
               </div>
            </div>`
-        : (page.amount_display
-            ? `<div class="summary">
-                  <div class="summary-h">Resumo do pedido</div>
-                  <div class="summary-item main">
-                    <span>${page.product_name || 'Produto'}</span>
-                    <span class="price">${page.amount_display}</span>
-                  </div>
-                  <div class="summary-divider"></div>
-                  <div class="summary-total">
-                    <span>Total a pagar</span>
-                    <span class="total-value">${page.amount_display}</span>
-                  </div>
-               </div>`
-            : '');
+        : '';
 
     res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -3555,8 +3537,7 @@ app.get('/pix/:token', (req, res) => {
   .step-n{width:22px;height:22px;border-radius:50%;background:#f0fdf4;border:1.5px solid #bbf7d0;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;color:#16a34a;}
   .step-t{font-size:13.5px;color:#4b5563;line-height:1.5;}
   .step-t strong{color:#111;font-weight:700;}
-  .qr-toggle{width:100%;background:none;border:1px dashed #d1d5db;border-radius:12px;padding:13px;font-size:13px;color:#6b7280;font-weight:600;cursor:pointer;margin-bottom:14px;font-family:inherit;}
-  .qr-area{display:none;text-align:center;margin-bottom:22px;}
+  .qr-area{text-align:center;margin-bottom:22px;}
   .qr-box{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;display:inline-block;margin-bottom:8px;}
   .qr-note{font-size:12px;color:#9ca3af;line-height:1.5;}
   .trust{display:flex;justify-content:center;gap:18px;margin-bottom:16px;flex-wrap:wrap;}
@@ -3606,17 +3587,16 @@ app.get('/pix/:token', (req, res) => {
     <div class="btn-wrap"><button class="btn" id="btnPix" onclick="copyPix()">👇 COPIAR CÓDIGO PIX</button></div>
     <div class="btn-hint">Toque no botão verde — o código é copiado sozinho.<br>Depois é só colar no app do seu banco. Simples assim. 😉</div>
     <div class="copied-help" id="copiedHelp">✅ <strong>Código copiado!</strong> Agora abra o app do seu banco, toque em <strong>Pix → Pagar → Copia e Cola</strong>, segure o dedo no campo e escolha <strong>Colar</strong>. Confirme e pronto!</div>
+    <div class="qr-area" id="qrArea" style="display:block">
+      <div class="qr-note" style="margin-bottom:8px">Ou, se preferir, <strong style="color:#111">escaneie o QR Code</strong> com o app do banco:</div>
+      <div class="qr-box"><img src="${qrUrl}" width="180" height="180" alt="QR Code PIX" style="display:block;border-radius:4px;"></div>
+    </div>
     <div class="steps-label">Como pagar (passo a passo)</div>
     <div class="steps">
-      <div class="step"><div class="step-n">1</div><div class="step-t">Toque no <strong>botão verde acima</strong> pra copiar o código Pix</div></div>
+      <div class="step"><div class="step-n">1</div><div class="step-t">Toque no <strong>botão verde acima</strong> pra copiar o código Pix (ou escaneie o QR Code)</div></div>
       <div class="step"><div class="step-n">2</div><div class="step-t">Abra o <strong>app do seu banco</strong> e vá em <strong>Pix → Copia e Cola</strong></div></div>
       <div class="step"><div class="step-n">3</div><div class="step-t"><strong>Cole o código</strong> (segure o dedo no campo e toque em "Colar") e confirme</div></div>
       <div class="step"><div class="step-n">4</div><div class="step-t">Pronto! Seu <strong>acesso chega no WhatsApp em segundos</strong> ✅</div></div>
-    </div>
-    <button class="qr-toggle" onclick="toggleQr()" id="qrToggle">Vai pagar por outro celular ou computador? <u>Mostrar QR Code</u></button>
-    <div class="qr-area" id="qrArea">
-      <div class="qr-box"><img src="${qrUrl}" width="180" height="180" alt="QR Code PIX" style="display:block;border-radius:4px;"></div>
-      <div class="qr-note">Aponte a câmera do celular que tem o app do banco<br>pra esse código e confirme o pagamento.</div>
     </div>
     <div class="trust">
       <div class="trust-item">🔒 Pagamento seguro</div>
@@ -3655,12 +3635,6 @@ function copyPix(){
   if(navigator.clipboard)navigator.clipboard.writeText(code).then(done).catch(()=>fb(code,done));else fb(code,done);
 }
 function fb(t,cb){const el=document.createElement('textarea');el.value=t;el.style.cssText='position:fixed;opacity:0';document.body.appendChild(el);el.select();try{document.execCommand('copy');cb();}catch(e){}document.body.removeChild(el);}
-function toggleQr(){
-  const a=document.getElementById('qrArea');
-  const show=a.style.display!=='block';
-  a.style.display=show?'block':'none';
-  document.getElementById('qrToggle').innerHTML=show?'<u>Esconder QR Code</u>':'Vai pagar por outro celular ou computador? <u>Mostrar QR Code</u>';
-}
 
 // ===== Detecção automática de pagamento: quando o Pix cai, a página vira tela de sucesso =====
 let pollCount=0;
@@ -5030,6 +5004,17 @@ app.get('/api/contacts', authMiddleware, (req, res) => {
             });
         }
         contacts.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+        // ⭐ 22/07: link da página PIX do cliente (última gerada) — pra copiar e mandar na mensagem manual
+        const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+        if (appUrl && contacts.length) {
+            const keys = contacts.map(c => c.phone_key);
+            const pages = db.getDb().prepare(
+                `SELECT phone_key, token, MAX(created_at) as mc FROM pix_pages WHERE phone_key IN (${keys.map(() => '?').join(',')}) GROUP BY phone_key`
+            ).all(...keys);
+            const pageMap = new Map(pages.map(p => [p.phone_key, p.token]));
+            contacts.forEach(c => { const t = pageMap.get(c.phone_key); if (t) c.pix_url = `${appUrl}/pix/${t}`; });
+        }
 
         // Produtos distintos do período (pro dropdown de filtro) — ignora filtro de produto atual
         const prodSql = `SELECT DISTINCT product_name FROM events e WHERE e.type IN (${types.map(() => '?').join(',')}) AND ${dateCond} AND product_name IS NOT NULL ORDER BY product_name`;

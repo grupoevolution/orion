@@ -846,7 +846,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
           </div>
 
           <div class="fin-grid cols-4">
-            <div class="fin-card"><div class="fin-lbl">PIX gerados</div><div class="fin-val" id="fin-d-pixg">0</div></div>
+            <div class="fin-card"><div class="fin-lbl">PIX gerados</div><div class="fin-val" id="fin-d-pixg">0</div><div class="fin-delta" id="fin-d-potential">se todos pagassem: R$ 0</div></div>
             <div class="fin-card"><div class="fin-lbl">PIX pagos</div><div class="fin-val" id="fin-d-pixpaid">0</div></div>
             <div class="fin-card"><div class="fin-lbl">Cartão pagos</div><div class="fin-val" id="fin-d-cardpaid">0</div></div>
             <div class="fin-card"><div class="fin-lbl">Conversão</div><div class="fin-val" id="fin-d-conv">0%</div></div>
@@ -2454,6 +2454,7 @@ async function finLoadDay(){
     document.getElementById('fin-d-paid-split').textContent = `PIX ${d.pix_paid || 0} · Cartão ${d.card_paid || 0}`;
     document.getElementById('fin-d-ticket').textContent = finBRL(ticket);
     document.getElementById('fin-d-pixg').textContent = d.pix_generated || 0;
+    document.getElementById('fin-d-potential').textContent = 'pendentes: +' + finBRL(d.pix_potential || 0) + ' se todos pagassem';
     document.getElementById('fin-d-pixpaid').textContent = d.pix_paid || 0;
     document.getElementById('fin-d-cardpaid').textContent = d.card_paid || 0;
     document.getElementById('fin-d-conv').textContent = conv + '%';
@@ -2764,6 +2765,7 @@ function numRender(){
         <div style="font-size:12px;color:#94a3b8">${c.product_name} · R$ ${(c.amount||0).toFixed(2).replace('.',',')}${multi}</div>
       </div>
       <button class="fin-btn ghost" style="font-size:12px;padding:6px 12px;font-family:var(--mono)" onclick="numCopyOne('${c.phone}','${c.phone_key}')" title="Copiar número">${numFmtPhone(c.phone)} ⧉</button>
+      ${c.pix_url ? `<button class="fin-btn ghost" style="font-size:12px;padding:6px 10px;color:#fbbf24" onclick="numCopyLink('${c.pix_url}')" title="Copiar o link da página PIX desse cliente">Link PIX ⧉</button>` : ''}
       <a href="https://wa.me/${c.phone}" target="_blank" rel="noopener" class="fin-btn ghost" style="font-size:12px;padding:6px 10px;text-decoration:none" title="Abrir no WhatsApp Web">WhatsApp</a>
     </div>`;
   }).join('');
@@ -2791,6 +2793,11 @@ async function numWriteClipboard(text){
 
 async function numCopyOne(phone, key){
   if(await numWriteClipboard(phone)){ showToast(`Número ${numFmtPhone(phone)} copiado`, 'success'); numMarkContacted([key]); }
+  else showToast('Não consegui copiar', 'error');
+}
+
+async function numCopyLink(url){
+  if(await numWriteClipboard(url)) showToast('Link da página PIX copiado', 'success');
   else showToast('Não consegui copiar', 'error');
 }
 

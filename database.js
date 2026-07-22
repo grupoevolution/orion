@@ -1458,6 +1458,21 @@ function getFinanceDay(dateBR) {
         SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(amount,0) ELSE 0 END) as gross,
         SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as net
         FROM events WHERE date(datetime(created_at, '-3 hours')) = ?`).get(dateBR) || {};
+    // ⭐ 22/07: potencial dos PIX gerados e NÃO pagos do dia ("se todos pagassem, quanto seria")
+    // Dedup por telefone (mantém o maior valor) e exclui quem já pagou no dia.
+    let pixPotential = 0;
+    try {
+        pixPotential = getDb().prepare(`SELECT COALESCE(SUM(mx), 0) as total FROM (
+            SELECT MAX(COALESCE(amount, 0)) as mx FROM events
+            WHERE type = 'PIX_GENERATED'
+              AND date(datetime(created_at, '-3 hours')) = ?
+              AND phone_key NOT IN (
+                  SELECT DISTINCT phone_key FROM events
+                  WHERE type IN ('PIX_PAID','CARD_PAID') AND date(datetime(created_at, '-3 hours')) = ?
+              )
+            GROUP BY phone_key
+        )`).get(dateBR, dateBR).total || 0;
+    } catch(e) {}
     return {
         date: dateBR,
         pix_generated: stats.pix_generated || 0,
@@ -1465,7 +1480,8 @@ function getFinanceDay(dateBR) {
         pix_paid: stats.pix_paid || 0,
         card_paid: stats.card_paid || 0,
         gross: stats.gross || 0,
-        net: stats.net || 0
+        net: stats.net || 0,
+        pix_potential: pixPotential
     };
 }
 function getFinanceMonth(year, month) {
