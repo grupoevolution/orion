@@ -607,7 +607,8 @@ const PUSH_PREF_KEYS = {
     card_refused: 'notif_card_refused',
     refund: 'notif_refund',
     daily_summary: 'notif_daily_summary',
-    morning_summary: 'notif_morning_summary'
+    morning_summary: 'notif_morning_summary',
+    info: 'notif_system'
 };
 function isPushEnabled(type) {
     const key = PUSH_PREF_KEYS[type];
@@ -5003,7 +5004,8 @@ const NOTIF_PREF_LIST = [
     { key: 'notif_card_refused', label: 'Pagamento recusado' },
     { key: 'notif_refund', label: 'Reembolso' },
     { key: 'notif_morning_summary', label: 'Resumo da manhã (9h)' },
-    { key: 'notif_daily_summary', label: 'Fechamento do dia (23:59)' }
+    { key: 'notif_daily_summary', label: 'Fechamento do dia (23:59)' },
+    { key: 'notif_system', label: 'Avisos do sistema' }
 ];
 app.get('/api/notification-prefs', authMiddleware, (req, res) => {
     const prefs = NOTIF_PREF_LIST.map(p => ({ ...p, enabled: db.getSetting(p.key, '1') !== '0' }));
@@ -5102,15 +5104,17 @@ app.get('/api/contacts', authMiddleware, (req, res) => {
         }
         contacts.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 
-        // ⭐ 22/07: link da página PIX do cliente (última gerada) — pra copiar e mandar na mensagem manual
+        // ⭐ 22/07: link da página PIX do cliente (última gerada) — SÓ pra evento de PIX gerado
+        // (venda aprovada não precisa: o cliente já pagou)
         const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-        if (appUrl && contacts.length) {
-            const keys = contacts.map(c => c.phone_key);
+        const pixGenContacts = contacts.filter(c => c.type === 'PIX_GENERATED');
+        if (appUrl && pixGenContacts.length) {
+            const keys = pixGenContacts.map(c => c.phone_key);
             const pages = db.getDb().prepare(
                 `SELECT phone_key, token, MAX(created_at) as mc FROM pix_pages WHERE phone_key IN (${keys.map(() => '?').join(',')}) GROUP BY phone_key`
             ).all(...keys);
             const pageMap = new Map(pages.map(p => [p.phone_key, p.token]));
-            contacts.forEach(c => { const t = pageMap.get(c.phone_key); if (t) c.pix_url = `${appUrl}/pix/${t}`; });
+            pixGenContacts.forEach(c => { const t = pageMap.get(c.phone_key); if (t) c.pix_url = `${appUrl}/pix/${t}`; });
         }
 
         // Produtos distintos do período (pro dropdown de filtro) — ignora filtro de produto atual
@@ -5372,6 +5376,51 @@ setInterval(backupTick, 15 * 60 * 1000);
 setInterval(cleanupPixPages, 60 * 60 * 1000);
 setTimeout(cleanupPixPages, 5 * 60 * 1000); // 1ª limpeza 5min após boot
 
+
+// ============ RETROATIVO DA LISTA DE NÚMEROS (roda 1x) ============
+// Antes de 22/07 os eventos não guardavam telefone/nome completos, e abandono/recusado/reembolso
+// nem viravam evento. Este backfill reconstrói tudo a partir do webhook_logs (90 dias de payloads crus).
+function backfillContactsData() {
+    try {
+        if (db.getSetting('CONTACTS_BACKFILL_V1', '0') === '1') return;
+        const dbi = db.getDb();
+        const logs = dbi.prepare('SELECT id, gateway, event, sale_id, amount_gross, amount_net, payload_json, created_at FROM webhook_logs WHERE payload_json IS NOT NULL ORDER BY id').all();
+        let updated = 0, inserted = 0;
+        const updStmt = dbi.prepare('UPDATE events SET customer_name = COALESCE(customer_name, ?), customer_phone = COALESCE(customer_phone, ?) WHERE order_code = ? AND (customer_phone IS NULL OR customer_name IS NULL)');
+        const existsStmt = dbi.prepare('SELECT 1 FROM events WHERE order_code = ? AND type = ? LIMIT 1');
+        const insStmt = dbi.prepare('INSERT INTO events (type, phone_key, product_id, product_name, amount, net_value, payment_method, order_code, order_bumps, customer_name, customer_phone, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+        for (const log of logs) {
+            let data; try { data = JSON.parse(log.payload_json); } catch(e) { continue; }
+            const isPP = log.gateway === 'perfectpay';
+            const name = (isPP ? data.customer?.full_name : data.customer?.name) || null;
+            const rawPhone = isPP ? ((data.customer?.phone_area_code || '') + (data.customer?.phone_number || '')) : (data.customer?.phone_number || '');
+            const phone = normalizeFullPhone(rawPhone);
+            const phoneKey = normalizePhoneKey(rawPhone);
+            if (!phone || !phoneKey || phoneKey.length !== 8) continue;
+            // 1) Completa nome/telefone dos eventos já existentes da mesma venda (PIX gerado antigo etc.)
+            if (log.sale_id) { try { updated += updStmt.run(name, phone, log.sale_id).changes; } catch(e) {} }
+            // 2) Recria eventos que não eram gravados na época (abandono/recusado/reembolso)
+            const ev = String(log.event || '').toUpperCase();
+            const st = String(data.status || '').toUpperCase();
+            let missingType = null;
+            if (ev.includes('ABANDON') || st === 'ABANDONED') missingType = 'ABANDONED';
+            else if (ev.includes('REFUND') || ev.includes('CHARGEBACK') || st === 'REFUNDED') missingType = 'REFUNDED';
+            else if (ev.includes('REFUSED') || ev.includes('DECLINED') || st === 'REFUSED' || st === 'DECLINED') missingType = 'REFUSED';
+            if (missingType) {
+                const saleId = log.sale_id || ('WL_' + log.id);
+                if (!existsStmt.get(saleId, missingType)) {
+                    const mainProduct = (Array.isArray(data.products) ? data.products : []).find(p => !p.is_order_bump) || null;
+                    const productName = mainProduct?.name || data.plan?.name || 'GRUPO VIP';
+                    insStmt.run(missingType, phoneKey, 'GRUPO_VIP', productName, log.amount_gross || 0, log.amount_net || 0, 'PIX', saleId, '[]', name, phone, log.created_at);
+                    inserted++;
+                }
+            }
+        }
+        db.setSetting('CONTACTS_BACKFILL_V1', '1');
+        addLog('CONTACTS_BACKFILL', `🧰 Retroativo da lista de Números: ${updated} eventos completados com nome/telefone · ${inserted} eventos antigos (abandono/recusado/reembolso) reconstruídos do webhook_logs`);
+    } catch(e) { addLog('CONTACTS_BACKFILL_ERR', 'Backfill falhou: ' + e.message); }
+}
+setTimeout(backfillContactsData, 3000);
 
 // ============ INICIALIZAÇÃO ============
 app.listen(PORT, async () => {

@@ -860,7 +860,8 @@ async function loadNotifPrefs() {
       notif_card_refused: 'Cartão, PayPal ou outra forma recusada',
       notif_refund: 'Cliente reembolsou ou estornou a compra',
       notif_morning_summary: 'Como o dia começou, todo dia às 9h',
-      notif_daily_summary: 'Fechamento financeiro às 23:59'
+      notif_daily_summary: 'Fechamento financeiro às 23:59',
+      notif_system: 'Envios parados, funil vazio e outros alertas'
     };
     el.innerHTML = r.prefs.map(p => `
       <div class="set-row">
@@ -1375,6 +1376,12 @@ function mnTimeAgo(iso){
   if(secs < 86400) return `há ${Math.round(secs/3600)} h`;
   return `há ${Math.round(secs/86400)} d`;
 }
+function mnEventClock(iso){
+  const d = new Date(iso.replace(' ','T') + (iso.includes('Z')||iso.includes('+') ? '' : 'Z'));
+  const hm = d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  const isToday = d.toDateString() === new Date().toDateString();
+  return isToday ? hm : d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}) + ' ' + hm;
+}
 
 async function loadNumbers(){
   try {
@@ -1408,14 +1415,13 @@ function mnRender(){
       <input type="checkbox" ${checked} onchange="mnToggle('${c.phone_key}',this.checked)" style="width:17px;height:17px;accent-color:#10b981;flex-shrink:0">
       <div style="flex:1;min-width:0" onclick="mnCopyOne('${c.phone}','${c.phone_key}')">
         <div style="font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
-        <div style="font-size:10.5px;color:${evColor}">${MN_EVENT_LABELS[c.type]||c.type} ${mnTimeAgo(c.created_at)} · R$ ${(c.amount||0).toFixed(2).replace('.',',')}</div>
+        <div style="font-size:10.5px;color:${evColor}">${MN_EVENT_LABELS[c.type]||c.type} ${mnTimeAgo(c.created_at)} · ${mnEventClock(c.created_at)} · R$ ${(c.amount||0).toFixed(2).replace('.',',')}</div>
         <div style="font-size:10.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.product_name}${multi}${contacted}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
         <button onclick="mnCopyOne('${c.phone}','${c.phone_key}')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:7px 9px;color:#fff;font-size:10px;font-weight:700;font-family:var(--mono);cursor:pointer">${mnFmtPhone(c.phone)}</button>
         ${c.pix_url ? `<button onclick="mnCopyLink('${c.pix_url}')" style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:6px 9px;color:#fbbf24;font-size:10px;font-weight:700;font-family:var(--font);cursor:pointer">Link PIX</button>` : ''}
       </div>
-      <a href="https://wa.me/${c.phone}" target="_blank" rel="noopener" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);border-radius:9px;padding:8px 9px;color:#34d399;font-size:14px;text-decoration:none;flex-shrink:0" aria-label="Abrir no WhatsApp">➤</a>
     </div>`;
   }).join('');
   mnUpdateFooter();
