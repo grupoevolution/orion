@@ -543,7 +543,7 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
         <div class="mc mc-purple"><div class="mc-lbl">PIX Gerados</div><div class="mc-val" id="m-pixg">0</div><div class="mc-trend" id="m-conv">0% conv.</div><div class="mc-trend" id="m-pixg-trend"></div></div>
         <div class="mc mc-teal"><div class="mc-lbl">Conv. Ativas</div><div class="mc-val" id="m-active">0</div></div>
         <div class="mc mc-amber"><div class="mc-lbl">Aguardando</div><div class="mc-val" id="m-wait">0</div></div>
-        <div class="mc mc-red"><div class="mc-lbl">Saúde Chips</div><div class="mc-val" id="m-health">—</div><div class="mc-sub" id="m-health-s">— online</div></div>
+        <div class="mc mc-green"><div class="mc-lbl">Canal Oficial</div><div class="mc-val" id="m-health" style="font-size:18px">—</div><div class="mc-sub" id="m-health-s">—</div></div>
       </div>
 
       <div class="sec">
@@ -555,18 +555,18 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
       </div>
     </div>
 
-    <!-- INSTÂNCIAS -->
+    <!-- CANAL OFICIAL -->
     <div id="pg-inst" class="page">
-      <div id="health-card-wrap"></div>
-      <div class="period-pills" id="inst-pills">
-        <button class="pill active" data-period="today" onclick="setInstancesPeriod('today')">Hoje</button>
-        <button class="pill" data-period="yesterday" onclick="setInstancesPeriod('yesterday')">Ontem</button>
-        <button class="pill" data-period="7d" onclick="setInstancesPeriod('7d')">7 dias</button>
-        <button class="pill" data-period="30d" onclick="setInstancesPeriod('30d')">30 dias</button>
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding:0 2px">Canal Oficial · WhatsApp Cloud API</div>
+      <div id="wa-canal-status"></div>
+      <div class="sec" style="margin-bottom:10px">
+        <div class="sec-h">Números <button onclick="loadInstances()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;font-family:var(--font)">Atualizar</button></div>
+        <div id="wa-canal-numbers" style="padding:10px 14px"></div>
+        <div style="padding:0 14px 12px"><button onclick="mnWaSync()" style="width:100%;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:10px;color:#fff;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer">Sincronizar com a Meta</button></div>
       </div>
       <div class="sec">
-        <div class="sec-h">Instâncias WhatsApp <button onclick="loadInstances()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;font-family:var(--font)">Atualizar</button></div>
-        <div id="inst-list" style="padding:10px 0"></div>
+        <div class="sec-h">Templates</div>
+        <div id="wa-canal-templates" style="padding:10px 14px"></div>
       </div>
     </div>
 
@@ -671,8 +671,8 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
       Números
     </button>
     <button class="nav-btn" id="nb-inst" onclick="showPage('inst',this)">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="10" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="17" width="20" height="4" rx="1" stroke-width="2"/></svg>
-      Instâncias
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      Canal
     </button>
     <button class="nav-btn" id="nb-analytics" onclick="showPage('analytics',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline stroke-width="2" points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -1534,17 +1534,6 @@ function connectSSE() {
     showToast('Carrinho — ' + d.customerName, d.isFemale ? 'error' : 'info');
   });
 
-  // Instância caiu/voltou: atualização silenciosa do status (sem alerta — decisão de 06/26)
-  sse.addEventListener('instance_down', () => {
-    if(document.getElementById('pg-inst').classList.contains('active')) loadInstances();
-    loadDashboard();
-  });
-
-  sse.addEventListener('instance_up', () => {
-    if(document.getElementById('pg-inst').classList.contains('active')) loadInstances();
-    loadDashboard();
-  });
-
   sse.onerror = () => {
     document.getElementById('conn-dot').className = 'conn-dot off';
     setTimeout(connectSSE, 5000);
@@ -2172,20 +2161,14 @@ async function loadDashboard() {
     animateNumber(document.getElementById('m-active'), d.active_conversations);
     animateNumber(document.getElementById('m-wait'), d.waiting_responses);
 
-    // Saúde dos chips no Dashboard
+    // Status do canal oficial no Dashboard
     try {
-      const ins = await api('/api/instances');
-      if (ins.success) {
-        const nonNotif = ins.data.filter(i => !i.is_notification);
-        const online = nonNotif.filter(i => i.connected && !i.paused).length;
-        const total = nonNotif.length;
+      const wa = await api('/api/wa/status');
+      if (wa.success) {
         const healthEl = document.getElementById('m-health');
         const healthSubEl = document.getElementById('m-health-s');
-        if (healthEl && total > 0) {
-          const pct = Math.round((online / total) * 100);
-          healthEl.textContent = pct + '%';
-          if (healthSubEl) healthSubEl.textContent = online + '/' + total + ' online';
-        }
+        if (healthEl) healthEl.textContent = wa.configured ? 'OK' : '—';
+        if (healthSubEl) healthSubEl.textContent = wa.configured ? 'API conectada' : 'aguardando chaves';
       }
     } catch(e) {}
 
@@ -2198,229 +2181,66 @@ async function loadDashboard() {
   } catch(e) {}
 }
 
-// INSTÂNCIAS
-let _instPeriod = 'today'; // today | yesterday | 7d | 30d
-function setInstancesPeriod(p) {
-  _instPeriod = p;
-  document.querySelectorAll('#inst-pills .pill').forEach(b => b.classList.toggle('active', b.dataset.period === p));
-  haptic(6);
-  loadInstances();
-}
-function _statusRank(i) {
-  if (i.paused) return 1;
-  if (i.connected) return 0;
-  return 2;
+// CANAL OFICIAL (WhatsApp Cloud API)
+const MN_WA_QUALITY = { GREEN:['Verde · saudável','#34d399'], YELLOW:['Amarelo · atenção','#fbbf24'], RED:['Vermelho · risco','#f87171'], UNKNOWN:['—','#94a3b8'] };
+function mnWaLimit(t){
+  const map = { TIER_50:'50/dia', TIER_250:'250/dia', TIER_1K:'1.000/dia', TIER_10K:'10.000/dia', TIER_100K:'100.000/dia', TIER_UNLIMITED:'ilimitado' };
+  return map[String(t||'').toUpperCase()] || (t || '—');
 }
 async function loadInstances() {
   try {
-    // Hoje/Ontem: days=2 (suficiente). 7d=7. 30d=30
-    const days = _instPeriod === '30d' ? 30 : _instPeriod === '7d' ? 7 : 2;
-    const r = await api('/api/instances?days=' + days);
+    const r = await api('/api/wa/status');
     if(!r.success) return;
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const nonNotif = r.data.filter(i => !i.is_notification);
-    // ORDENAÇÃO: ONLINE → PAUSED → OFFLINE, alfabético dentro de cada grupo
-    nonNotif.sort((a, b) => {
-      const rankDiff = _statusRank(a) - _statusRank(b);
-      if (rankDiff !== 0) return rankDiff;
-      return String(a.name).localeCompare(String(b.name), 'pt-BR', { numeric: true });
-    });
-    const total = nonNotif.length;
-    const online = nonNotif.filter(i => i.connected && !i.paused).length;
-    const offline = nonNotif.filter(i => !i.connected && !i.paused).length;
-    const paused = nonNotif.filter(i => i.paused).length;
-
-    // CARD DE SAÚDE GERAL
-    const healthPct = total > 0 ? Math.round((online / total) * 100) : 0;
-    const healthClass = healthPct >= 75 ? 'good' : healthPct >= 50 ? 'warn' : 'bad';
-    const healthLabel = healthPct >= 75 ? 'Saudável' : healthPct >= 50 ? 'Atenção' : 'Crítico';
-    const healthSubMsg = offline > 0 ? `${offline} offline · ${paused} pausada${paused!==1?'s':''}` : (paused > 0 ? `${paused} pausada${paused!==1?'s':''}` : 'Todas operando normalmente');
-    const dashOffset = 2 * Math.PI * 36 * (1 - healthPct / 100);
-    const strokeColor = healthPct >= 75 ? '#10b981' : healthPct >= 50 ? '#fbbf24' : '#dc2626';
-    const barsHtml = nonNotif.map(i => {
-      const c = i.paused ? 'paused' : i.connected ? 'online' : 'offline';
-      return `<div class="health-bar ${c}" title="${_escapeHtml(i.name)} · ${c}"></div>`;
-    }).join('');
-    document.getElementById('health-card-wrap').innerHTML = `
-      <div class="health-card ${healthClass}">
-        <div class="health-gauge">
-          <svg viewBox="0 0 84 84">
-            <circle class="health-gauge-track" cx="42" cy="42" r="36"/>
-            <circle class="health-gauge-fill" cx="42" cy="42" r="36" stroke="${strokeColor}" stroke-dasharray="${(2*Math.PI*36).toFixed(2)}" stroke-dashoffset="${dashOffset.toFixed(2)}"/>
-          </svg>
-          <div class="health-gauge-text">
-            <div class="health-gauge-val">${healthPct}%</div>
-            <div class="health-gauge-lbl">saúde</div>
+    const stEl = document.getElementById('wa-canal-status');
+    if (stEl) {
+      const ok = r.configured;
+      stEl.innerHTML = `<div class="aban-card ${ok ? 'on' : 'off'}" style="margin-bottom:10px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${ok?'#34d399':'#f87171'};box-shadow:0 0 8px ${ok?'#34d399':'#f87171'};flex-shrink:0"></div>
+        <div class="aban-body">
+          <div class="aban-title">${ok ? 'API oficial conectada' : 'Aguardando configuração'}</div>
+          <div class="aban-sub">${ok ? 'Webhook ' + (r.has_verify_token ? 'ativo' : 'sem token') + ' · sem risco de banimento por conexão' : 'preencha WABA_TOKEN e WABA_PHONE_NUMBER_ID no EasyPanel'}</div>
+        </div>
+      </div>`;
+    }
+    const nEl = document.getElementById('wa-canal-numbers');
+    if (nEl) {
+      const nums = r.numbers || [];
+      nEl.innerHTML = nums.length ? nums.map(n => {
+        const q = MN_WA_QUALITY[(n.quality_rating||'UNKNOWN').toUpperCase()] || MN_WA_QUALITY.UNKNOWN;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+          <div style="width:9px;height:9px;border-radius:50%;background:${q[1]};box-shadow:0 0 6px ${q[1]};flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:700;color:#fff">${n.display_number || n.phone_number_id}</div>
+            <div style="font-size:10.5px;color:var(--text3)">${n.verified_name || ''}</div>
           </div>
-        </div>
-        <div class="health-info">
-          <div class="health-title">${online}/${total} online · ${healthLabel}</div>
-          <div class="health-sub">${healthSubMsg}</div>
-          <div class="health-bars">${barsHtml}</div>
-        </div>
-      </div>`;
-
-    const el = document.getElementById('inst-list');
-    if(!nonNotif.length) {
-      el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma instância configurada</div>';
-      return;
+          <div style="text-align:right">
+            <div style="font-size:10.5px;color:${q[1]};font-weight:700">${q[0]}</div>
+            <div style="font-size:10px;color:var(--text3)">limite ${mnWaLimit(n.messaging_limit)}</div>
+          </div>
+        </div>`;
+      }).join('') : '<div style="font-size:11px;color:var(--text3);padding:6px 0">Nenhum número sincronizado — toca em "Sincronizar com a Meta"</div>';
     }
-    const periodLabel = _instPeriod === 'today' ? 'hoje' : _instPeriod === 'yesterday' ? 'ontem' : _instPeriod;
-    const periodDays = _instPeriod === '30d' ? 30 : _instPeriod === '7d' ? 7 : 1;
-    // Render: agrupado por status com divisores
-    const groups = {
-      online: nonNotif.filter(i => i.connected && !i.paused),
-      paused: nonNotif.filter(i => i.paused),
-      offline: nonNotif.filter(i => !i.connected && !i.paused)
-    };
-    const renderCard = (inst) => {
-      const st = inst.paused?'paused':inst.connected?'online':'offline';
-      const stLabel = inst.paused?'Pausada':inst.connected?'Online':'Offline';
-      const label = inst.label || '';
-      const device = inst.device || '';
-      // Stats do período selecionado
-      let periodMsgs = 0;
-      let series = [];
-      if (_instPeriod === 'today') {
-        const ts = r.stats.find(s => s.instance === inst.name && s.date === today);
-        periodMsgs = ts?.messages_sent || 0;
-      } else if (_instPeriod === 'yesterday') {
-        const ts = r.stats.find(s => s.instance === inst.name && s.date === yesterday);
-        periodMsgs = ts?.messages_sent || 0;
+    const tEl = document.getElementById('wa-canal-templates');
+    if (tEl) {
+      const tr = await api('/api/wa/templates');
+      if (tr.success && (tr.templates||[]).length) {
+        const stC = s => s==='APPROVED'?'#34d399':(s==='REJECTED'?'#f87171':'#fbbf24');
+        const stL = s => s==='APPROVED'?'Aprovado':(s==='REJECTED'?'Recusado':'Em análise');
+        tEl.innerHTML = tr.templates.map(t => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;font-family:var(--mono);color:#fff">${t.name}</div>
+          <div style="font-size:10.5px;font-weight:700;color:${stC(t.status)}">${stL(t.status)} · ${t.category||''}</div>
+        </div>`).join('');
       } else {
-        for (let i = periodDays - 1; i >= 0; i--) {
-          const dStr = new Date(Date.now() - i*86400000).toISOString().split('T')[0];
-          const dayStat = r.stats.find(s => s.instance === inst.name && s.date === dStr);
-          const v = dayStat?.messages_sent || 0;
-          series.push(v);
-          periodMsgs += v;
-        }
+        tEl.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:6px 0">${tr.error || 'Nenhum template ainda'}</div>`;
       }
-      const sparkCls = 'inst-spark' + (st === 'offline' ? ' offline' : '');
-      const sparkSvg = (series.length > 1 && series.some(v => v > 0)) ? `<svg class="${sparkCls}" viewBox="0 0 50 14" preserveAspectRatio="none"><path d="${sparklinePath(series, 50, 14)}"/></svg>` : '';
-      // Stats line: período principal + comparativo do dia (se não estiver mostrando hoje, mostra "hoje X" pra contexto)
-      const todayStat = r.stats.find(s => s.instance === inst.name && s.date === today);
-      const todayMsgs = todayStat?.messages_sent || 0;
-      let statsLine = `${periodMsgs} msgs ${periodLabel}`;
-      if (_instPeriod !== 'today' && todayMsgs > 0) statsLine += ` · hoje ${todayMsgs}`;
-      const abanFlag = inst.is_abandono ? ' <span style="font-size:8px;font-weight:800;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.25);padding:1px 5px;border-radius:6px;vertical-align:middle;letter-spacing:.3px">ABANDONO</span>' : (inst.block_abandono ? ' <span style="font-size:8px;font-weight:800;color:#34d399;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);padding:1px 5px;border-radius:6px;vertical-align:middle;letter-spacing:.3px">PROTEGIDA</span>' : '');
-      return `<div class="inst-card ${st==='offline'?'down':st==='paused'?'paused':''}" style="padding:12px 14px;margin:0 10px 8px" onclick="openInstanceDetail('${_escapeHtml(inst.name).replace(/'/g,'&#39;')}')">
-        <div class="inst-dot-big ${st}"></div>
-        <div class="inst-body">
-          <div class="inst-name">${_escapeHtml(inst.name)}${abanFlag}${sparkSvg}</div>
-          ${label?`<div class="inst-label">${_escapeHtml(label)}${device?' · '+_escapeHtml(device):''}</div>`:''}
-          <div class="inst-stats">${statsLine}</div>
-        </div>
-        <div class="inst-status ${st}">${stLabel}</div>
-      </div>`;
-    };
-    let html = '';
-    if (groups.online.length) {
-      html += `<div class="inst-divider"><span style="color:#34d399">Online · ${groups.online.length}</span><div class="inst-divider-line"></div></div>`;
-      html += groups.online.map(renderCard).join('');
     }
-    if (groups.paused.length) {
-      html += `<div class="inst-divider"><span style="color:#fbbf24">Pausadas · ${groups.paused.length}</span><div class="inst-divider-line"></div></div>`;
-      html += groups.paused.map(renderCard).join('');
-    }
-    if (groups.offline.length) {
-      html += `<div class="inst-divider"><span style="color:#f87171">Offline · ${groups.offline.length}</span><div class="inst-divider-line"></div></div>`;
-      html += groups.offline.map(renderCard).join('');
-    }
-    el.innerHTML = html;
   } catch(e) {}
 }
-
-// INSTANCE DETAIL DRAWER (15/05)
-async function openInstanceDetail(name) {
-  if (navigator.vibrate) navigator.vibrate(12);
-  try {
-    const r = await api('/api/instances/' + encodeURIComponent(name) + '/detail');
-    if (!r.success) return;
-    const inst = r.instance, today = r.today;
-    const stStr = inst.paused ? 'Pausada' : (inst.connected ? 'Online' : 'Offline');
-    const stColor = inst.paused ? '#fbbf24' : (inst.connected ? '#34d399' : '#f87171');
-    const phoneStr = inst.phone_number ? _escapeHtml(inst.phone_number) : '—';
-    const deviceStr = inst.device_name ? `${_escapeHtml(inst.device_name)}${inst.device_slot?' · '+_escapeHtml(inst.device_slot):''}` : '';
-    const avgWarn = today.messages_sent > r.avg7d_messages * 2 && today.messages_sent > 20 ? ' <span style="color:#fbbf24">(acima da média)</span>' : '';
-
-    const dropsHtml = r.drops_recent && r.drops_recent.length
-      ? r.drops_recent.map(d => {
-          const dt = new Date(d.at).toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-          const tag = d.recovered_at ? '<span style="color:#34d399">recuperada</span>' : '<span style="color:#f87171">ativa</span>';
-          return `<div class="inst-detail-stat"><span class="inst-detail-stat-lbl">${tag} ${dt}</span><span class="inst-detail-stat-val" style="font-size:10px;color:var(--text3)">${d.type||'UNKNOWN'}</span></div>`;
-        }).join('')
-      : '<div style="padding:14px;text-align:center;color:var(--text3);font-size:11px">Sem quedas nos últimos 7 dias</div>';
-
-    const content = `
-      <div style="padding:0 18px 4px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-          <div style="width:10px;height:10px;border-radius:50%;background:${stColor};box-shadow:0 0 8px ${stColor}"></div>
-          <div style="font-size:14px;font-weight:700;color:${stColor}">${stStr}</div>
-        </div>
-        ${phoneStr !== '—' || deviceStr ? `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">${phoneStr}${deviceStr?' · '+deviceStr:''}</div>` : ''}
-      </div>
-      <div style="border-top:1px solid var(--border);margin-top:6px"></div>
-      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Mensagens hoje</span><span class="inst-detail-stat-val">${today.messages_sent}${avgWarn}</span></div>
-      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Média 7 dias</span><span class="inst-detail-stat-val">${r.avg7d_messages}</span></div>
-      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Leads atendidos hoje</span><span class="inst-detail-stat-val">${today.leads_attended}</span></div>
-      <div class="inst-detail-stat"><span class="inst-detail-stat-lbl">Quedas (7d)</span><span class="inst-detail-stat-val">${r.drops7d}</span></div>
-
-      <div style="padding:14px 18px 6px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Controles</div>
-
-      <div class="inst-detail-toggle">
-        <div class="inst-detail-toggle-info">
-          <div class="inst-detail-toggle-lbl">Pausar instância</div>
-          <div class="inst-detail-toggle-sub">Não envia mensagens enquanto pausada</div>
-        </div>
-        <div class="aban-sw ${inst.paused?'on':''}" onclick="toggleInstFlag('${_escapeHtml(name).replace(/'/g,'&#39;')}','pause',${!inst.paused})"></div>
-      </div>
-      <div class="inst-detail-toggle">
-        <div class="inst-detail-toggle-info">
-          <div class="inst-detail-toggle-lbl">Dedicada a abandono</div>
-          <div class="inst-detail-toggle-sub">Se LIGADO, esta instância vira pool exclusivo de abandono</div>
-        </div>
-        <div class="aban-sw ${inst.is_abandono?'on':''}" onclick="toggleInstFlag('${_escapeHtml(name).replace(/'/g,'&#39;')}','abandono',${!inst.is_abandono})"></div>
-      </div>
-      <div class="inst-detail-toggle">
-        <div class="inst-detail-toggle-info">
-          <div class="inst-detail-toggle-lbl">Proteger de abandono</div>
-          <div class="inst-detail-toggle-sub">Nunca recebe carrinho abandonado (protege número principal)</div>
-        </div>
-        <div class="aban-sw ${inst.block_abandono?'on':''}" onclick="toggleInstFlag('${_escapeHtml(name).replace(/'/g,'&#39;')}','block-abandono',${!inst.block_abandono})"></div>
-      </div>
-
-      <div style="padding:14px 18px 6px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Quedas recentes</div>
-      ${dropsHtml}
-    `;
-    openDrawer(`${_escapeHtml(inst.name)}`, content);
-  } catch(e) { console.error('openInstanceDetail:', e); }
-}
-
-async function toggleInstFlag(name, kind, newVal) {
-  if (navigator.vibrate) navigator.vibrate(15);
-  try {
-    let url, body;
-    if (kind === 'pause') {
-      url = '/api/instances/' + encodeURIComponent(name) + '/pause';
-      body = { paused: newVal };
-    } else if (kind === 'abandono') {
-      url = '/api/instances/' + encodeURIComponent(name) + '/abandono';
-      body = { is_abandono: newVal };
-    } else if (kind === 'block-abandono') {
-      url = '/api/instances/' + encodeURIComponent(name) + '/block-abandono';
-      body = { block_abandono: newVal };
-    } else return;
-    const r = await api(url, { method: 'POST', body: JSON.stringify(body) });
-    if (r.success) {
-      closeDrawer();
-      openInstanceDetail(name); // reabre com estado atualizado
-      loadInstances(); // refresh do grid
-    } else {
-      alert('Erro: ' + (r.error || 'falhou'));
-    }
-  } catch(e) { alert('Erro: ' + e.message); }
+async function mnWaSync() {
+  haptic(8);
+  const r = await api('/api/wa/sync-numbers', { method: 'POST' });
+  if (r.success) { showToast(`${r.count} número(s) sincronizado(s)`, 'success'); loadInstances(); }
+  else showToast('Erro: ' + (r.error || ''), 'error');
 }
 
 // RESUMO FINANCEIRO 7 DIAS

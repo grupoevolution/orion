@@ -369,7 +369,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
       </button>
       <button class="nav-item" onclick="showPage('instances',this)">
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="10" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="17" width="20" height="4" rx="1" stroke-width="2"/></svg>
-        <span>Instâncias</span>
+        <span>Canal Oficial</span>
       </button>
       <button class="nav-item" onclick="showPage('blacklist',this)">
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><path stroke-width="2" d="M4.93 4.93l14.14 14.14"/></svg>
@@ -488,7 +488,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             <button class="btn btn-g btn-sm" onclick="loadConversations()">↻</button>
             <button class="btn btn-sm" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.4);color:#34d399" onclick="openManualSendModal()" title="Cadastra 1 ou mais leads (número, nome, e-mail) e dispara o funil escolhido">📤 Envio Manual</button>
             <button class="btn btn-sm" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#ef4444" onclick="recoverStuckLeads()" title="Recupera leads presos (AGUARDANDO sem instância)">🚑 Recuperar Presos</button>
-            <button class="btn btn-sm" style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.4);color:#3b82f6" onclick="diagEvolution()" title="Testa conexão e envio direto pela Evolution — revela causa real do SEND_FAILED">🔍 Diagnosticar Evolution</button>
+            
           </div>
         </div>
         <div style="overflow-x:auto">
@@ -517,6 +517,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
           </div>
           <div class="blk-list">
             <div class="blk-t">Adicionar Bloco</div>
+            <button class="blk-btn" onclick="addStep('template')" style="border-color:rgba(16,185,129,.4)"><div class="blk-ico" style="color:#10b981">📋</div><div><b>Template Oficial</b></div></button>
             <button class="blk-btn" onclick="addStep('text')"><div class="blk-ico">T</div><div><b>Texto</b></div></button>
             <button class="blk-btn" onclick="addStep('audio')"><div class="blk-ico"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><div><b>Áudio PTT</b></div></button>
             <button class="blk-btn" onclick="addStep('image')"><div class="blk-ico"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div><b>Imagem</b></div></button>
@@ -631,11 +632,31 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
       </div>
     </div>
 
-    <!-- INSTÂNCIAS -->
+    <!-- CANAL OFICIAL (WhatsApp Cloud API da Meta) -->
     <div id="page-instances" class="page">
       <div class="section">
-        <div class="sh"><div class="sh-title">Instâncias WhatsApp</div><div style="display:flex;gap:6px"><button class="btn btn-g btn-sm" onclick="syncPhones()">Sincronizar Números</button><button class="btn btn-g btn-sm" onclick="loadInstances()">↻ Atualizar</button></div></div>
-        <div class="inst-grid" id="inst-grid"></div>
+        <div class="sh"><div><div class="sh-title">Canal Oficial — WhatsApp Cloud API</div><div class="sh-sub">Números conectados direto na Meta — sem QR Code, sem banimento por conexão</div></div>
+          <button class="btn btn-g btn-sm" onclick="loadInstances()">↻ Atualizar</button></div>
+        <div id="wa-status-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:16px"></div>
+      </div>
+      <div class="section" style="margin-top:16px">
+        <div class="sh"><div><div class="sh-title">Números</div><div class="sh-sub">Qualidade e limite diário direto da Meta — qualidade caindo dispara aviso no celular</div></div>
+          <button class="btn btn-g btn-sm" onclick="waSyncNumbersUI()">Sincronizar com a Meta</button></div>
+        <div id="wa-numbers" style="padding:16px"></div>
+      </div>
+      <div class="section" style="margin-top:16px">
+        <div class="sh"><div><div class="sh-title">Templates</div><div class="sh-sub">Modelos aprovados pela Meta — o 1º passo de todo funil</div></div>
+          <button class="btn btn-g btn-sm" onclick="waLoadTemplates()">↻ Atualizar</button></div>
+        <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Categoria</th><th>Idioma</th><th>Status</th></tr></thead><tbody id="wa-templates-body"></tbody></table></div>
+      </div>
+      <div class="section" style="margin-top:16px">
+        <div class="sh"><div><div class="sh-title">Envio de teste</div><div class="sh-sub">Template funciona sempre · texto livre só com janela de 24h aberta</div></div></div>
+        <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <div class="fe-row" style="max-width:220px;margin:0"><label class="fe-lbl">Número destino (com DDD)</label><input class="fe-inp" id="wa-test-to" placeholder="5575999999999"></div>
+          <div class="fe-row" style="max-width:220px;margin:0"><label class="fe-lbl">Template (opcional)</label><select class="fe-inp" id="wa-test-template"><option value="">— texto livre —</option></select></div>
+          <div class="fe-row" style="flex:1;min-width:200px;margin:0"><label class="fe-lbl">Texto (se não usar template)</label><input class="fe-inp" id="wa-test-text" placeholder="Olá! Teste do canal oficial."></div>
+          <button class="btn btn-sm" style="background:#10b981;color:#000;font-weight:700" onclick="waTestSend()">Enviar teste</button>
+        </div>
       </div>
     </div>
 
@@ -708,36 +729,6 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
       <div class="section">
         <div class="sh"><div><div class="sh-title">Onde os Leads Param de Responder</div><div class="sh-sub">Identifique gargalos no funil</div></div></div>
         <div id="dropoff-list"></div>
-      </div>
-      <div class="section" style="margin-top:16px">
-        <div class="sh">
-          <div>
-            <div class="sh-title">Saúde dos Números de WhatsApp</div>
-            <div class="sh-sub">Histórico por número real (sobrevive a trocas de chip entre instâncias)</div>
-          </div>
-          <button class="btn btn-g btn-sm" onclick="loadPhoneHealth()">↻ Atualizar</button>
-        </div>
-        <div id="phones-summary-row" style="display:flex;gap:10px;padding:14px 18px;flex-wrap:wrap"></div>
-        <div style="overflow-x:auto">
-          <table class="ab-tbl" style="min-width:880px">
-            <thead>
-              <tr>
-                <th>Número</th>
-                <th>Celular</th>
-                <th>Tipo</th>
-                <th>Instância Atual</th>
-                <th>Quedas</th>
-                <th>Bans</th>
-                <th>Desconexões</th>
-                <th>Msgs Hoje</th>
-                <th>Última Queda</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="phones-body"></tbody>
-          </table>
-        </div>
       </div>
     </div>
     <!-- ========== FINANCEIRO (NOVO) ========== -->
@@ -1210,22 +1201,6 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         </div>
       </div>
 
-      <!-- Instance Health -->
-      <div class="section">
-        <div class="sh"><div class="sh-title">🏥 Saúde das Instâncias</div><div class="sh-sub">Score baseado em taxa de entrega e erros</div></div>
-        <div style="padding:16px" id="health-list"></div>
-      </div>
-
-      <!-- Phone variations log -->
-      <div class="section">
-        <div class="sh"><div class="sh-title">📞 Log de Variações de Número</div><div class="sh-sub">Histórico de números testados e qual variação funcionou</div></div>
-        <div style="overflow-x:auto">
-          <table class="tbl">
-            <thead><tr><th>Original</th><th>Variação que Funcionou</th><th>Tentativas</th><th>Status</th><th>Data</th></tr></thead>
-            <tbody id="phone-var-tbody"></tbody>
-          </table>
-        </div>
-      </div>
     </div>
 
   </main>
@@ -1538,8 +1513,6 @@ function connectSSE(){
   sse.addEventListener('pix_generated',e=>{const d=JSON.parse(e.data);playSound('pix_generated');showToast('PIX Gerado — '+d.customerName+' ('+d.amount+')','info');addLog('PIX','💰 PIX gerado — '+d.customerName+' ('+d.amount+')');loadDashboard();if(document.getElementById('page-conversations').classList.contains('active'))loadConversations();});
   sse.addEventListener('payment_approved',e=>{const d=JSON.parse(e.data);playSound(d.paymentMethod==='CREDIT_CARD'?'card':'payment');showToast(''+(d.paymentMethod==='CREDIT_CARD'?'Cartão':'PIX')+' Pago — '+d.customerName+' ('+d.amount+')','success');addLog('PAY','✅ Pago — '+d.customerName+' ('+d.amount+')');loadDashboard();if(document.getElementById('page-conversations').classList.contains('active'))loadConversations();});
   sse.addEventListener('cart_abandoned',e=>{const d=JSON.parse(e.data);playSound('cart_abandoned');showToast('Carrinho Abandonado — '+d.customerName+' ('+d.amount+')','info');addLog('CART','🛒 Carrinho abandonado — '+d.customerName+' ('+d.amount+')');loadDashboard();});
-  sse.addEventListener('instance_down',e=>{if(document.getElementById('page-instances').classList.contains('active'))loadInstances();});
-  sse.addEventListener('instance_up',e=>{if(document.getElementById('page-instances').classList.contains('active'))loadInstances();});
   sse.addEventListener('client_reply',e=>{const d=JSON.parse(e.data);addLog('REPLY','💬 Lead respondeu: "'+d.text+'"');});
   sse.onerror=()=>{const b=document.getElementById('conn-badge');b.className='conn-badge off';document.getElementById('conn-lbl').textContent='Reconectando...';setTimeout(connectSSE,5000);};
   sse.onopen=()=>{const b=document.getElementById('conn-badge');b.className='conn-badge';document.getElementById('conn-lbl').textContent='Conectado';};
@@ -1573,9 +1546,9 @@ function showPage(p,btn){
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   if(btn)btn.classList.add('active');
-  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos','start-triggers':'Gatilhos de Início',products:'Produtos',instances:'Instâncias',blacklist:'Blacklist',analytics:'Análises',finance:'Financeiro',numbers:'Números',settings:'Configurações'};
+  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos','start-triggers':'Gatilhos de Início',products:'Produtos',instances:'Canal Oficial',blacklist:'Blacklist',analytics:'Análises',finance:'Financeiro',numbers:'Números',settings:'Configurações'};
   document.getElementById('pg-title').textContent=t[p]||p;
-  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,'start-triggers':loadStartTriggers,products:loadProducts,instances:loadInstances,analytics:()=>{loadAnalytics();loadPhoneHealth();},blacklist:loadBlacklist,finance:()=>finShowTab('day'),numbers:loadNumbers,settings:loadSettings})[p]?.();
+  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,'start-triggers':loadStartTriggers,products:loadProducts,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist,finance:()=>finShowTab('day'),numbers:loadNumbers,settings:loadSettings})[p]?.();
 }
 
 // DASHBOARD
@@ -1810,26 +1783,6 @@ async function deleteConv(phoneKey, name) {
 }
 function copyPix(c){navigator.clipboard.writeText(c).then(()=>showToast('PIX copiado!','success'));}
 
-async function diagEvolution(){
-  const phone = prompt('Telefone DDD+número pra teste de envio (ex: 5511999999999) — ou deixe vazio só pra checar conexão:', '');
-  if(phone===null)return;
-  showToast('🔍 Diagnosticando todas as instâncias...','info');
-  const r = await api('/api/diag-evolution', { method:'POST', body: JSON.stringify({ phone: phone || '' }) });
-  if(!r.success){ showToast(''+(r.error||'Erro'),'error'); return; }
-  // ⭐ FIX 05/05: modal inline (popup window.open era bloqueado pelo Chrome)
-  const old = document.getElementById('diagEvoModal'); if (old) old.remove();
-  const html = `<div id="diagEvoModal" style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto" onclick="if(event.target===this)this.remove()">
-    <div style="background:#0a0a0a;border:1px solid #d4a36a;border-radius:8px;max-width:1100px;width:100%;max-height:90vh;overflow:auto;padding:18px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="color:#d4a36a;font-size:16px;font-weight:700">🔍 Diagnóstico Evolution</div>
-        <button onclick="document.getElementById('diagEvoModal').remove()" style="background:transparent;border:1px solid #444;color:#fff;padding:4px 12px;border-radius:6px;cursor:pointer">✕ Fechar</button>
-      </div>
-      <pre style="font-family:monospace;font-size:11px;background:#000;color:#0f0;padding:14px;border-radius:6px;white-space:pre-wrap;word-break:break-all">${escapeHtml(JSON.stringify(r,null,2))}</pre>
-    </div>
-  </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
-}
-
 async function recoverStuckLeads(){
   // ⭐ FIX 10/05: preview (dry-run) primeiro pra mostrar EXATAMENTE o que vai acontecer
   // antes de tocar em qualquer lead. Mostra também quantos estão aguardando resposta (não serão tocados).
@@ -1886,7 +1839,7 @@ async function recoverStuckLeads(){
 }
 
 // FUNIS
-const sNames={text:'Mensagem de Texto',audio:'Áudio PTT',image:'Imagem','image+text':'Imagem + Texto',video:'Vídeo','video+text':'Vídeo + Texto',viewonce_image:'Img Visualização Única',viewonce_video:'Vídeo Visualização Único',sticker:'Figurinha',delay:'Delay'};
+const sNames={template:'📋 Template Oficial',text:'Mensagem de Texto',audio:'Áudio PTT',image:'Imagem','image+text':'Imagem + Texto',video:'Vídeo','video+text':'Vídeo + Texto',viewonce_image:'Img Visualização Única',viewonce_video:'Vídeo Visualização Único',sticker:'Figurinha',delay:'Delay'};
 let _funnelFilter = 'configured'; // padrão: mostra só os com passos
 let _allFunnels = [];
 let _allProducts = [];
@@ -2109,11 +2062,13 @@ function renderFunnelEditor(){
   cont.innerHTML=currentFunnel.steps.map((s,i)=>`
     <div class="sc" id="sc${i}" draggable="true" ondragstart="dStart(${i})" ondragover="dOver(event,${i})" ondrop="dDrop(event,${i})" ondragleave="dLeave(${i})">
       <div class="sc-h"><div class="sc-num">${i+1}</div><div class="sc-name">${sNames[s.type]||s.type}${s.is_intro?' <span style="background:rgba(217,119,6,.15);color:#d97706;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;margin-left:4px">🎤 APRESENTAÇÃO</span>':''}</div><div style="display:flex;gap:5px"><button class="btn btn-g btn-xs" onclick="toggleEdit(${i})">Editar</button><button class="btn btn-d btn-xs" onclick="removeStep(${i})">✕</button></div></div>
-      <div class="sc-prev">${s.type==='delay'?`⏰ Delay: ${s.delaySeconds}s (±20% aleatório)`:s.type==='sticker'?`🎭 ${s.mediaUrl||'URL não configurada'}`:s.type==='audio'||s.type.includes('viewonce')?`URL: ${s.mediaUrl||'não configurada'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`:`${s.delayBefore?`<span style="color:#d97706">⏰ ${s.delayBefore}s</span> · `:''}${s.text?s.text.substring(0,80)+'...':'<i style="color:var(--text3)">Sem texto</i>'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`}</div>
+      <div class="sc-prev">${s.type==='template'?`📋 Template: <b>${s.templateName||'<i>defina o nome</i>'}</b> · única mensagem que INICIA conversa (paga)`:s.type==='delay'?`⏰ Delay: ${s.delaySeconds}s (±20% aleatório)`:s.type==='sticker'?`🎭 ${s.mediaUrl||'URL não configurada'}`:s.type==='audio'||s.type.includes('viewonce')?`URL: ${s.mediaUrl||'não configurada'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`:`${s.delayBefore?`<span style="color:#d97706">⏰ ${s.delayBefore}s</span> · `:''}${s.text?s.text.substring(0,80)+'...':'<i style="color:var(--text3)">Sem texto</i>'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`}</div>
       <div class="sc-edit" id="se${i}">
-        ${s.type==='delay'?`<div class="fe-row"><label class="fe-lbl">Segundos (±20% variação automática)</label><input type="number" class="fe-inp" value="${s.delaySeconds||10}" oninput="upStep(${i},'delaySeconds',this.value)"></div>`:`
-          ${!['audio','image','video','viewonce_image','viewonce_video','sticker'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">Texto — {NOME} {SAUDACAO} {CIDADE} {ESTADO} {PIX_LINK} {VALOR} {EMAIL}</label><textarea class="fe-ta" oninput="upStep(${i},'text',this.value)">${s.text||''}</textarea></div>`:''}
-          ${s.type!=='text'?`<div class="fe-row"><label class="fe-lbl">URL da Mídia</label><input type="url" class="fe-inp" value="${s.mediaUrl||''}" oninput="upStep(${i},'mediaUrl',this.value)" placeholder="https://..."></div>`:''}
+        ${s.type==='template'?`<div class="fe-row"><label class="fe-lbl">Nome do template aprovado na Meta (aba Canal Oficial mostra a lista)</label><input class="fe-inp" value="${s.templateName||''}" oninput="upStep(${i},'templateName',this.value)" placeholder="ex: pix_pendente"></div>
+          <div class="fe-row"><label class="fe-lbl">Idioma</label><input class="fe-inp" value="${s.templateLang||'pt_BR'}" oninput="upStep(${i},'templateLang',this.value)"></div>
+          <div style="font-size:11px;color:var(--text3);line-height:1.5;padding:8px 10px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:8px">O template é a ÚNICA mensagem que pode iniciar a conversa (e a única paga). Os passos seguintes só saem quando o cliente responder — e aí são grátis.</div>`:s.type==='delay'?`<div class="fe-row"><label class="fe-lbl">Segundos (±20% variação automática)</label><input type="number" class="fe-inp" value="${s.delaySeconds||10}" oninput="upStep(${i},'delaySeconds',this.value)"></div>`:`
+          ${!['audio','image','video','viewonce_image','viewonce_video','sticker','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">Texto — {NOME} {SAUDACAO} {CIDADE} {ESTADO} {PIX_LINK} {VALOR} {EMAIL}</label><textarea class="fe-ta" oninput="upStep(${i},'text',this.value)">${s.text||''}</textarea></div>`:''}
+          ${!['text','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">URL da Mídia</label><input type="url" class="fe-inp" value="${s.mediaUrl||''}" oninput="upStep(${i},'mediaUrl',this.value)" placeholder="https://..."></div>`:''}
           <div class="fe-row"><label class="fe-lbl">Delay antes (segundos, ±20% automático)</label><input type="number" class="fe-inp" value="${s.delayBefore||0}" oninput="upStep(${i},'delayBefore',this.value)"></div>
           <div class="fe-chk"><input type="checkbox" id="wr${i}" ${s.waitForReply?'checked':''} onchange="upStep(${i},'waitForReply',this.checked)"><label for="wr${i}">⏸ Aguardar resposta para continuar</label></div>
           <div class="fe-chk"><input type="checkbox" id="st${i}" ${s.showTyping?'checked':''} onchange="upStep(${i},'showTyping',this.checked)"><label for="st${i}">💬 Mostrar digitando</label></div>
@@ -2207,22 +2162,9 @@ async function openStartTriggerModal(data){
   const productSel = document.getElementById('st-product');
   productSel.innerHTML = '<option value="">— Auto (usa produto do funil) —</option>' + products.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
   productSel.value = data?.target_product_id || '';
-  // Popula instâncias com checkboxes
-  const instRes = await api('/api/instances');
-  const instances = (instRes.data || []).filter(i => !i.is_notification);
-  let selectedInstances = [];
-  try { selectedInstances = JSON.parse(data?.instances || '[]'); } catch(e) {}
+  // Canal oficial: gatilho vale pra todas as mensagens recebidas no número
   const instEl = document.getElementById('st-instances-list');
-  if(!instances.length){
-    instEl.innerHTML = '<div style="color:var(--text3);font-size:11px">Nenhuma instância cadastrada</div>';
-  } else {
-    instEl.innerHTML = instances.map(i => `
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px">
-        <input type="checkbox" class="st-inst-chk" value="${escapeHtml(i.name)}" ${selectedInstances.includes(i.name)?'checked':''}>
-        <span>${escapeHtml(i.name)}</span>
-      </label>
-    `).join('');
-  }
+  if (instEl) instEl.innerHTML = '<div style="color:var(--text3);font-size:11px">Canal oficial — o gatilho vale pra qualquer mensagem recebida</div>';
   document.getElementById('modal-start-trigger').classList.add('open');
 }
 
@@ -2905,266 +2847,64 @@ async function saveABTest(){
   if(r.success){showToast(checked.length>0?`✅ A/B Test ativado com ${checked.length+1} funis`:'A/B Test desativado','success');closeModal('modal-ab');loadProducts();}
 }
 
-// INSTÂNCIAS
+// CANAL OFICIAL (WhatsApp Cloud API)
+const WA_QUALITY_LABEL = { GREEN:['Verde — saudável','#10b981'], YELLOW:['Amarelo — atenção','#f59e0b'], RED:['Vermelho — risco','#ef4444'], UNKNOWN:['—','#94a3b8'] };
+function waLimitLabel(t){
+  const map = { TIER_50:'50/dia', TIER_250:'250/dia', TIER_1K:'1.000/dia', TIER_10K:'10.000/dia', TIER_100K:'100.000/dia', TIER_UNLIMITED:'ilimitado' };
+  return map[String(t||'').toUpperCase()] || (t || '—');
+}
 async function loadInstances(){
-  const r = await api('/api/instances');
+  const r = await api('/api/wa/status');
   if(!r.success) return;
-  const phonesR = await api('/api/phones');
-  const phonesByInstance = new Map();
-  if (phonesR.success && phonesR.data) {
-    for (const p of phonesR.data) {
-      if (p.current_instance) phonesByInstance.set(p.current_instance, p);
-    }
-  }
-  const visible = r.data.filter(i=>!i.is_notification);
-
-  // Agrupa por device_name DO NÚMERO que está naquela instância (fonte da verdade)
-  // Se não tiver número vinculado, cai em "Não identificadas"
-  const groups = new Map();
-  for (const inst of visible) {
-    const phoneRec = phonesByInstance.get(inst.name);
-    const deviceName = phoneRec?.device_name || inst.device_name;
-    const key = (deviceName && deviceName.trim()) ? deviceName.trim() : '⚠️ Não identificadas';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ inst, phoneRec });
-  }
-  const sortedKeys = [...groups.keys()].sort((a, b) => {
-    if (a.startsWith('⚠️')) return 1;
-    if (b.startsWith('⚠️')) return -1;
-    return a.localeCompare(b, 'pt-BR', {numeric:true});
-  });
-
-  let html = '';
-  for (const groupName of sortedKeys) {
-    const items = groups.get(groupName);
-    const onlineCount = items.filter(x=>x.inst.connected && !x.inst.paused).length;
-    const totalCount = items.length;
-    const headerColor = onlineCount === totalCount ? '#10b981' : onlineCount === 0 ? '#ef4444' : '#d97706';
-    html += `<div class="inst-group"><div class="inst-group-h" style="border-left-color:${headerColor}">
-      <span class="inst-group-t">${groupName}</span>
-      <span class="inst-group-c">${onlineCount}/${totalCount} online</span>
-    </div><div class="inst-grid">`;
-
-    for (const {inst, phoneRec} of items) {
-      const st = inst.paused ? 'paused' : inst.connected ? 'online' : 'offline';
-      const sl = inst.paused ? '⏸ Pausada' : inst.connected ? '🟢 Online' : '🔴 Offline';
-      const days = inst.added_at ? Math.floor((Date.now()-new Date(inst.added_at).getTime())/86400000) : 0;
-      const phoneNum = phoneRec?.phone_number || inst.phone_number;
-      const accountType = phoneRec?.account_type || inst.account_type;
-      const deviceSlot = phoneRec?.device_slot || inst.device_slot;
-      const abandBadge = inst.is_abandono ? '<span class="badge-pill" style="background:rgba(217,119,6,.15);color:#d97706">🛒 ABANDONO</span>' : '';
-      const acctBadge = accountType ? `<span class="badge-pill" style="background:${accountType==='BUSINESS'?'rgba(34,197,94,.15)':'rgba(59,130,246,.15)'};color:${accountType==='BUSINESS'?'#22c55e':'#3b82f6'}">${accountType}</span>` : '';
-      const bannedBadge = phoneRec?.status === 'BANNED' ? '<span class="badge-pill" style="background:rgba(239,68,68,.15);color:#ef4444">🚫 BANIDO</span>' : '';
-
-      html += `<div class="inst-card ${st}">
-        <div class="inst-h">
-          <span class="inst-name">${inst.name}${abandBadge}${acctBadge}${bannedBadge}</span>
-          <div class="inst-dot ${st}"></div>
-        </div>
-        <div class="inst-phone-box">
-          <div class="inst-phone-label">Número Conectado</div>
-          <div class="inst-phone-val">${phoneNum ? '📞 ' + phoneNum : '<span style="color:var(--text3)">—</span>'}</div>
-          ${deviceSlot ? `<div class="inst-phone-slot">${deviceSlot}</div>` : ''}
-        </div>
-        <div class="inst-info">${sl} · ${days}d no sistema</div>
-        <div style="display:flex;gap:6px;margin-top:10px">
-          <button class="inst-act ${inst.paused?'resume':'pause'}" style="flex:1" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button>
-          <button class="inst-act edit" style="flex:1" onclick='openInstModal(${JSON.stringify(inst.name)}, ${JSON.stringify(phoneNum || "")})'>Identificar</button>
-          <button class="inst-act danger" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover">🗑️</button>
-        </div>
-        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:11px">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Chip dedicado: só envia ABANDONO/CARTÃO_RECUSADO (proteção dos chips queimáveis)">
-            <input type="checkbox" ${inst.is_abandono?'checked':''} ${inst.block_abandono?'disabled':''} onchange="toggleAbandono('${inst.name}', this.checked)">
-            <span>Usar <strong>só</strong> p/ Abandono/Cartão Recusado</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Protege essa instância: não vai mandar mensagens de carrinho abandonado nem cartão recusado">
-            <input type="checkbox" ${inst.block_abandono?'checked':''} ${inst.is_abandono?'disabled':''} onchange="toggleBlockAbandono('${inst.name}', this.checked)">
-            <span>🛡️ <strong>NÃO</strong> usar p/ Abandono/Cartão Recusado</span>
-          </label>
-        </div>
+  document.getElementById('wa-status-cards').innerHTML = `
+    <div class="mc ${r.configured?'mc-green':'mc-red'}"><div class="mc-lbl">API oficial</div><div class="mc-val" style="font-size:16px">${r.configured?'Conectada':'Aguardando chaves'}</div><div class="mc-sub">${r.configured?('número padrão '+(r.default_phone_number_id||'')):'preencha WABA_TOKEN e WABA_PHONE_NUMBER_ID no EasyPanel'}</div></div>
+    <div class="mc mc-teal"><div class="mc-lbl">Webhook</div><div class="mc-val" style="font-size:16px">${r.has_verify_token?'Pronto':'Sem token'}</div><div class="mc-sub">/webhook/meta</div></div>
+    <div class="mc mc-purple"><div class="mc-lbl">Números na conta</div><div class="mc-val" style="font-size:16px">${(r.numbers||[]).length}</div><div class="mc-sub">sincronizados da Meta</div></div>`;
+  const nEl = document.getElementById('wa-numbers');
+  if(!(r.numbers||[]).length){
+    nEl.innerHTML = '<div style="color:var(--text3);font-size:12px">Nenhum número sincronizado ainda — clica em "Sincronizar com a Meta" (precisa de WABA_TOKEN e WABA_ID no ambiente)</div>';
+  } else {
+    nEl.innerHTML = r.numbers.map(n=>{
+      const q = WA_QUALITY_LABEL[(n.quality_rating||'UNKNOWN').toUpperCase()] || WA_QUALITY_LABEL.UNKNOWN;
+      return `<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="width:10px;height:10px;border-radius:50%;background:${q[1]};box-shadow:0 0 8px ${q[1]}"></div>
+        <div style="flex:1;min-width:180px"><div style="font-weight:700">${n.display_number||n.phone_number_id}</div><div style="font-size:11px;color:var(--text3)">${n.verified_name||''} · ID ${n.phone_number_id}</div></div>
+        <div style="font-size:12px;color:${q[1]};font-weight:600">Qualidade: ${q[0]}</div>
+        <div style="font-size:12px;color:var(--text2)">Limite: ${waLimitLabel(n.messaging_limit)}</div>
       </div>`;
-    }
-    html += `</div></div>`;
+    }).join('');
   }
-  document.getElementById('inst-grid').innerHTML = html || '<div style="text-align:center;padding:30px;color:var(--text3)">Nenhuma instância configurada. Adicione nomes na variável INSTANCES do EasyPanel.</div>';
-  window._lastInstances = visible;
-  window._lastPhones = phonesR.data || [];
+  waLoadTemplates();
 }
-
-// ==================== MODAL BONITO DE IDENTIFICAÇÃO ====================
-function openInstModal(instanceName, currentPhone) {
-  const phoneData = (window._lastPhones || []).find(p => p.current_instance === instanceName || p.phone_number === currentPhone) || {};
-  const inst = (window._lastInstances || []).find(i => i.name === instanceName) || {};
-  const cur = {
-    phone: phoneData.phone_number || currentPhone || '',
-    device: phoneData.device_name || inst.device_name || '',
-    slot: phoneData.device_slot || inst.device_slot || '',
-    type: phoneData.account_type || inst.account_type || 'PESSOAL',
-    notes: phoneData.notes || ''
-  };
-
-  const existing = document.getElementById('inst-modal');
-  if (existing) existing.remove();
-
-  const html = `
-    <div id="inst-modal" class="modal-backdrop" onclick="if(event.target===this)closeInstModal()">
-      <div class="modal-card">
-        <div class="modal-h">
-          <div>
-            <div class="modal-title">Identificar Instância</div>
-            <div class="modal-sub">Instância: <strong>${instanceName}</strong></div>
-          </div>
-          <button class="modal-x" onclick="closeInstModal()">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="modal-note" style="background:${cur.phone?'rgba(16,185,129,.08)':'rgba(217,119,6,.08)'};border-color:${cur.phone?'rgba(16,185,129,.3)':'rgba(217,119,6,.3)'}">
-            ${cur.phone
-              ? `✅ Número detectado automaticamente: <strong>${cur.phone}</strong>`
-              : `⚠️ Nenhum número detectado. Isso significa que a instância não está conectada na Evolution ou o sistema ainda não sincronizou. Clique em "Sincronizar" na aba para atualizar.`}
-          </div>
-
-          <div class="modal-field">
-            <label>Celular Físico</label>
-            <select id="modal-device" class="modal-inp">
-              <option value="">— Selecionar —</option>
-              <option value="Celular 0" ${cur.device==='Celular 0'?'selected':''}>Celular 0</option>
-              <option value="Celular 1" ${cur.device==='Celular 1'?'selected':''}>Celular 1</option>
-              <option value="Celular 2" ${cur.device==='Celular 2'?'selected':''}>Celular 2</option>
-              <option value="Celular 3" ${cur.device==='Celular 3'?'selected':''}>Celular 3</option>
-              <option value="Celular 4" ${cur.device==='Celular 4'?'selected':''}>Celular 4</option>
-              <option value="MOTO" ${cur.device==='MOTO'?'selected':''}>MOTO</option>
-              <option value="__custom__">+ Outro (digitar)</option>
-            </select>
-            <input id="modal-device-custom" class="modal-inp" style="margin-top:6px;display:${['Celular 0','Celular 1','Celular 2','Celular 3','Celular 4','MOTO',''].includes(cur.device)?'none':'block'}" placeholder="Nome do celular" value="${['Celular 0','Celular 1','Celular 2','Celular 3','Celular 4','MOTO',''].includes(cur.device)?'':cur.device}">
-          </div>
-
-          <div class="modal-field">
-            <label>🔹 Chip / Slot <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
-            <input id="modal-slot" class="modal-inp" placeholder="Ex: Chip C4, Slot 1" value="${cur.slot}">
-          </div>
-
-          <div class="modal-field">
-            <label>👤 Tipo de Conta</label>
-            <div class="modal-radio-row">
-              <label class="modal-radio ${cur.type==='PESSOAL'?'active':''}">
-                <input type="radio" name="acct" value="PESSOAL" ${cur.type==='PESSOAL'?'checked':''}>
-                <span>👤 PESSOAL</span>
-              </label>
-              <label class="modal-radio ${cur.type==='BUSINESS'?'active':''}">
-                <input type="radio" name="acct" value="BUSINESS" ${cur.type==='BUSINESS'?'checked':''}>
-                <span>💼 BUSINESS</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="modal-field">
-            <label>📝 Notas <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
-            <input id="modal-notes" class="modal-inp" placeholder="Ex: em análise, novo chip..." value="${cur.notes}">
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-g" onclick="closeInstModal()">Cancelar</button>
-          <button class="btn btn-p" onclick='saveInstModal(${JSON.stringify(instanceName)}, ${JSON.stringify(cur.phone)})'>Salvar</button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', html);
-
-  // Toggle campo custom quando escolhe "outro"
-  const sel = document.getElementById('modal-device');
-  sel.addEventListener('change', () => {
-    const custom = document.getElementById('modal-device-custom');
-    custom.style.display = sel.value === '__custom__' ? 'block' : 'none';
-    if (sel.value === '__custom__') custom.focus();
-  });
-  // Toggle visual dos radios
-  document.querySelectorAll('#inst-modal input[name="acct"]').forEach(el => {
-    el.addEventListener('change', () => {
-      document.querySelectorAll('#inst-modal .modal-radio').forEach(l => l.classList.remove('active'));
-      el.closest('.modal-radio').classList.add('active');
-    });
-  });
+async function waSyncNumbersUI(){
+  const r = await api('/api/wa/sync-numbers', { method:'POST' });
+  if(r.success){ showToast(`${r.count} número(s) sincronizado(s) da Meta`, 'success'); loadInstances(); }
+  else showToast('Erro: ' + (r.error||''), 'error');
 }
-
-function closeInstModal() {
-  const m = document.getElementById('inst-modal');
-  if (m) m.remove();
+async function waLoadTemplates(){
+  const body = document.getElementById('wa-templates-body');
+  const sel = document.getElementById('wa-test-template');
+  const r = await api('/api/wa/templates');
+  if(!r.success){ if(body) body.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px">${r.error||'Configure WABA_ID e WABA_TOKEN pra listar templates'}</td></tr>`; return; }
+  const tps = r.templates||[];
+  if(!tps.length){ body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px">Nenhum template ainda — vamos criar os primeiros juntos</td></tr>'; return; }
+  const stColor = s => s==='APPROVED'?'#10b981':(s==='REJECTED'?'#ef4444':'#f59e0b');
+  const stLabel = s => s==='APPROVED'?'Aprovado':(s==='REJECTED'?'Recusado':'Em análise');
+  body.innerHTML = tps.map(t=>`<tr class="tr"><td style="font-family:var(--mono)">${t.name}</td><td>${t.category||'—'}</td><td>${t.language||''}</td><td style="color:${stColor(t.status)};font-weight:600">${stLabel(t.status)}</td></tr>`).join('');
+  if(sel) sel.innerHTML = '<option value="">— texto livre —</option>' + tps.filter(t=>t.status==='APPROVED').map(t=>`<option value="${t.name}|${t.language||'pt_BR'}">${t.name}</option>`).join('');
 }
-
-async function saveInstModal(instanceName, phoneNumber) {
-  const sel = document.getElementById('modal-device');
-  const custom = document.getElementById('modal-device-custom');
-  let device = sel.value === '__custom__' ? custom.value.trim() : sel.value;
-  const slot = document.getElementById('modal-slot').value.trim();
-  const notes = document.getElementById('modal-notes').value.trim();
-  const acctEl = document.querySelector('#inst-modal input[name="acct"]:checked');
-  const accountType = acctEl ? acctEl.value : 'PESSOAL';
-
-  if (!device) {
-    showToast('Selecione o celular físico', 'error');
-    return;
-  }
-
-  // Se tem número detectado, salva no sistema novo (fonte da verdade)
-  if (phoneNumber && phoneNumber.trim()) {
-    const r1 = await api(`/api/phones/${phoneNumber}/identity`, {
-      method: 'POST',
-      body: JSON.stringify({ device_name: device, device_slot: slot, account_type: accountType, notes })
-    });
-    if (!r1.success) { showToast(''+(r1.error||'Erro'),'error'); return; }
-  }
-  // Também salva nos campos legacy da instância (compatibilidade)
-  const r2 = await api(`/api/instances/${instanceName}/identity`, {
-    method: 'POST',
-    body: JSON.stringify({ phone_number: phoneNumber || '', device_name: device, device_slot: slot, account_type: accountType })
-  });
-  if (r2.success) {
-    showToast(''+instanceName+' identificada', 'success');
-    closeInstModal();
-    loadInstances();
-  } else {
-    showToast(''+(r2.error||'Erro'),'error');
-  }
-}
-
-async function syncPhones() {
-  showToast('Sincronizando...', 'info');
-  const r = await api('/api/phones/sync', { method:'POST' });
-  if (r.success) {
-    showToast(`${r.synced} número(s) sincronizado(s)`, 'success');
-    loadInstances();
-  } else {
-    showToast(''+(r.error||'Erro'), 'error');
-  }
-}
-
-async function toggleBlockAbandono(name, blocked) {
-  const r = await api(`/api/instances/${name}/block-abandono`, {method:'POST', body:JSON.stringify({block_abandono: blocked})});
-  if(r.success) {
-    showToast(blocked ? '🛡️ '+name+' protegido — não recebe mais carrinho abandonado' : '🛒 '+name+' voltou a receber carrinho abandonado', 'success');
-    loadInstances();
-  } else {
-    showToast(''+(r.error||'Erro'), 'error');
-  }
-}
-
-async function toggleAbandono(name, isAbandono) {
-  const r = await api(`/api/instances/${name}/abandono`, {method:'POST', body:JSON.stringify({is_abandono: isAbandono})});
-  if(r.success) {
-    showToast(isAbandono ? '🛒 '+name+' agora é de abandono' : '📱 '+name+' voltou ao pool principal', 'success');
-    loadInstances();
-  } else {
-    showToast(''+(r.error||'Erro'), 'error');
-    loadInstances();
-  }
-}
-async function toggleInst(n,p){await api(`/api/instances/${n}/pause`,{method:'POST',body:JSON.stringify({paused:p})});showToast(`${p?'⏸':'▶'} ${n}`,'info');loadInstances();}
-async function deleteInst(n){
-  if(!confirm(`Remover a instância ${n}? Esta ação não pode ser desfeita.`))return;
-  const r=await api(`/api/instances/${n}`,{method:'DELETE'});
-  if(r.success){showToast(`${n} removida`,'success');loadInstances();}
-  else showToast(''+r.error,'error');
+async function waTestSend(){
+  const to = document.getElementById('wa-test-to').value.trim();
+  const tpl = document.getElementById('wa-test-template').value;
+  const text = document.getElementById('wa-test-text').value.trim();
+  if(!to){ showToast('Informe o número de destino', 'error'); return; }
+  const body = { to };
+  if(tpl){ const parts = tpl.split('|'); body.template_name = parts[0]; body.template_lang = parts[1] || 'pt_BR'; }
+  else if(text) body.text = text;
+  else { showToast('Escolha um template ou escreva um texto', 'error'); return; }
+  const r = await api('/api/wa/test-send', { method:'POST', body: JSON.stringify(body) });
+  if(r.success) showToast('Mensagem enviada! Confere o WhatsApp de destino 🎉', 'success');
+  else showToast('Erro: ' + (r.error||''), 'error');
 }
 
 // BLACKLIST
@@ -3191,142 +2931,6 @@ function setDatePreset(mode, btn) {
     loadAnalytics();
   }
 }
-// ===== SAÚDE POR NÚMERO =====
-async function loadPhoneHealth(){
-  const r = await api('/api/phones');
-  if(!r.success) return;
-  const phones = r.data || [];
-  const summary = r.summary || [];
-
-  // Resumo por celular físico
-  const sumHtml = summary.map(s => {
-    const color = s.banned > 0 ? '#ef4444' : s.all_drops > 5 ? '#d97706' : '#10b981';
-    return `<div style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-left:4px solid ${color};border-radius:8px;padding:10px 12px">
-      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:4px">${s.device_name}</div>
-      <div style="font-size:15px;font-weight:700">${s.active}/${s.total_numbers} ativos</div>
-      <div style="font-size:10px;color:var(--text3);margin-top:3px">${s.all_drops} quedas · ${s.all_bans} bans</div>
-    </div>`;
-  }).join('');
-  document.getElementById('phones-summary-row').innerHTML = sumHtml || '<div style="color:var(--text3);font-size:12px">Nenhum número identificado ainda. Conecte instâncias na Evolution e clique em "Sincronizar Números".</div>';
-
-  // Busca mensagens hoje por número
-  const today = new Date().toISOString().split('T')[0];
-  const tbody = document.getElementById('phones-body');
-  if (!phones.length) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text3)">Nenhum número conhecido ainda</td></tr>';
-    return;
-  }
-
-  const rows = await Promise.all(phones.map(async p => {
-    let msgsToday = 0;
-    try {
-      const det = await api(`/api/phones/${p.phone_number}`);
-      if (det.success) {
-        const todayRec = (det.messages || []).find(m => m.date === today);
-        msgsToday = todayRec?.messages_sent || 0;
-      }
-    } catch(e) {}
-    const lastDrop = p.last_drop_at ? new Date(p.last_drop_at).toLocaleString('pt-BR', {day:'2-digit',month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—';
-    const statusColor = p.status === 'BANNED' ? '#ef4444' : '#10b981';
-    const statusText = p.status === 'BANNED' ? '🚫 BANIDO' : '✅ Ativo';
-    const typeB = p.account_type ? `<span class="badge-pill" style="background:${p.account_type==='BUSINESS'?'rgba(34,197,94,.15)':'rgba(59,130,246,.15)'};color:${p.account_type==='BUSINESS'?'#22c55e':'#3b82f6'};margin:0">${p.account_type}</span>` : '—';
-    return `<tr class="tr">
-      <td style="font-family:var(--mono);font-weight:600">${p.phone_number}</td>
-      <td>${p.device_name || '—'}${p.device_slot ? '<br><span style="font-size:10px;color:var(--text3)">'+p.device_slot+'</span>' : ''}</td>
-      <td>${typeB}</td>
-      <td style="font-family:var(--mono)">${p.current_instance || '—'}</td>
-      <td style="text-align:center;font-weight:700">${p.total_drops}</td>
-      <td style="text-align:center;color:#ef4444;font-weight:700">${p.total_bans}</td>
-      <td style="text-align:center;color:#d97706;font-weight:700">${p.total_disconnects}</td>
-      <td style="text-align:center;font-weight:700">${msgsToday}</td>
-      <td style="font-size:11px">${lastDrop}</td>
-      <td><span style="color:${statusColor};font-size:11px;font-weight:700">${statusText}</span></td>
-      <td><button class="btn btn-g btn-xs" onclick="openPhoneDetail('${p.phone_number}')">Detalhes</button></td>
-    </tr>`;
-  }));
-  tbody.innerHTML = rows.join('');
-}
-
-async function openPhoneDetail(phoneNumber) {
-  const r = await api(`/api/phones/${phoneNumber}`);
-  if (!r.success) { showToast(''+(r.error||'Erro'),'error'); return; }
-  const p = r.data;
-  const drops = r.drops || [];
-
-  const existing = document.getElementById('phone-modal');
-  if (existing) existing.remove();
-
-  const dropsRows = drops.length ? drops.map(d => {
-    const when = new Date(d.dropped_at).toLocaleString('pt-BR');
-    const dur = d.duration_seconds ? formatDuration(d.duration_seconds) : (d.recovered_at ? '—' : '⏳ Ativo');
-    const typeColor = d.drop_type === 'BAN' ? '#ef4444' : d.drop_type === 'DISCONNECT' ? '#d97706' : '#6b7280';
-    const typeLabel = d.drop_type === 'BAN' ? '🚫 Ban' : d.drop_type === 'DISCONNECT' ? '🔌 Desconexão' : '❓ Indefinido';
-    return `<tr>
-      <td style="font-size:11px">${when}</td>
-      <td style="font-family:var(--mono);font-size:11px">${d.instance_name || '—'}</td>
-      <td><span style="color:${typeColor};font-size:11px;font-weight:700">${typeLabel}</span></td>
-      <td style="font-size:11px">${dur}</td>
-      <td>
-        <select onchange="reclassify(${d.id}, this.value)" style="padding:4px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text)">
-          <option value="UNKNOWN" ${d.drop_type==='UNKNOWN'?'selected':''}>Indefinido</option>
-          <option value="BAN" ${d.drop_type==='BAN'?'selected':''}>Ban real</option>
-          <option value="DISCONNECT" ${d.drop_type==='DISCONNECT'?'selected':''}>Só desconexão</option>
-        </select>
-      </td>
-    </tr>`;
-  }).join('') : '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text3);font-size:12px">Nenhuma queda registrada</td></tr>';
-
-  const html = `
-    <div id="phone-modal" class="modal-backdrop" onclick="if(event.target===this)closePhoneModal()">
-      <div class="modal-card" style="width:700px">
-        <div class="modal-h">
-          <div>
-            <div class="modal-title">📞 ${p.phone_number}</div>
-            <div class="modal-sub">${p.device_name || 'Sem celular definido'} ${p.device_slot ? '· '+p.device_slot : ''} ${p.account_type ? '· '+p.account_type : ''}</div>
-          </div>
-          <button class="modal-x" onclick="closePhoneModal()">✕</button>
-        </div>
-        <div class="modal-body">
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
-            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${p.total_drops}</div><div style="font-size:10px;color:var(--text3)">Quedas</div></div>
-            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:#ef4444">${p.total_bans}</div><div style="font-size:10px;color:var(--text3)">Bans</div></div>
-            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:#d97706">${p.total_disconnects}</div><div style="font-size:10px;color:var(--text3)">Desconexões</div></div>
-            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${p.total_messages_sent}</div><div style="font-size:10px;color:var(--text3)">Msgs Total</div></div>
-          </div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:8px">Histórico de Quedas</div>
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden">
-            <table class="ab-tbl" style="margin:0">
-              <thead><tr><th>Quando</th><th>Instância</th><th>Tipo</th><th>Duração</th><th>Classificar como</th></tr></thead>
-              <tbody>${dropsRows}</tbody>
-            </table>
-          </div>
-          ${p.notes ? `<div style="margin-top:12px;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2)"><strong>📝 Notas:</strong> ${p.notes}</div>` : ''}
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-g" onclick="closePhoneModal()">Fechar</button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', html);
-}
-
-function closePhoneModal(){ const m = document.getElementById('phone-modal'); if (m) m.remove(); }
-
-async function reclassify(dropId, newType) {
-  const r = await api(`/api/phones/drops/${dropId}/reclassify`, { method:'POST', body: JSON.stringify({ drop_type: newType }) });
-  if (r.success) showToast('Reclassificado', 'success');
-  else showToast(''+(r.error||'Erro'), 'error');
-  loadPhoneHealth();
-}
-
-function formatDuration(sec) {
-  if (sec < 60) return sec + 's';
-  if (sec < 3600) return Math.floor(sec/60) + 'min';
-  if (sec < 86400) return Math.floor(sec/3600) + 'h';
-  return Math.floor(sec/86400) + 'd';
-}
-
 async function loadAnalytics(){
   let days = parseInt(document.getElementById('an-days').value) || 7;
   const prod = document.getElementById('an-prod').value;
@@ -3553,8 +3157,6 @@ async function loadSettings() {
       selAb.value = d.RECOVERY_FUNNEL_ID_ABANDONO || '';
     }
   } catch(e) {}
-  loadInstanceHealth();
-  loadPhoneVariations();
 }
 async function saveSettings() {
   const fbEl = document.getElementById('cfg-pix-fallback');
@@ -3688,38 +3290,6 @@ async function cleanupTestData() {
     showToast('' + (r.error || 'Erro'), 'error');
   }
 }
-async function loadInstanceHealth() {
-  const r = await api('/api/instances/health');
-  if(!r.success) return;
-  const el = document.getElementById('health-list');
-  if(!r.data.length){el.innerHTML='<div class="empty"><h3>Sem dados ainda</h3><p>Aparece após os primeiros envios</p></div>';return;}
-  el.innerHTML=r.data.map(h=>{
-    const color=h.score>=80?'#059669':h.score>=50?'#d97706':'#dc2626';
-    const bg=h.score>=80?'rgba(5,150,105,.08)':h.score>=50?'rgba(217,119,6,.08)':'rgba(220,38,38,.08)';
-    return`<div style="display:flex;align-items:center;gap:14px;padding:12px;background:${bg};border-radius:10px;margin-bottom:8px;border:1px solid ${color}20">
-      <div style="width:44px;height:44px;border-radius:50%;background:${color}20;border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:${color}">${h.score}</div>
-      <div style="flex:1">
-        <div style="font-weight:700;font-family:var(--mono)">${h.instance}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${h.total_sends} envios · ${h.failed_sends} erros · ${h.invalid_numbers} inválidos</div>
-      </div>
-      <div style="font-size:11px;font-weight:600;color:${color}">${h.score>=80?'Saudável':h.score>=50?'Atenção':'Crítico'}</div>
-    </div>`;
-  }).join('');
-}
-async function loadPhoneVariations() {
-  const r = await api('/api/phone-variations');
-  if(!r.success) return;
-  const tbody = document.getElementById('phone-var-tbody');
-  if(!r.data.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3)">Nenhum registro ainda</td></tr>';return;}
-  tbody.innerHTML=r.data.map(v=>`<tr class="tr">
-    <td style="font-family:var(--mono);font-size:11px">${v.original_phone}</td>
-    <td style="font-family:var(--mono);font-size:11px;color:#059669">${v.working_variation||'—'}</td>
-    <td style="font-size:11px">${JSON.parse(v.failed_variations||'[]').length} tentativas</td>
-    <td><span class="badge ${v.success?'b-done':'b-err'}">${v.success?'OK':'Falhou'}</span></td>
-    <td style="font-size:11px;color:var(--text3)">${new Date(v.created_at).toLocaleString('pt-BR')}</td>
-  </tr>`).join('');
-}
-
 // INIT
 if(token)showApp();
 </script>
