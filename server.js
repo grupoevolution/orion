@@ -57,7 +57,8 @@ const WABA_ID = process.env.WABA_ID || '';
 const WABA_PHONE_NUMBER_ID = process.env.WABA_PHONE_NUMBER_ID || '';
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 const META_WEBHOOK_VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || '';
-const GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+// META_GRAPH_BASE_URL: só pra testes locais (aponta pro mock) — em produção fica vazio
+const GRAPH_BASE = process.env.META_GRAPH_BASE_URL || `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 function isWabaConfigured() { return !!(WABA_TOKEN && WABA_PHONE_NUMBER_ID); }
 // ⭐ FIX 04/05: parseInt("7m") = NaN → setTimeout(fn, NaN) dispara em 0ms (sem espera dos 7min).
 // ⭐ FIX 11/05: editável no admin via settings.PIX_TIMEOUT_MS. Fallback mantido em 7min pra
@@ -1798,7 +1799,13 @@ function selectNextInstance(isFirstMessage, phoneKey) {
     return chosen;
 }
 
-// ============ ENVIO COM FALLBACK ============
+// ============ ENVIO PELO CANAL OFICIAL (Meta Cloud API) ============
+// ⭐ 28/07: transporte trocado da Evolution pra API oficial. Regras da janela:
+// - passo tipo "template" pode SEMPRE (é a única forma de iniciar conversa)
+// - qualquer outro tipo só sai com janela de 24h ABERTA (cliente respondeu)
+// - janela fechada → conversa fica aguardando resposta; quando o cliente responder,
+//   o webhook da Meta chama advanceConversation e o funil continua de graça.
+let _wabaNotConfiguredAlertAt = 0;
 async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirstMessage = false) {
     if (isMessageBlocked(phoneKey, step, conversation)) {
         addLog('SEND_BLOCKED', `🚫 Duplicada bloqueada`, { phoneKey, stepId: step.id });
@@ -1817,168 +1824,65 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
         if (variant) { actualMediaUrl = variant.mediaUrl || actualMediaUrl; actualText = variant.text || actualText; }
     }
 
-    let active = getPoolForConversation(phoneKey);
-    // ⭐ 20/07: pool vazio → tenta AUTO-CURA antes de desistir (cache/banco desatualizado era
-    // a causa do NO_ACTIVE_INSTANCES com instância online no painel)
-    if (active.length === 0) {
-        await healEmptyPool();
-        active = getPoolForConversation(phoneKey);
-    }
-    // ⭐ FIX 07/26: se o pool de ABANDONO/recuperação está vazio (nenhuma instância dedicada online),
-    // cai pro pool principal em vez de simplesmente não enviar. Assim o abandono SEMPRE tem por onde sair.
-    if (active.length === 0) {
-        const convFT = conversations.get(phoneKey)?.funnelType;
-        if ((convFT === 'ABANDONO' || convFT === 'CARTAO_RECUSADO' || convFT === 'RECUPERACAO') && activeInstancesCache.length > 0) {
-            active = activeInstancesCache;
-            addLog('ABANDONO_POOL_FALLBACK', `⚠️ Pool de ${convFT} vazio — usando pool principal pra não perder o envio`, { phoneKey });
+    if (!isWabaConfigured()) {
+        if (Date.now() - _wabaNotConfiguredAlertAt > 10 * 60 * 1000) {
+            _wabaNotConfiguredAlertAt = Date.now();
+            try { await sendPushNotification('Envios parados — API oficial', 'WABA_TOKEN / WABA_PHONE_NUMBER_ID não configurados no EasyPanel. Nenhuma mensagem sai até configurar.', 'info'); } catch(e) {}
         }
-    }
-    if (active.length === 0) {
-        // ⭐ 20/07: diagnóstico por instância + alerta no celular (1x a cada 10min no máximo)
-        const diag = describePoolExclusions();
-        addLog('NO_INSTANCES', `⚠️ Sem instâncias no pool de envio! ${diag.length ? 'Diagnóstico → ' + diag.join(' · ') : 'Nenhuma instância cadastrada.'}`, { phoneKey });
-        try {
-            if (Date.now() - (_noInstancesAlertAt || 0) > 10 * 60 * 1000) {
-                _noInstancesAlertAt = Date.now();
-                await sendPushNotification('Envios parados — sem instância', diag.length ? diag.join(' · ').substring(0, 180) : 'Nenhuma instância disponível pra enviar mensagens.', 'info');
-            }
-        } catch(e) {}
-        return { success: false, error: 'NO_ACTIVE_INSTANCES' };
+        addLog('WA_NOT_CONFIGURED', `⚠️ API oficial não configurada — passo não enviado`, { phoneKey });
+        return { success: false, error: 'WABA_NOT_CONFIGURED' };
     }
 
-    const preferred = selectNextInstance(isFirstMessage, phoneKey);
-    const stickyInstance = stickyInstances.get(phoneKey);
-    let instancesToTry;
+    const toPhone = jidToPhone(remoteJid) || jidToPhone(phoneToRemoteJid(phoneKey));
 
-    // ⭐ v1.3 — GRACE PERIOD pra sticky offline
-    // REGRA: Se cliente já tem sticky e essa instância caiu, NÃO migra automaticamente.
-    // Aguarda o número voltar (até GRACE_PERIOD_DAYS dias). Se passar do prazo, libera pra novo número.
-    const GRACE_PERIOD_DAYS = parseInt(process.env.GRACE_PERIOD_DAYS || '3');
-    const stickyExistsButOffline = stickyInstance && !active.includes(stickyInstance);
+    // Janela de 24h: fora dela, só template inicia conversa
+    if (step.type !== 'template' && !isWaWindowOpen(phoneKey)) {
+        addLog('WA_WINDOW_CLOSED', `⏸️ Janela de 24h fechada — passo ${conversation.stepIndex + 1} (${step.type}) aguardando o cliente responder`, { phoneKey });
+        return { success: false, windowClosed: true };
+    }
 
-    if (stickyExistsButOffline && !isFirstMessage) {
-        // É continuação de funil (ex: passo 2, 3, 4...) e o sticky tá offline
-        // Verifica se já passou do grace period
-        let gracePassed = false;
-        try {
-            const conv = db.getDb().prepare(`
-                SELECT sticky_instance, updated_at FROM conversations WHERE phone_key = ?
-            `).get(phoneKey);
-            if (conv && conv.updated_at) {
-                const lastUpdate = new Date(conv.updated_at).getTime();
-                const ageDays = (Date.now() - lastUpdate) / (1000 * 60 * 60 * 24);
-                if (ageDays > GRACE_PERIOD_DAYS) gracePassed = true;
-            }
-        } catch(e) {}
+    try {
+        let message;
+        if (step.type === 'template') {
+            const tplName = step.templateName || (step.text || '').trim();
+            if (!tplName) return { success: false, error: 'TEMPLATE_SEM_NOME' };
+            message = waTemplate(tplName, step.templateLang || 'pt_BR');
+        }
+        else if (step.type === 'text') message = waText(actualText);
+        else if (step.type === 'image') message = waImage(actualMediaUrl);
+        else if (step.type === 'image+text') message = waImage(actualMediaUrl, actualText);
+        else if (step.type === 'video') message = waVideo(actualMediaUrl);
+        else if (step.type === 'video+text') message = waVideo(actualMediaUrl, actualText);
+        else if (step.type === 'audio') message = waAudio(actualMediaUrl);
+        else if (step.type === 'sticker') message = { type: 'sticker', sticker: { link: actualMediaUrl } };
+        else if (step.type === 'viewonce_image') message = waImage(actualMediaUrl); // API oficial não tem "ver 1x" — vai como imagem normal
+        else if (step.type === 'viewonce_video') message = waVideo(actualMediaUrl);
+        else if (step.type === 'buttons') message = waButtons(actualText, step.buttons || []);
+        else return { success: true }; // tipo desconhecido: não trava o funil
 
-        if (!gracePassed) {
-            // ⏸️ AGUARDA O NÚMERO VOLTAR — não migra
-            addLog('STICKY_WAIT', `⏸️ Sticky ${stickyInstance} offline. Aguardando voltar (grace ${GRACE_PERIOD_DAYS}d).`, { phoneKey });
-            // Marca conversa como pausada (vai retomar quando instância voltar)
+        await waSendMessage(toPhone, message, { templateName: step.templateName || null });
+
+        registerSentMessage(phoneKey, step, conversation);
+        db.logMessage(phoneKey, 'out', actualText || actualMediaUrl, 'oficial', step.id);
+        addLog('SEND_OK', `✅ Enviado pelo canal oficial`, { phoneKey, type: step.type });
+        sendSSE('message_sent', { phoneKey, instance: 'oficial', stepType: step.type });
+        return { success: true };
+    } catch (e) {
+        const msg = String(e.message || '');
+        // 131047 = fora da janela de 24h (re-engagement) — trata como janela fechada
+        if (msg.includes('131047') || msg.toLowerCase().includes('re-engagement')) {
+            addLog('WA_WINDOW_CLOSED', `⏸️ Meta recusou: janela de 24h fechada — aguardando resposta do cliente`, { phoneKey });
+            return { success: false, windowClosed: true };
+        }
+        // 131026 = número não tem WhatsApp / não pode receber
+        if (msg.includes('131026')) {
             const conv = conversations.get(phoneKey);
-            if (conv) {
-                conv.waitingForStickyReturn = true;
-                conversations.set(phoneKey, conv);
-            }
-            return { success: false, waitingSticky: true, stickyInstance };
-        } else {
-            // 🔓 GRACE PERIOD EXPIROU — cliente liberado pra novo número
-            addLog('STICKY_RELEASED', `🔓 Sticky ${stickyInstance} caído há +${GRACE_PERIOD_DAYS}d. Liberando ${phoneKey} pra novo número.`, { phoneKey });
-            // Limpa sticky pra escolher fresh
-            stickyInstances.delete(phoneKey);
-            try { db.getDb().prepare('UPDATE conversations SET sticky_instance=NULL WHERE phone_key=?').run(phoneKey); } catch(e){}
+            if (conv) { conv.invalidNumber = true; conv.canceled = true; conversations.set(phoneKey, conv); try { convToDb(phoneKey, conv); } catch(e2) {} }
+            addLog('INVALID_NUMBER', `❌ Número sem WhatsApp: ${phoneKey}`, { phoneKey });
+            return { success: false, invalidNumber: true };
         }
+        return { success: false, error: msg.substring(0, 200) };
     }
-
-    // Recalcula sticky após possível liberação acima
-    const finalSticky = stickyInstances.get(phoneKey);
-
-    // ⭐ 20/07: sticky online vale pra TODA mensagem (inclusive 1ª de funil novo — lead que volta
-    // usa o mesmo número). O rodízio (preferred) só entra pra lead sem instância fixa.
-    if (finalSticky && active.includes(finalSticky)) {
-        instancesToTry = [finalSticky, ...active.filter(i => i !== finalSticky)];
-    } else {
-        // Cliente NOVO ou sticky liberado: usa o preferred (escolhido pelo balanceador)
-        // IMPORTANTE: nunca tenta instância caída (active só lista as conectadas)
-        instancesToTry = preferred ? [preferred, ...active.filter(i => i !== preferred)] : [...active];
-    }
-
-    for (const instanceName of instancesToTry) {
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-                let result;
-                if (step.type === 'text') result = await sendText(remoteJid, actualText, instanceName);
-                else if (step.type === 'image') result = await sendImage(remoteJid, actualMediaUrl, '', instanceName);
-                else if (step.type === 'image+text') result = await sendImage(remoteJid, actualMediaUrl, actualText, instanceName);
-                else if (step.type === 'video') result = await sendVideo(remoteJid, actualMediaUrl, '', instanceName);
-                else if (step.type === 'video+text') result = await sendVideo(remoteJid, actualMediaUrl, actualText, instanceName);
-                else if (step.type === 'audio') result = await sendAudio(remoteJid, actualMediaUrl, instanceName);
-                else if (step.type === 'sticker') result = await sendSticker(remoteJid, actualMediaUrl, instanceName);
-                else if (step.type === 'viewonce_image') result = await sendViewOnce(remoteJid, actualMediaUrl, 'image', instanceName);
-                else if (step.type === 'viewonce_video') result = await sendViewOnce(remoteJid, actualMediaUrl, 'video', instanceName);
-                else result = { ok: true };
-
-                if (result && result.ok) {
-                    registerSentMessage(phoneKey, step, conversation);
-                    const oldSticky = stickyInstances.get(phoneKey);
-                    stickyInstances.set(phoneKey, instanceName);
-                    // Persiste no banco para sobreviver reinicializações
-                    try { db.getDb().prepare('UPDATE conversations SET sticky_instance=? WHERE phone_key=?').run(instanceName, phoneKey); } catch(e){}
-                    if (!oldSticky) addLog('STICKY_SET', `📌 Instância fixada: ${instanceName}`, { phoneKey });
-                    else if (oldSticky !== instanceName) addLog('STICKY_CHANGE', `🔄 Instância trocada: ${oldSticky}→${instanceName}`, { phoneKey });
-                    db.updateInstanceStats(instanceName, 1);
-                    db.updateInstanceHealth(instanceName, true);
-                    // Contabiliza pelo NÚMERO (fonte da verdade) — se souber qual é
-                    try {
-                        const phoneRec = db.getPhoneNumberByInstance(instanceName);
-                        if (phoneRec?.phone_number) db.incrementPhoneMessages(phoneRec.phone_number, 1);
-                    } catch(e) {}
-                    db.logMessage(phoneKey, 'out', actualText || actualMediaUrl, instanceName, step.id);
-                    addLog('SEND_OK', `✅ Enviado via ${instanceName}`, { phoneKey, type: step.type });
-                    sendSSE('message_sent', { phoneKey, instance: instanceName, stepType: step.type });
-                    return { success: true, instanceName };
-                }
-
-                // Número inválido
-                if (result.invalidNumber) {
-                    addLog('INVALID_NUMBER', `❌ Número inválido: ${phoneKey} (${result.triedVariations || 1} variações testadas)`);
-                    db.updateInstanceHealth(instanceName, false, true);
-                    const conv = conversations.get(phoneKey);
-                    if (conv) { conv.invalidNumber = true; conv.canceled = true; conversations.set(phoneKey, conv); }
-                    return { success: false, invalidNumber: true };
-                }
-
-                // ⭐ FIX 06/26: timeout DEPOIS do request sair = mensagem pode ter sido entregue.
-                // Retentar aqui (mesma instância ou outra) era o que mandava a mensagem 2x pro cliente.
-                // Assume entregue e segue o funil — perder 1 mensagem é menos pior que duplicar.
-                if (result.ambiguous) {
-                    addLog('SEND_AMBIGUOUS', `⚠️ Timeout pós-envio via ${instanceName} — assumindo entregue (sem retry)`, { phoneKey, type: step.type });
-                    registerSentMessage(phoneKey, step, conversation);
-                    stickyInstances.set(phoneKey, instanceName);
-                    try { db.getDb().prepare('UPDATE conversations SET sticky_instance=? WHERE phone_key=?').run(instanceName, phoneKey); } catch(e){}
-                    db.updateInstanceStats(instanceName, 1);
-                    db.logMessage(phoneKey, 'out', actualText || actualMediaUrl, instanceName, step.id);
-                    sendSSE('message_sent', { phoneKey, instance: instanceName, stepType: step.type });
-                    return { success: true, instanceName, ambiguous: true };
-                }
-                db.updateInstanceHealth(instanceName, false, false);
-
-                if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
-            } catch (e) {
-                // ⭐ FIX 04/05: timeout/ECONNREFUSED não era registrado como down — instância ficava no cache falhando em silêncio
-                db.updateInstanceHealth(instanceName, false, false);
-                if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
-            }
-        }
-        // Esgotou as 3 tentativas nessa instância: verifica em background se ela caiu
-        // (atualiza status/pool na hora, sem esperar o ciclo de 5min) e segue pra próxima.
-        verifyInstanceAfterSendError(instanceName);
-    }
-
-    addLog('SEND_FAILED', `❌ Falha total para ${phoneKey}`);
-    const conv = conversations.get(phoneKey);
-    if (conv) { conv.hasError = true; conversations.set(phoneKey, conv); }
-    return { success: false };
 }
 
 // ============ ORQUESTRAÇÃO ============
@@ -2414,22 +2318,16 @@ async function sendStep(phoneKey) {
         } catch(e) { addLog('PIX_LINK_REGEN_ERR', `⚠️ Falha regenerar página PIX: ${e.message}`, { phoneKey }); }
     }
 
-    // Delay com variação aleatória
+    // Delay com variação aleatória (API oficial não tem "digitando…" — só o tempo)
     if (step.delayBefore && parseInt(step.delayBefore) > 0) {
         const originalSecs = parseInt(step.delayBefore);
         const actualSecs = randomDelay(originalSecs);
         addLog('STEP_DELAY', `⏱️ delayBefore: ${originalSecs}s → ${actualSecs}s (±20%)`, { phoneKey });
-        if (step.type !== 'delay' && step.type !== 'audio') {
-            const sticky = stickyInstances.get(phoneKey) || getPoolForConversation(phoneKey)[0];
-            if (sticky) await sendPresence(conversation.remoteJid, sticky, actualSecs);
-        }
         await new Promise(r => setTimeout(r, actualSecs * 1000));
         // ⭐ FIX 04/05: Cliente pode ter pago durante o sleep — recheck antes de enviar msg de cobrança
         if (!stillCurrent()) { addLog('STEP_ABORT', `⏸️ Conversa morreu/foi substituída durante delay (provável pagamento)`, { phoneKey }); return; }
     } else if (step.showTyping && step.type !== 'delay') {
         const typingSecs = randomDelay(parseInt(step.typingSeconds || 3));
-        const sticky = stickyInstances.get(phoneKey) || getPoolForConversation(phoneKey)[0];
-        if (sticky) await sendPresence(conversation.remoteJid, sticky, typingSecs);
         await new Promise(r => setTimeout(r, typingSecs * 1000));
         if (!stillCurrent()) { addLog('STEP_ABORT', `⏸️ Conversa morreu/foi substituída durante typing`, { phoneKey }); return; }
     }
@@ -2458,6 +2356,16 @@ async function sendStep(phoneKey) {
         }
         if (result.blocked) {
             if (step.waitForReply) { conversation.waiting_for_response = false; conversations.set(phoneKey, conversation); }
+            return;
+        }
+        // ⭐ 28/07: janela de 24h fechada — conversa fica AGUARDANDO o cliente responder.
+        // Quando a resposta chegar, o webhook da Meta chama advanceConversation e o funil segue de graça.
+        if (result.windowClosed) {
+            conversation.waiting_for_response = true;
+            conversation.awaitingWindow = true;
+            conversations.set(phoneKey, conversation);
+            try { convToDb(phoneKey, conversation); } catch(e) {}
+            addLog('STEP_WAIT', `⏸️ Passo ${conversation.stepIndex + 1} aguardando janela (cliente precisa responder)`, { phoneKey });
             return;
         }
         if (result.invalidNumber) {
@@ -2517,8 +2425,6 @@ async function advanceConversation(phoneKey, replyText, reason, expectedEpoch) {
             addLog('TRIGGER_ACTION', `🎯 Executando gatilho: ${trigger.name}`, { phoneKey, autoBlock: trigger.auto_block });
 
             if (trigger.auto_block) {
-                const sticky = stickyInstances.get(phoneKey);
-                if (sticky) await blockContact(conversation.remoteJid, sticky);
                 db.addToBlacklist(phoneKey, conversation.remoteJid, `Gatilho: ${trigger.name}`);
                 sendSSE('lead_blocked', { phoneKey, reason: trigger.name });
             }
@@ -2539,6 +2445,19 @@ async function advanceConversation(phoneKey, replyText, reason, expectedEpoch) {
             await sendStep(phoneKey);
             return;
         }
+    }
+
+    // ⭐ 28/07: o passo atual ficou PRESO esperando a janela de 24h abrir (não foi enviado).
+    // A resposta do cliente abriu a janela — reenvia o passo pendente em vez de pular pro próximo.
+    if (reason === 'reply' && conversation.awaitingWindow) {
+        conversation.awaitingWindow = false;
+        conversation.waiting_for_response = false;
+        conversation.lastReply = new Date();
+        conversations.set(phoneKey, conversation);
+        try { convToDb(phoneKey, conversation); } catch(e) {}
+        addLog('WA_WINDOW_OPEN', `▶️ Cliente respondeu — janela aberta, enviando o passo ${conversation.stepIndex + 1} que estava aguardando`, { phoneKey });
+        await sendStep(phoneKey);
+        return;
     }
 
     const funnel = db.getFunnelById(conversation.funnelId);
@@ -3114,7 +3033,64 @@ app.post('/webhook/meta', async (req, res) => {
                             try { db.addToBlacklist(phoneKey, fromPhone, 'opt-out via mensagem (' + lower + ')'); } catch(e) {}
                             try { await waSendMessage(fromPhone, waText('Pronto! Você não vai mais receber mensagens nossas. Se mudar de ideia, é só mandar um oi. 👋')); } catch(e) {}
                             addLog('WA_OPTOUT', `🚫 ${fromPhone} pediu pra sair — blacklist`, { phoneKey });
+                            continue;
                         }
+                        if (db.isBlacklisted(phoneKey)) continue;
+
+                        // ----- ⭐ 28/07: MOTOR DE FUNIS — a resposta do cliente move a conversa -----
+                        const gotLock = await acquireWebhookLock(phoneKey);
+                        if (!gotLock) continue;
+                        try {
+                            const conversation = findConversationUniversal(fromPhone);
+                            if (!conversation || conversation.canceled || conversation.completed) {
+                                // Reativação de lead antigo (mesma regra do canal anterior)
+                                let handled = false;
+                                const history = db.getCompletedConversationsByPhone(phoneKey);
+                                if (history.length > 0) {
+                                    const lastConv = history[0];
+                                    const daysSince = (Date.now() - new Date(lastConv.created_at).getTime()) / 86400000;
+                                    const reactivationDays = parseInt(db.getSetting('REACTIVATION_DAYS') || process.env.REACTIVATION_DAYS || '3');
+                                    if (daysSince >= reactivationDays) {
+                                        const reactivationFunnel = process.env.REACTIVATION_FUNNEL_ID || (lastConv.product_id + '_REATIVACAO');
+                                        const reactivFunnel = db.getFunnelById(reactivationFunnel);
+                                        if (reactivFunnel && reactivFunnel.steps?.length) {
+                                            addLog('REACTIVATION', `♻️ Reativando lead antigo: ${phoneKey}`, { daysSince: Math.round(daysSince) });
+                                            const reactivConv = {
+                                                phoneKey, remoteJid: phoneToRemoteJid(fromPhone),
+                                                funnelId: reactivationFunnel, stepIndex: 0,
+                                                orderCode: 'REATIV_' + Date.now(),
+                                                customerName: lastConv.customer_name,
+                                                productId: lastConv.product_id, productName: lastConv.product_name,
+                                                orderBumps: [], amount: 0, amountDisplay: '', netValue: 0,
+                                                ddd: lastConv.ddd, city: lastConv.city, state: lastConv.state,
+                                                waiting_for_response: false, createdAt: new Date(),
+                                                canceled: false, completed: false, paused: false, reactivation: true, funnelType: 'REATIVACAO'
+                                            };
+                                            conversations.set(phoneKey, reactivConv);
+                                            registerPhoneUniversal(fromPhone, phoneKey);
+                                            await sendStep(phoneKey);
+                                            handled = true;
+                                        }
+                                    }
+                                }
+                                // Gatilho de início (palavra-chave — lead novo, anúncio etc.)
+                                if (!handled) {
+                                    try {
+                                        const startTrigger = checkStartTriggers(text, 'oficial');
+                                        if (startTrigger) {
+                                            const location = db.getLocationFromPhone(fromPhone);
+                                            await startConversationFromTrigger(startTrigger, phoneKey, phoneToRemoteJid(fromPhone), location, 'oficial', contactName || null);
+                                        }
+                                    } catch(stErr) { addLog('START_TRIGGER_FAIL', `⚠️ Erro start_trigger: ${stErr.message}`); }
+                                }
+                            } else if (!conversation.pixWaiting && !conversation.paused && !conversation.invalidNumber) {
+                                const freshConv = conversations.get(conversation.phoneKey) || conversation;
+                                if (freshConv.waiting_for_response) {
+                                    try { db.processWordFrequency(text, freshConv.productId); } catch(e) {}
+                                    await advanceConversation(conversation.phoneKey, text, 'reply');
+                                }
+                            }
+                        } finally { releaseWebhookLock(phoneKey); }
                     }
 
                     // ----- Status das mensagens ENVIADAS (sent/delivered/read/failed + cobrança) -----
