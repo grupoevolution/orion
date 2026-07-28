@@ -44,9 +44,6 @@ try {
 const pushSubscriptions = new Map();
 
 // ============ CONFIGURAÇÕES ============
-const EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL;
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
-
 // ⭐ 22/07: WHATSAPP CLOUD API OFICIAL (Meta) — canal novo pós-Evolution.
 // WABA_TOKEN: token permanente do system user (whatsapp_business_messaging + management)
 // WABA_ID: ID da conta WhatsApp Business (pra listar números e templates)
@@ -183,9 +180,6 @@ const PERFECTPAY_WEBHOOK_SECRET = process.env.PERFECTPAY_WEBHOOK_SECRET;
 // ⭐ FIX 10/05: flag pra exigir HMAC. Quando ligar (=1), webhook SEM signature válida é rejeitado.
 // Recomendação: ativar APÓS configurar secrets nos dashboards Kirvano/PerfectPay.
 const WEBHOOK_HMAC_REQUIRED = process.env.WEBHOOK_HMAC_REQUIRED === '1';
-// ⭐ FIX 10/05: token opcional pro webhook Evolution (Evolution não tem HMAC nativo, então usa shared token).
-// Configure no Evolution: headers personalizados ou query string ?t=TOKEN
-const EVOLUTION_WEBHOOK_TOKEN = process.env.EVOLUTION_WEBHOOK_TOKEN || '';
 // LinkRotator integration (opcional — se vazio, não faz relay)
 const LINKROTATOR_URL = process.env.LINKROTATOR_URL || '';
 const LINKROTATOR_TOKEN = process.env.LINKROTATOR_TOKEN || '';
@@ -210,28 +204,6 @@ try {
         console.log('🔧 PIX_FALLBACK_URL migrado: link morto (e-volutionn) → https://m.membrosvips.com');
     }
 } catch(e) {}
-
-// ============ RESTAURAR STICKY DO BANCO (sobrevive reinicializações) ============
-function restoreStickyFromDB() {
-    try {
-        const rows = db.getDb().prepare("SELECT phone_key, sticky_instance FROM conversations WHERE sticky_instance IS NOT NULL AND canceled=0 AND completed=0").all();
-        let restored = 0;
-        for (const row of rows) {
-            if (row.sticky_instance && row.phone_key) {
-                stickyInstances.set(row.phone_key, row.sticky_instance);
-                restored++;
-            }
-        }
-        // Também restaurar para conversas concluídas recentes (últimos 7 dias) para reativação
-        const recent = db.getDb().prepare("SELECT phone_key, sticky_instance FROM conversations WHERE sticky_instance IS NOT NULL AND datetime(created_at) > datetime('now','-7 days')").all();
-        for (const row of recent) {
-            if (row.sticky_instance && row.phone_key && !stickyInstances.has(row.phone_key)) {
-                stickyInstances.set(row.phone_key, row.sticky_instance);
-            }
-        }
-        if (restored > 0) console.log(`✅ Sticky restaurado: ${restored} clientes vinculados às suas instâncias`);
-    } catch(e) { console.log('Sticky restore erro:', e.message); }
-}
 
 // ROLLBACK SEGURO: restaura conversas ativas (PIX pendente + funil em andamento) do banco para memória
 function restorePendingConversations() {
@@ -281,7 +253,6 @@ function restorePendingConversations() {
                 lastSystemMessage: row.last_message_at ? new Date(row.last_message_at) : null
             };
             conversations.set(row.phone_key, conv);
-            if (row.sticky_instance) stickyInstances.set(row.phone_key, row.sticky_instance);
             restored++;
         }
         if (restored > 0) console.log(`💾 Conversas restauradas: ${restored} em andamento recuperadas do banco`);
@@ -350,139 +321,18 @@ function restorePendingPixTimeouts() {
         }
     } catch(e) { console.log('Restore PIX timers erro:', e.message); }
 }
-
-// ⭐ FIX 04/05: Recovery cirúrgico dos leads presos.
-// Lógica: detecta quem ficou órfão por causa do bug, classifica (pago/não pago), dispara FUNIL CERTO,
-// com rate limit pesado (30s entre envios) pra não sobrecarregar instância.
-// Roda 1x no boot. Idade máxima 24h (lead mais velho não converte mais).
-// SEGURANÇAS:
-//  1. Cliente que JÁ pagou recebe APROVADA (não cobrança)
-//  2. Cliente que NÃO pagou recebe PIX
-//  3. Lead >24h é ignorado (frio)
-//  4. 30s entre envios → instâncias não sobrecarregam
-//  5. Distribui pelo load balancer normal (sticky novo é setado no envio)
-async function recoverStuckConversations() {
-    try {
-        const RECOVERY_RATE_MS = 30000;        // 30s entre envios
-        const RECOVERY_MAX_AGE_H = 24;          // só leads das últimas 24h
-        const cutoff = Date.now() - (RECOVERY_MAX_AGE_H * 60 * 60 * 1000);
-        const candidates = [];
-
-        let respectedCount = 0; // ⭐ FIX 10/05: contador de leads preservados (waitForReply=true)
-        for (const [phoneKey, conv] of conversations.entries()) {
-            if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber) continue;
-            if (conv.pixWaiting) continue; // ainda dentro dos 7min, fluxo normal
-            const createdAt = conv.createdAt ? new Date(conv.createdAt).getTime() : 0;
-            if (createdAt < cutoff) continue; // lead frio, não tenta
-            const hasSticky = !!stickyInstances.get(phoneKey);
-            const stuck = (conv.waiting_for_response || conv.hasError || conv.awaitingPool) && !hasSticky;
-            if (!stuck) continue;
-
-            // ⭐ FIX 10/05: Lead AGUARDANDO RESPOSTA legitimamente NÃO entra em recovery.
-            // Antes: recovery zerava o stepIndex e re-disparava funil do começo, duplicando mensagem.
-            // Agora: se o passo atual era waitForReply=true, preserva o lead e limpa flags secundárias.
-            if (conv.waiting_for_response) {
-                try {
-                    const funnel = db.getFunnelById(conv.funnelId);
-                    const currentStep = funnel?.steps?.[conv.stepIndex];
-                    if (currentStep?.waitForReply) {
-                        // Limpa flags secundárias mas MANTÉM waiting_for_response=true
-                        if (conv.hasError || conv.awaitingPool) {
-                            conv.hasError = false;
-                            conv.awaitingPool = false;
-                            conversations.set(phoneKey, conv);
-                            try { convToDb(phoneKey, conv); } catch(e) {}
-                        }
-                        addLog('RECOVERY_RESPECT_WAIT', `🤫 ${conv.customerName || phoneKey} aguardando resposta no passo ${conv.stepIndex + 1}/${funnel?.steps?.length || '?'} — preservado`, { phoneKey });
-                        respectedCount++;
-                        continue;
-                    }
-                } catch(e) {}
-            }
-
-            candidates.push(phoneKey);
-        }
-
-        if (candidates.length === 0) {
-            if (respectedCount > 0) {
-                console.log(`🚑 RECOVERY: 0 lead(s) presos · ${respectedCount} aguardando resposta (preservados)`);
-                addLog('RECOVERY_NONE', `✅ Sem leads presos · ${respectedCount} aguardando resposta corretamente`);
-            } else {
-                console.log('🚑 RECOVERY: nenhum lead preso detectado');
-            }
-            return;
-        }
-
-        let aprovadaCount = 0, pixCount = 0;
-        const totalMin = Math.round((candidates.length * RECOVERY_RATE_MS) / 60000);
-        console.log(`🚑 RECOVERY: ${candidates.length} lead(s) preso(s) — espalhando em ~${totalMin}min`);
-        addLog('RECOVERY_START', `🚑 ${candidates.length} lead(s) preso(s) — recuperação automática iniciada (1 a cada ${RECOVERY_RATE_MS/1000}s)`);
-
-        for (let i = 0; i < candidates.length; i++) {
-            const phoneKey = candidates[i];
-            const conv = conversations.get(phoneKey);
-            if (!conv) continue;
-
-            // Triagem: cliente já pagou nas últimas 48h?
-            let alreadyPaid = false;
-            try {
-                const paidEvent = db.getDb().prepare(
-                    `SELECT type FROM events WHERE phone_key = ? AND type IN ('PIX_PAID','CARD_PAID') AND datetime(created_at) > datetime('now','-2 days') ORDER BY created_at DESC LIMIT 1`
-                ).get(phoneKey);
-                alreadyPaid = !!paidEvent;
-            } catch(e) {}
-
-            // Reseta flags travadas e re-aponta funil certo
-            conv.waiting_for_response = false;
-            conv.hasError = false;
-            conv.awaitingPool = false;
-            conv.stepIndex = 0;
-            conv.lastSystemMessage = null; // força isFirstMessage=true → load balancer escolhe instância nova
-
-            const funnelType = alreadyPaid ? 'APROVADA' : 'PIX';
-            const selectedFunnel = selectABFunnel(conv.productId, funnelType);
-            conv.funnelId = selectedFunnel;
-            conv.abFunnelVariant = selectedFunnel;
-            conv.funnelType = funnelType;
-            conv.transferredFromPix = alreadyPaid; // pula intro se for APROVADA
-
-            conversations.set(phoneKey, conv);
-            try { convToDb(phoneKey, conv); } catch(e) {}
-
-            if (alreadyPaid) aprovadaCount++; else pixCount++;
-            addLog('RECOVERY_QUEUE', `${alreadyPaid ? '🟢' : '🟡'} [${i+1}/${candidates.length}] ${conv.customerName || phoneKey} → ${funnelType} (em ${Math.round(i*RECOVERY_RATE_MS/1000)}s)`, { phoneKey });
-
-            setTimeout(() => { try { sendStep(phoneKey); } catch(e) {} }, i * RECOVERY_RATE_MS);
-        }
-
-        console.log(`🚑 RECOVERY agendado: ${aprovadaCount} APROVADA + ${pixCount} PIX em ${totalMin}min`);
-        addLog('RECOVERY_DONE', `✅ ${aprovadaCount} APROVADA + ${pixCount} PIX agendados (espalhamento ${totalMin}min)`);
-    } catch(e) { console.log('Recover stuck erro:', e.message); addLog('RECOVERY_ERR', `❌ ${e.message}`); }
-}
-
 // ============ ESTADO EM MEMÓRIA ============
 let conversations = new Map();
 let phoneIndex = new Map();
 let phoneVariations = new Map();
-let lidMapping = new Map();
-let phoneToLid = new Map();
-let stickyInstances = new Map();
 let pixTimeouts = new Map();
 let webhookLocks = new Map();
 let logs = [];
 let messageBlockTimers = new Map();
-let lastSuccessfulInstanceIndex = -1;
-let activeInstancesCache = [];
 let sseClients = [];
 
 // A/B: índice atual por produto
 let abIndexMap = new Map();
-
-// ⭐ FIX 05/05: índice round-robin pra distribuir entre instâncias ativas
-// ⭐ 20/07: PERSISTIDO no banco — antes zerava a cada deploy/restart e a 1ª instância
-//          (ordem alfabética) concentrava os primeiros leads de toda reinicialização.
-let _rrIndex = 0;
-try { const saved = parseInt(db.getSetting('RR_INDEX')); if (Number.isFinite(saved) && saved >= 0) _rrIndex = saved; } catch(e) {}
 
 // ============ SSE ============
 function sendSSE(event, data) {
@@ -505,110 +355,6 @@ function sendSSE(event, data) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     sseClients = sseClients.filter(res => { try { res.write(msg); return true; } catch { return false; } });
 }
-
-// ============ INSTÂNCIAS ============
-let abandonoInstancesCache = [];
-// ⭐ 20/07: nomes reservados pra notificação num único lugar (pool + diagnóstico usam a mesma lista)
-function getNotifNames() {
-    // ⭐ v3.6.2: NOTIFICATION_INSTANCE não entra mais aqui — só os nomes reservados explícitos
-    return ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES'];
-}
-function refreshInstanceCache() {
-    const all = db.getInstances();
-    const NOTIF_NAMES = getNotifNames();
-    // Pool principal (PIX, APROVADA): exclui notificação e dedicadas a abandono
-    activeInstancesCache = all.filter(i => !i.paused && i.connected && !i.is_notification && !i.is_abandono && !NOTIF_NAMES.includes(i.name.toUpperCase())).map(i => i.name);
-    // ⭐ FIX 05/05: Pool de ABANDONO inteligente
-    // - Se EXISTEM instâncias dedicadas (is_abandono=1) → usa só elas (chip queimável)
-    // - Senão → todas ativas EXCETO as marcadas com block_abandono=1 (protege número principal)
-    const dedicadas = all.filter(i => !i.paused && i.connected && i.is_abandono && !i.is_notification);
-    if (dedicadas.length > 0) {
-        abandonoInstancesCache = dedicadas.map(i => i.name);
-    } else {
-        abandonoInstancesCache = all.filter(i =>
-            !i.paused && i.connected && !i.is_notification && !i.block_abandono && !NOTIF_NAMES.includes(i.name.toUpperCase())
-        ).map(i => i.name);
-    }
-}
-
-function getActiveInstances() { return activeInstancesCache; }
-function getAbandonoInstances() { return abandonoInstancesCache; }
-
-// ⭐ 20/07: diz POR QUE cada instância está fora do pool de envio (fim do "sem instâncias" cego)
-function describePoolExclusions() {
-    const NOTIF_NAMES = getNotifNames();
-    const out = [];
-    try {
-        for (const i of db.getInstances()) {
-            if (!i.name || !i.name.trim()) continue;
-            const reasons = [];
-            if (i.paused) reasons.push('pausada');
-            if (!i.connected) reasons.push('offline no banco');
-            if (i.is_notification) reasons.push('marcada como notificação');
-            else if (NOTIF_NAMES.includes(i.name.toUpperCase())) reasons.push('nome reservado pra notificação');
-            if (i.is_abandono) reasons.push('dedicada a abandono');
-            out.push(`${i.name}: ${reasons.length ? reasons.join(' + ') : 'OK'}`);
-        }
-    } catch(e) {}
-    return out;
-}
-
-// ⭐ 20/07: AUTO-CURA do pool vazio. Se o cache diz "nenhuma instância" na hora de enviar:
-// 1) recarrega o cache do banco (cobre cache desatualizado);
-// 2) se continuar vazio, re-verifica AO VIVO na Evolution cada instância não-pausada e
-//    atualiza o banco (cobre banco desatualizado). Rate limit 30s pra rajada de envios
-// não virar rajada de requisições na Evolution.
-let _poolHealLast = 0;
-let _noInstancesAlertAt = 0;
-async function healEmptyPool() {
-    refreshInstanceCache();
-    if (activeInstancesCache.length > 0) return true;
-    if (Date.now() - _poolHealLast < 30000) return activeInstancesCache.length > 0;
-    _poolHealLast = Date.now();
-    try {
-        const insts = db.getInstances().filter(i => i.name && i.name.trim() && !i.paused);
-        const results = await Promise.all(insts.map(async i => {
-            const ok = await checkInstanceConnected(i.name);
-            if (ok !== !!i.connected) {
-                db.setInstanceConnected(i.name, ok);
-                addLog(ok ? 'INSTANCE_UP' : 'INSTANCE_DOWN', `${ok ? '🟢' : '🔴'} ${i.name} ${ok ? 'voltou' : 'caiu'} (detectado na auto-cura do pool)`);
-            }
-            return ok;
-        }));
-        if (results.some(Boolean)) refreshInstanceCache();
-    } catch(e) {}
-    return activeInstancesCache.length > 0;
-}
-
-// Retorna o pool correto de instâncias baseado no tipo de funil do lead.
-// ABANDONO, CARTAO_RECUSADO e RECUPERACAO usam pool isolado (chip queimável);
-// demais usam o pool principal (números limpos).
-function getPoolForFunnelType(funnelType) {
-    if (funnelType === 'ABANDONO' || funnelType === 'CARTAO_RECUSADO' || funnelType === 'RECUPERACAO') {
-        return abandonoInstancesCache;
-    }
-    return activeInstancesCache;
-}
-function getPoolForConversation(phoneKey) {
-    const conv = conversations.get(phoneKey);
-    return getPoolForFunnelType(conv?.funnelType);
-}
-
-const CONFIGURED_INSTANCES = (process.env.INSTANCES || 'F01').split(',').map(s => s.trim());
-for (const inst of CONFIGURED_INSTANCES) db.ensureInstance(inst);
-// ⭐ v3.6.2: removido ensureInstance(NOTIFICATION_INSTANCE) — em banco novo ele criava a instância
-// de VENDAS com is_notification=1 se a env apontasse pra ela (mais um jeito de sumir do pool).
-// Sempre marcar variantes de notificação como is_notification=true
-// Garante que NUNCA entrem no pool de envio para clientes
-db.ensureInstance('NOTIFICACAO', true);
-db.ensureInstance('NOTIFICACOES', true);
-// Forçar is_notification=1 para essas instâncias no banco (correção de dados existentes)
-try {
-    db.getDb().prepare("UPDATE instances SET is_notification=1 WHERE name IN ('NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES')").run();
-    // Limpar instâncias fantasma (name null ou vazio) que podem ter sido criadas por bugs anteriores
-    db.getDb().prepare("DELETE FROM instances WHERE name IS NULL OR trim(name) = ''").run();
-} catch(e) {}
-refreshInstanceCache();
 
 // ============ NOTIFICAÇÕES ============
 // Preferências de notificação — controláveis pelo app (system_settings, default ligado).
@@ -1204,22 +950,6 @@ async function startConversationFromTrigger(trigger, phoneKey, remoteJid, locati
             });
         } catch(e) {}
 
-        // ⭐ FIX v1.2: Fixar instância de ORIGEM (instância que recebeu a mensagem do cliente)
-        // Garante que a RESPOSTA sai do MESMO número que o cliente mandou
-        // ÚNICO ponto de mudança — só afeta fluxo de Start Triggers
-        if (incomingInstance) {
-            const activeNow = getActiveInstances();
-            if (activeNow.includes(incomingInstance)) {
-                stickyInstances.set(phoneKey, incomingInstance);
-                try {
-                    db.getDb().prepare('UPDATE conversations SET sticky_instance=? WHERE phone_key=?').run(incomingInstance, phoneKey);
-                } catch(e) {}
-                addLog('STICKY_PRESET', `📌 Inst. fixada via webhook origem (trigger): ${incomingInstance}`, { phoneKey });
-            } else {
-                addLog('STICKY_PRESET_SKIP', `⚠️ Inst. origem "${incomingInstance}" não está ativa — usando seleção padrão`, { phoneKey });
-            }
-        }
-
         addLog('START_TRIGGER_FUNNEL', `🚀 Iniciando funil "${trigger.target_funnel_id}" via trigger "${trigger.name}"`, { phoneKey });
         await sendStep(phoneKey);
         return true;
@@ -1283,13 +1013,6 @@ function registerPhoneUniversal(fullPhone, phoneKey) {
     variations.forEach(v => { phoneIndex.set(v, phoneKey); phoneVariations.set(v, phoneKey); suffixes.forEach(s => { phoneIndex.set(v + s, phoneKey); phoneVariations.set(v + s, phoneKey); }); });
 }
 
-function registerLidMapping(lidJid, phoneKey) {
-    if (!lidJid || !phoneKey) return;
-    lidMapping.set(lidJid, phoneKey); phoneToLid.set(phoneKey, lidJid);
-    const lc = lidJid.split('@')[0].replace(/\D/g, '');
-    if (lc) { lidMapping.set(lc, phoneKey); lidMapping.set(lc + '@lid', phoneKey); }
-}
-
 function findConversationUniversal(phone) {
     const phoneKey = normalizePhoneKey(phone);
     if (!phoneKey) return null;
@@ -1302,10 +1025,6 @@ function findConversationUniversal(phone) {
     }
     for (const [key, c] of conversations.entries()) {
         if (key === phoneKey || key.slice(-7) === phoneKey.slice(-7)) { registerPhoneUniversal(phone, key); return c; }
-    }
-    if (String(phone).includes('@lid')) {
-        const mk = lidMapping.get(phone) || lidMapping.get(String(phone).split('@')[0]);
-        if (mk) { conv = conversations.get(mk); if (conv) return conv; }
     }
     return null;
 }
@@ -1437,7 +1156,7 @@ function convToDb(phoneKey, conv) {
         state: conv.state,
         waiting_for_response: conv.waiting_for_response,
         pix_waiting: conv.pixWaiting,
-        sticky_instance: stickyInstances.get(phoneKey),
+        sticky_instance: null,
         canceled: conv.canceled,
         completed: conv.completed,
         has_error: conv.hasError,
@@ -1470,7 +1189,7 @@ setInterval(() => {
         for (const [k, c] of conversations.entries()) {
             if ((c.completed || c.canceled) && c.createdAt) {
                 const age = (Date.now() - new Date(c.createdAt).getTime()) / 86400000;
-                if (age > CLEANUP_DAYS) { conversations.delete(k); stickyInstances.delete(k); }
+                if (age > CLEANUP_DAYS) { conversations.delete(k); }
             }
         }
     }
@@ -1484,320 +1203,11 @@ setInterval(() => {
     for (const [k, c] of conversations.entries()) {
         if ((c.completed || c.canceled) && c.createdAt && new Date(c.createdAt).getTime() < cutoff) {
             conversations.delete(k);
-            stickyInstances.delete(k);
             removed++;
         }
     }
     if (removed > 0) addLog('MEM_CLEANUP', `🧹 ${removed} conversas finalizadas removidas da memória`);
 }, 60 * 60 * 1000); // 1h
-
-// ============ EVOLUTION API ============
-async function sendToEvolution(instanceName, endpoint, payload) {
-    const url = `${EVOLUTION_BASE_URL}${endpoint}/${instanceName}`;
-    // ⭐ FIX 06/26: 30s pra envio de mensagem (áudio/vídeo demoram a converter na Evolution).
-    // Com 15s, o envio estourava o timeout DEPOIS da mensagem já ter sido entregue → retry → cliente recebia 2x.
-    const sendTimeout = endpoint.startsWith('/message/') ? 30000 : 15000;
-    try {
-        const response = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY }, timeout: sendTimeout });
-        const data = response.data || {};
-        // ⭐ FIX 04/05 (atenuado): só bloqueia em erro EXPLÍCITO. hasMessageKey check removido pra evitar falso positivo
-        // com formatos de resposta diferentes da Evolution. Se aparecer "EVO_FAKE_OK" no log, é erro real.
-        if (endpoint.startsWith('/message/')) {
-            const dataStatus = String(data.status || '').toUpperCase();
-            const explicitError = dataStatus === 'ERROR' || dataStatus === 'FAILED' || dataStatus === 'FAIL' || (data.error && typeof data.error !== 'undefined' && data.error !== null && data.error !== false);
-            if (explicitError) {
-                addLog('EVO_FAKE_OK', `⚠️ Evolution 200 com erro [${instanceName}]: ${JSON.stringify(data).substring(0, 250)}`);
-                return { ok: false, error: data.message || data.error || 'EVOLUTION_FAKE_OK', status: 200, data };
-            }
-        }
-        return { ok: true, data };
-    } catch (error) {
-        const status = error.response?.status;
-        const errBody = error.response?.data;
-        const errStr = JSON.stringify(errBody || '').toLowerCase();
-        // ⭐ FIX 04/05: Evolution mudou padrão — antes "not exist", agora "exists":false ou "number does not exist"
-        const isInvalidNumber = status === 400 && (
-            errStr.includes('not exist') ||
-            errStr.includes('"exists":false') ||
-            errStr.includes('exists\\":false') ||
-            errStr.includes('not registered') ||
-            errStr.includes('does not exist')
-        );
-        // ⭐ FIX 06/26: timeout/conexão-cortada DEPOIS do request sair = a mensagem PODE ter sido entregue.
-        // Reenviar nesse caso é o que duplicava mensagem pro cliente. Marcamos como "ambíguo" e quem
-        // chama decide (envio de mensagem NÃO retenta; o funil segue assumindo entregue).
-        const isAmbiguous = !status && ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET'].includes(error.code) && endpoint.startsWith('/message/');
-        // Log detalhado (mantém só pra erros não-numéricos pra não poluir log)
-        if (!isInvalidNumber) {
-            addLog('EVO_HTTP_ERR', `❌ ${instanceName} ${endpoint}: HTTP ${status || error.code || 'NO_STATUS'}${isAmbiguous ? ' (AMBÍGUO — pode ter entregado)' : ''} — ${JSON.stringify(errBody || '').substring(0, 200) || error.message?.substring(0, 200)}`);
-        }
-        return { ok: false, error: errBody || error.message, status, invalidNumber: isInvalidNumber, ambiguous: isAmbiguous };
-    }
-}
-
-// Gera todas as variações possíveis de um número para envio
-function generateSendVariations(phone) {
-    const cleaned = String(phone).replace(/\D/g, '');
-    const variations = new Set();
-    
-    // Base: número limpo
-    variations.add(cleaned);
-    
-    // Com 55
-    if (!cleaned.startsWith('55')) variations.add('55' + cleaned);
-    // Sem 55
-    if (cleaned.startsWith('55')) variations.add(cleaned.slice(2));
-    
-    // Extrai DDD e número
-    let core = cleaned.startsWith('55') ? cleaned.slice(2) : cleaned;
-    
-    if (core.length >= 10) {
-        const ddd = core.slice(0, 2);
-        const num = core.slice(2);
-        
-        // Com 9 dígito
-        if (num.length === 8) {
-            variations.add(ddd + '9' + num);
-            variations.add('55' + ddd + '9' + num);
-        }
-        // Sem 9 dígito
-        if (num.length === 9 && num[0] === '9') {
-            variations.add(ddd + num.slice(1));
-            variations.add('55' + ddd + num.slice(1));
-        }
-        // Ambas com e sem 9
-        variations.add('55' + ddd + num);
-        variations.add(ddd + num);
-    }
-    
-    // Ordena por probabilidade: com 55 e 9 dígito primeiro (formato mais comum no Brasil)
-    return Array.from(variations).sort((a, b) => {
-        const score = (n) => {
-            let s = 0;
-            if (n.startsWith('55')) s += 3;
-            if (n.length === 13) s += 2; // 55 + DDD + 9 + 8 dígitos
-            if (n.length === 11) s += 1; // DDD + 9 + 8 dígitos
-            return s;
-        };
-        return score(b) - score(a);
-    });
-}
-
-// Envia com fallback de variações de número
-async function sendToEvolutionWithPhoneFallback(instanceName, endpoint, payload, originalPhone) {
-    // Verifica se já temos uma variação que funcionou antes
-    const knownVariation = db.getWorkingVariation(originalPhone);
-    if (knownVariation) {
-        const testPayload = { ...payload, number: knownVariation };
-        const result = await sendToEvolution(instanceName, endpoint, testPayload);
-        if (result.ok) return { ...result, usedVariation: knownVariation };
-    }
-    
-    const variations = generateSendVariations(originalPhone);
-    const failed = [];
-    
-    for (const variation of variations) {
-        const testPayload = { ...payload, number: variation };
-        const result = await sendToEvolution(instanceName, endpoint, testPayload);
-        
-        if (result.ok) {
-            // Salva a variação que funcionou
-            db.logPhoneVariation(originalPhone, variation, failed, true);
-            addLog('PHONE_VAR_OK', `✅ Número funcionou: ${variation} (original: ${originalPhone})`);
-            return { ...result, usedVariation: variation };
-        }
-        
-        if (result.invalidNumber || result.status === 400) {
-            failed.push(variation);
-            continue; // Tenta próxima variação
-        }
-        
-        // Erro de rede ou servidor - não é problema de número, retorna erro
-        return result;
-    }
-    
-    // Todas as variações falharam
-    db.logPhoneVariation(originalPhone, null, failed, false);
-    addLog('PHONE_VAR_FAIL', `❌ Todas as variações falharam para ${originalPhone} (${variations.length} tentadas)`);
-    return { ok: false, invalidNumber: true, triedVariations: variations.length };
-}
-
-async function checkInstanceConnected(instanceName) {
-    try {
-        const r = await axios.get(`${EVOLUTION_BASE_URL}/instance/connectionState/${instanceName}`, { headers: { 'apikey': EVOLUTION_API_KEY }, timeout: 5000 });
-        return r.data?.instance?.state === 'open';
-    } catch { return false; }
-}
-
-// Busca o número de WhatsApp que está conectado nessa instância (via Evolution fetchInstances)
-async function fetchInstanceOwnerNumber(instanceName) {
-    try {
-        const r = await axios.get(`${EVOLUTION_BASE_URL}/instance/fetchInstances`, {
-            headers: { 'apikey': EVOLUTION_API_KEY },
-            timeout: 8000,
-            params: { instanceName }
-        });
-        const list = Array.isArray(r.data) ? r.data : [r.data];
-        for (const item of list) {
-            const inst = item?.instance || item;
-            const name = inst?.instanceName || inst?.name;
-            if (name === instanceName) {
-                // Diferentes formatos da Evolution. Tenta múltiplos campos:
-                const ownerJid = inst?.owner || inst?.ownerJid || inst?.profilePicUrl && inst?.profileName && inst?.number;
-                const raw = inst?.owner || inst?.ownerJid || inst?.number || null;
-                if (!raw) return null;
-                // extrai apenas dígitos (remove @s.whatsapp.net, :device, etc)
-                const digits = String(raw).replace(/@.*$/, '').replace(/:.*$/, '').replace(/\D/g, '');
-                return digits || null;
-            }
-        }
-    } catch(e) { /* silencia */ }
-    return null;
-}
-
-// ⭐ FIX 05/05: Evolution v2 nova exige delay no nível raiz, não dentro de options. Manda nos 2 lugares pra compatibilidade.
-async function sendPresence(remoteJid, instanceName, seconds) {
-    if (!instanceName) return;
-    const delay = Math.min(seconds * 1000, 25000);
-    const number = remoteJid.replace('@s.whatsapp.net', '');
-    try { await sendToEvolution(instanceName, '/chat/sendPresence', { number, presence: 'composing', delay, options: { presence: 'composing', delay } }); } catch {}
-}
-
-async function blockContact(remoteJid, instanceName) {
-    try { await sendToEvolution(instanceName, '/chat/updateBlockStatus', { number: remoteJid.replace('@s.whatsapp.net', ''), status: 'block' }); } catch {}
-}
-
-async function sendText(remoteJid, text, instanceName) {
-    const phone = remoteJid.replace('@s.whatsapp.net', '');
-    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendText', { text }, phone);
-}
-async function sendImage(remoteJid, url, caption, instanceName) {
-    const phone = remoteJid.replace('@s.whatsapp.net', '');
-    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: 'image', media: url, caption: caption || '' }, phone);
-}
-async function sendVideo(remoteJid, url, caption, instanceName) {
-    const phone = remoteJid.replace('@s.whatsapp.net', '');
-    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: 'video', media: url, caption: caption || '' }, phone);
-}
-async function sendSticker(remoteJid, url, instanceName) {
-    const phone = remoteJid.replace('@s.whatsapp.net', '');
-    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendSticker', { sticker: url }, phone);
-}
-
-async function sendAudio(remoteJid, audioUrl, instanceName) {
-    // ⭐ FIX 04/05: causa raiz das perdas! Evolution rejeita base64 com prefixo "data:audio/mpeg;base64,"
-    // Agora usa sendToEvolutionWithPhoneFallback (testa variações de número como sendText/sendImage fazem).
-    // Estratégia: 1) URL direta + variações  2) base64 puro + variações  3) fallback sendMedia
-    const phone = remoteJid.replace('@s.whatsapp.net', '');
-    const r1 = await sendToEvolutionWithPhoneFallback(instanceName, '/message/sendWhatsAppAudio', { audio: audioUrl, delay: 1200, encoding: true }, phone);
-    if (r1.ok) return r1;
-    if (r1.invalidNumber) return r1; // número realmente não existe — não desperdiça download
-    if (r1.ambiguous) return r1; // ⭐ FIX 06/26: timeout pós-envio = áudio PODE ter chegado — tentar de novo era o que duplicava
-    try {
-        const audioResponse = await axios.get(audioUrl, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const base64 = Buffer.from(audioResponse.data).toString('base64');
-        const r2 = await sendToEvolutionWithPhoneFallback(instanceName, '/message/sendWhatsAppAudio', { audio: base64, delay: 1200, encoding: true }, phone);
-        if (r2.ok) return r2;
-        return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: 'audio', media: base64, mimetype: 'audio/mpeg' }, phone);
-    } catch(e) {
-        return r1;
-    }
-}
-
-async function sendViewOnce(remoteJid, mediaUrl, mediaType, instanceName) {
-    // ⭐ FIX 04/05: idem — URL direta + fallback de variações + base64 se URL falhar
-    const phone = remoteJid.replace('@s.whatsapp.net', '');
-    const r1 = await sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: mediaType, media: mediaUrl, viewOnce: true }, phone);
-    if (r1.ok) return r1;
-    if (r1.invalidNumber) return r1;
-    if (r1.ambiguous) return r1; // ⭐ FIX 06/26: não reenvia em timeout pós-envio
-    try {
-        const resp = await axios.get(mediaUrl, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const mimetype = mediaType === 'image' ? 'image/jpeg' : 'video/mp4';
-        const b64 = Buffer.from(resp.data).toString('base64');
-        return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: mediaType, media: b64, mimetype, viewOnce: true }, phone);
-    } catch(e) {
-        return r1;
-    }
-}
-
-// ============ SELEÇÃO DE INSTÂNCIA (distribuição inteligente) ============
-// ============ v1.3 BALANCEAMENTO INTELIGENTE ============
-// Conta quantos clientes ativos cada instância tem como sticky
-function countActiveStickysByInstance() {
-    const counts = {};
-    for (const [phoneKey, instName] of stickyInstances.entries()) {
-        if (!instName) continue;
-        const conv = conversations.get(phoneKey);
-        // Só conta conversas vivas (não canceladas, não completas há muito)
-        if (conv && !conv.canceled) {
-            counts[instName] = (counts[instName] || 0) + 1;
-        }
-    }
-    return counts;
-}
-
-// v1.3: SCORE de carga por instância (menor = mais ociosa = melhor escolha)
-// Considera: msgs hoje (peso 1.0) + msgs ontem (peso 0.5) + stickys ativos (peso 0.3)
-function computeInstanceScores(active) {
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-    const stats = db.getInstanceStats(2); // hoje + ontem
-    const todayStats = {}, yesterdayStats = {};
-    for (const inst of active) { todayStats[inst] = 0; yesterdayStats[inst] = 0; }
-    for (const s of stats) {
-        if (s.date === today && todayStats[s.instance] !== undefined) todayStats[s.instance] = s.messages_sent;
-        if (s.date === yesterday && yesterdayStats[s.instance] !== undefined) yesterdayStats[s.instance] = s.messages_sent;
-    }
-
-    const stickyCount = countActiveStickysByInstance();
-
-    return active.map(inst => ({
-        instance: inst,
-        msgs_today: todayStats[inst] || 0,
-        msgs_yesterday: yesterdayStats[inst] || 0,
-        active_stickys: stickyCount[inst] || 0,
-        score: (todayStats[inst] || 0) * 1.0
-             + (yesterdayStats[inst] || 0) * 0.5
-             + (stickyCount[inst] || 0) * 0.3
-    }));
-}
-
-function selectNextInstance(isFirstMessage, phoneKey) {
-    const active = getPoolForConversation(phoneKey);
-    if (active.length === 0) return null;
-    if (active.length === 1) return active[0];
-
-    let stickyInstance = stickyInstances.get(phoneKey);
-    // Se não está na memória, tenta restaurar do banco
-    if (!stickyInstance) {
-        try {
-            const row = db.getDb().prepare('SELECT sticky_instance FROM conversations WHERE phone_key=? AND sticky_instance IS NOT NULL ORDER BY created_at DESC LIMIT 1').get(phoneKey);
-            if (row?.sticky_instance) {
-                stickyInstance = row.sticky_instance;
-                stickyInstances.set(phoneKey, stickyInstance);
-            }
-        } catch(e) {}
-    }
-    // ⭐ 20/07: STICKY VALE SEMPRE que a instância está online — inclusive na PRIMEIRA mensagem
-    // de um funil novo. Regra do Iago: lead que gerou Pix pela instância X e volta dias depois
-    // (novo Pix, abandono, compra) recebe DA MESMA instância X. O vínculo vive 7 dias no banco
-    // (tabela conversations, limpa por CLEANUP_DAYS). Antes: 1ª msg ignorava o sticky e jogava
-    // o lead conhecido de novo no rodízio — cliente recebia de número diferente a cada evento.
-    if (stickyInstance && active.includes(stickyInstance)) return stickyInstance;
-
-    // ⭐ FIX 05/05: ROUND-ROBIN puro — distribui igualmente entre todas as instâncias ativas.
-    // Antes: score-based (mais ociosa vence) tendia a sobrecarregar 1 quando outras tinham histórico.
-    // Agora: cada instância nova pega 1 cliente antes de repetir, ordem alfabética estável.
-    // Só chega aqui lead SEM instância fixa (novo, ou sticky offline) → próximo da fila.
-    const sorted = [...active].sort();
-    const chosen = sorted[_rrIndex % sorted.length];
-    _rrIndex = (_rrIndex + 1) % sorted.length;
-    try { db.setSetting('RR_INDEX', String(_rrIndex)); } catch(e) {} // sobrevive a deploy
-    try { addLog('LOAD_RR', `🔄 Round-robin [${sorted.join(', ')}] → ${chosen}`, { phoneKey, idx: _rrIndex }); } catch(e) {}
-    return chosen;
-}
 
 // ============ ENVIO PELO CANAL OFICIAL (Meta Cloud API) ============
 // ⭐ 28/07: transporte trocado da Evolution pra API oficial. Regras da janela:
@@ -2081,7 +1491,6 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location, customerEmail = null) {
     const pixConv = conversations.get(phoneKey);
     const pixCode = pixConv?.pixCode;
-    const existingSticky = stickyInstances.get(phoneKey);
     const abVariant = pixConv?.abFunnelVariant;
 
     if (pixConv) { pixConv.canceled = true; pixConv.canceledAt = new Date(); conversations.set(phoneKey, pixConv); }
@@ -2099,7 +1508,6 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
         if (cancelled > 0) addLog('RECOVERY_CANCEL_PAID_LIVE', `🚫 ${cancelled} agendamento(s) de recuperação cancelado(s) — cliente acabou de pagar`, { phoneKey });
     } catch(e) {}
     if (abVariant) db.recordABResult(abVariant, true);
-    if (existingSticky) db.updateInstanceStats(existingSticky, 0, true);
 
     const amountDisplay = formatBRL(netValue || amount);
     sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amountDisplay, netValue: netValue || amount, paymentMethod: paymentMethod || 'PIX' });
@@ -2135,7 +1543,6 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     conversations.set(phoneKey, conv);
     bumpEpoch(phoneKey); // funil APROVADA assume — novo epoch pro loop dele
     registerPhoneUniversal(remoteJid, phoneKey);
-    if (existingSticky) stickyInstances.set(phoneKey, existingSticky);
     db.recordABResult(selectedFunnel, false);
     db.recordFunnelReceipt(phoneKey, productId, 'APROVADA', selectedFunnel);
     // ⭐ 12/05: delay opcional pra 1ª msg APROVADA (default 0=instantâneo, configurável via APROVADA_DELAY_MS)
@@ -2348,7 +1755,6 @@ async function sendStep(phoneKey) {
             addLog('SEND_THROW', `💥 Exception em sendWithFallback: ${e.message}`, { phoneKey });
             if (step.waitForReply) conversation.waiting_for_response = false;
             conversation.hasError = true;
-            conversation.awaitingPool = !stickyInstances.get(phoneKey);
             conversation.lastSendError = 'EXCEPTION';
             conversations.set(phoneKey, conversation);
             try { convToDb(phoneKey, conversation); } catch {}
@@ -2376,13 +1782,10 @@ async function sendStep(phoneKey) {
 
         // ⭐ FIX 04/05: falha de envio sem ser blocked/invalidNumber (pool vazio ou todas instâncias falharam)
         // Antes esse caminho deixava waiting_for_response=true e o lead ficava órfão pra sempre.
-        // Agora reseta o flag, marca pra retry, e o checkInstancesHealth retoma quando instância voltar.
         if (!result.success) {
             if (step.waitForReply) conversation.waiting_for_response = false;
             conversation.hasError = true;
-            // awaitingPool: marca leads sem sticky (1ª msg) que falharam por pool vazio/todas down — retomar quando QUALQUER instância voltar
-            conversation.awaitingPool = !stickyInstances.get(phoneKey);
-            conversation.lastSendError = result.error || (result.waitingSticky ? 'STICKY_OFFLINE' : 'SEND_FAILED');
+            conversation.lastSendError = result.error || 'SEND_FAILED';
             conversation.lastErrorAt = new Date();
             conversations.set(phoneKey, conversation);
             try { convToDb(phoneKey, conversation); } catch(e) {}
@@ -2516,241 +1919,6 @@ async function advanceConversation(phoneKey, replyText, reason, expectedEpoch) {
     addLog('STEP_NEXT', `➡️ Passo ${nextStepIndex + 1}/${funnel.steps.length}`, { phoneKey, reason });
     await sendStep(phoneKey);
 }
-
-// ============ VERIFICAÇÃO DE INSTÂNCIAS ============
-// ⭐ FIX 04/05: flag de reentrância. Se um tick demora >30s (10 instâncias x 8s timeout), próximo tick não entra paralelo.
-let _healthRunning = false;
-async function checkInstancesHealth() {
-    if (_healthRunning) return;
-    _healthRunning = true;
-    try { return await _checkInstancesHealthInner(); }
-    finally { _healthRunning = false; }
-}
-async function _checkInstancesHealthInner() {
-    const instances = db.getInstances();
-    let changed = false;
-    for (const inst of instances) {
-        if (inst.paused) continue;
-        if (!inst.name || !inst.name.trim()) continue; // ignora instâncias sem nome válido
-        const connected = await checkInstanceConnected(inst.name);
-
-        // Se conectado: busca o número atual do WhatsApp nessa instância (pra saber que número está ali)
-        let currentPhone = null;
-        if (connected) {
-            currentPhone = await fetchInstanceOwnerNumber(inst.name);
-            if (currentPhone) {
-                // Registra/atualiza o número no sistema (com a instância onde ele está)
-                try { db.upsertPhoneNumber(currentPhone, { instance: inst.name }); } catch(e) {}
-            }
-        }
-
-        if (connected !== !!inst.connected) {
-            db.setInstanceConnected(inst.name, connected);
-            changed = true;
-            if (!connected) {
-                // Qual número estava nessa instância antes de cair?
-                const lastPhone = db.getPhoneNumberByInstance(inst.name);
-                const phoneInfo = lastPhone || {};
-
-                // Monta info de identificação (prioriza dados do phone, depois da instância)
-                const idParts = [];
-                const deviceName = phoneInfo.device_name || inst.device_name;
-                const deviceSlot = phoneInfo.device_slot || inst.device_slot;
-                const phoneNum = phoneInfo.phone_number || inst.phone_number;
-                const accountType = phoneInfo.account_type || inst.account_type;
-
-                if (deviceName) idParts.push(`📱 ${deviceName}`);
-                if (deviceSlot) idParts.push(`🔹 ${deviceSlot}`);
-                if (phoneNum) idParts.push(`📞 ${phoneNum}`);
-                if (accountType) idParts.push(`(${accountType})`);
-                const idText = idParts.length ? '\n' + idParts.join(' · ') : '';
-
-                // Registra queda do número (tipo UNKNOWN — você classifica depois)
-                if (phoneInfo.phone_number) {
-                    try { db.recordPhoneDrop(phoneInfo.phone_number, inst.name, 'UNKNOWN'); } catch(e) {}
-                }
-
-                // Sem notificação: queda/retorno de instância só atualiza o status na tela e os registros internos.
-                addLog('INSTANCE_DOWN', `🔴 ${inst.name} caiu!${idText ? ' ' + idParts.join(' · ') : ''}`);
-                sendSSE('instance_down', { name: inst.name, phone: phoneInfo.phone_number });
-            } else {
-                // Voltou — marca recovery no número que está agora (pode ser o mesmo ou outro)
-                if (currentPhone) {
-                    try { db.recordPhoneRecovery(currentPhone); } catch(e) {}
-                }
-                addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!${currentPhone ? ' 📞 ' + currentPhone : ''}`);
-                sendSSE('instance_up', { name: inst.name, phone: currentPhone });
-            }
-        }
-    }
-    // ⭐ 20/07: recarrega o cache em TODO tick (antes: só quando flagrava transição — se o banco
-    // mudasse por outro caminho, o pool de envio ficava desatualizado até a próxima transição)
-    refreshInstanceCache();
-    if (changed) { /* transições já logadas acima */ }
-    // ⭐ FIX 06/26: a retomada roda em TODO tick, independente de transição.
-    // Antes ela só rodava quando o check FLAGRAVA a instância voltando — se a queda+volta
-    // acontecia entre dois ticks, o lead ficava preso no meio do funil pra sempre.
-    try { resumeStuckConversations(); } catch(e) { addLog('RESUME_SWEEP_ERR', `⚠️ ${e.message}`); }
-}
-
-// Retoma conversas presas (sticky aguardando volta / órfãs sem pool) sempre que houver
-// instância conectada disponível. Idempotente: os flags são resetados antes de agendar,
-// e cada conversa tem backoff de 10min entre retomadas pra não martelar envio que falha sempre.
-function resumeStuckConversations() {
-    const connected = new Set(db.getInstances().filter(i => i.connected && !i.paused).map(i => i.name));
-    if (connected.size === 0) return;
-    const RESUME_BACKOFF_MS = 10 * 60 * 1000;
-    const now = Date.now();
-
-    // 1) Conversas esperando a instância fixa (sticky) voltar.
-    //    Retoma se: sticky voltou a ficar online, OU o grace period venceu (sticky nunca voltou —
-    //    o sendWithFallback vai liberar o sticky vencido e migrar pra outro número).
-    const GRACE_MS = (parseInt(process.env.GRACE_PERIOD_DAYS || '3')) * 24 * 60 * 60 * 1000;
-    let resumedCount = 0;
-    for (const [phoneKey, conv] of conversations.entries()) {
-        if (!conv.waitingForStickyReturn) continue;
-        if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber) continue;
-        const sticky = stickyInstances.get(phoneKey);
-        const stickyOnline = sticky && connected.has(sticky);
-        const createdMs = conv.createdAt ? new Date(conv.createdAt).getTime() : now;
-        const gracePassed = now - createdMs > GRACE_MS;
-        if (!stickyOnline && !gracePassed) continue;
-        if (conv._lastResumeAt && now - conv._lastResumeAt < RESUME_BACKOFF_MS) continue;
-        conv.waitingForStickyReturn = false;
-        conv._lastResumeAt = now;
-        conversations.set(phoneKey, conv);
-        resumedCount++;
-        setTimeout(() => { try { sendStep(phoneKey); } catch(e) {} }, 5000 + (resumedCount * 1500));
-    }
-    if (resumedCount > 0) addLog('STICKY_RESUME', `▶️ ${resumedCount} conversa(s) retomadas (sticky online)`);
-
-    // 2) Órfãs (awaitingPool) — qualquer instância conectada serve.
-    // Cutoff curto pra ABANDONO (2h, evita carpet bombing); 24h pro resto.
-    const ORPHAN_CUTOFF = now - (24 * 60 * 60 * 1000);
-    const ORPHAN_CUTOFF_ABANDONO = now - (2 * 60 * 60 * 1000);
-    let orphanResumed = 0;
-    let orphanSkippedAbandono = 0;
-    for (const [phoneKey, conv] of conversations.entries()) {
-        if (!conv.awaitingPool) continue;
-        if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber) continue;
-        if (conv._lastResumeAt && now - conv._lastResumeAt < RESUME_BACKOFF_MS) continue;
-        const createdAt = conv.createdAt ? new Date(conv.createdAt).getTime() : 0;
-        const isAbandono = conv.funnelType === 'ABANDONO';
-        const cutoff = isAbandono ? ORPHAN_CUTOFF_ABANDONO : ORPHAN_CUTOFF;
-        if (createdAt < cutoff) {
-            if (isAbandono) orphanSkippedAbandono++;
-            continue;
-        }
-        if (isAbandono && !isAbandonoEnabled()) {
-            orphanSkippedAbandono++;
-            continue;
-        }
-        conv.awaitingPool = false;
-        conv.hasError = false;
-        conv.waiting_for_response = false;
-        conv._lastResumeAt = now;
-        conversations.set(phoneKey, conv);
-        orphanResumed++;
-        setTimeout(() => { try { sendStep(phoneKey); } catch(e) {} }, 10000 + (orphanResumed * 30000));
-    }
-    if (orphanResumed > 0) addLog('ORPHAN_RESUME', `🔁 ${orphanResumed} órfão(s) agendados (1 a cada 30s)`);
-    if (orphanSkippedAbandono > 0) addLog('ORPHAN_SKIP_ABANDONO', `⏭️ ${orphanSkippedAbandono} abandono(s) pulado(s) (>2h ou toggle OFF)`);
-}
-// Verificação silenciosa a cada 2min (era 30s) — atualiza status na tela e SEMPRE varre leads presos.
-// Quedas detectadas na hora do envio disparam verificação imediata via verifyInstanceAfterSendError().
-setInterval(checkInstancesHealth, 2 * 60 * 1000);
-
-// Verificação sob demanda: quando um envio falha, confere na hora se a instância caiu,
-// atualiza o status e tira ela do pool imediatamente (sem esperar o próximo ciclo).
-// Debounce de 60s por instância pra rajada de falhas não virar rajada de requisições.
-const _lastErrorCheck = new Map();
-async function verifyInstanceAfterSendError(instanceName) {
-    try {
-        if (!instanceName) return;
-        const last = _lastErrorCheck.get(instanceName) || 0;
-        if (Date.now() - last < 60000) return;
-        _lastErrorCheck.set(instanceName, Date.now());
-        const connected = await checkInstanceConnected(instanceName);
-        const inst = db.getInstances().find(i => i.name === instanceName);
-        if (inst && connected !== !!inst.connected) {
-            db.setInstanceConnected(instanceName, connected);
-            refreshInstanceCache();
-            addLog(connected ? 'INSTANCE_UP' : 'INSTANCE_DOWN', `${connected ? '🟢' : '🔴'} ${instanceName} ${connected ? 'voltou' : 'caiu'} (detectado no envio)`);
-            sendSSE(connected ? 'instance_up' : 'instance_down', { name: instanceName });
-        }
-    } catch(e) {}
-}
-
-// ⭐ FIX 11/05: Job de RECUPERAÇÃO 24h pós-completar PIX/ABANDONO
-// A cada 1min, processa scheduled_funnels pendentes. Triple-guarded:
-//   1. cliente já pagou (hasEverPaid)        → cancela
-//   2. cliente em outro funil ativo          → cancela
-//   3. cliente em blacklist                  → cancela
-let _recoveryJobRunning = false;
-async function processScheduledFunnels() {
-    if (_recoveryJobRunning) return;
-    _recoveryJobRunning = true;
-    try {
-        const pending = db.getPendingScheduledFunnels();
-        if (!pending.length) return;
-        addLog('RECOVERY_JOB', `⚙️ Processando ${pending.length} agendamento(s) de recuperação`);
-        for (const s of pending) {
-            try {
-                // PROTEÇÃO 1: cliente JÁ PAGOU alguma vez? CANCELA — não oferece desconto pra cliente pagante
-                if (db.hasEverPaid(s.phone_key)) {
-                    db.cancelScheduledFunnel(s.id, 'cliente_ja_pagou');
-                    addLog('RECOVERY_CANCEL_PAID', `🚫 Recuperação cancelada — ${s.customer_name || s.phone_key} já pagou alguma vez`, { phoneKey: s.phone_key });
-                    continue;
-                }
-                // PROTEÇÃO 2: cliente em funil ativo? CANCELA
-                if (hasActiveFunnelConversation(s.phone_key)) {
-                    db.cancelScheduledFunnel(s.id, 'funil_ativo');
-                    const ft = getActiveFunnelType(s.phone_key);
-                    addLog('RECOVERY_CANCEL_ACTIVE', `🚫 Recuperação cancelada — ${s.customer_name || s.phone_key} já em ${ft}`, { phoneKey: s.phone_key });
-                    continue;
-                }
-                // PROTEÇÃO 3: blacklist? CANCELA
-                if (db.isBlacklisted(s.phone_key)) {
-                    db.cancelScheduledFunnel(s.id, 'blacklist');
-                    addLog('RECOVERY_CANCEL_BL', `🚫 Recuperação cancelada — ${s.phone_key} na blacklist`, { phoneKey: s.phone_key });
-                    continue;
-                }
-                // PROTEÇÃO 4: funil destino existe e tem passos? CANCELA se quebrado
-                const targetFunnel = db.getFunnelById(s.funnel_id);
-                if (!targetFunnel || !targetFunnel.steps?.length) {
-                    db.cancelScheduledFunnel(s.id, 'funil_destino_invalido');
-                    addLog('RECOVERY_CANCEL_FUNNEL', `🚫 Funil destino "${s.funnel_id}" não existe ou está vazio`, { phoneKey: s.phone_key });
-                    continue;
-                }
-                // DISPARA — usa startFunnel com customFunnelId pra forçar o funil escolhido pelo Iago
-                const location = { ddd: null, city: null, state: null }; // location seria recuperada pelo phoneKey se precisar
-                await startFunnel(
-                    s.phone_key,
-                    s.remote_jid,
-                    'RECUPERACAO',
-                    'REMARK_' + Date.now(),
-                    s.customer_name || 'Cliente',
-                    s.product_id || 'GRUPO_VIP',
-                    s.product_name || 'GRUPO VIP',
-                    0, 0, null, [],
-                    'PIX',
-                    location,
-                    s.funnel_id // ← customFunnelId
-                );
-                db.markScheduledFunnelFired(s.id);
-                addLog('RECOVERY_FIRED', `🚀 Recuperação disparada pra ${s.customer_name || s.phone_key} (origem: ${s.trigger_source})`, { phoneKey: s.phone_key, scheduleId: s.id });
-            } catch(e) {
-                addLog('RECOVERY_FIRE_ERR', `Erro disparando recovery #${s.id}: ${e.message}`, { phoneKey: s.phone_key });
-                // não marca como fired pra tentar de novo no próximo tick
-            }
-        }
-    } catch(e) {
-        addLog('RECOVERY_JOB_ERR', `Erro no job de recuperação: ${e.message}`);
-    } finally {
-        _recoveryJobRunning = false;
-    }
-}
-setInterval(processScheduledFunnels, 60 * 1000); // 1min
 
 // ============ MIDDLEWARES ============
 // Preserva raw body em rotas de webhook para verificação HMAC
@@ -3584,138 +2752,6 @@ app.post('/webhook/perfectpay', async (req, res) => {
     } catch (error) { addLog('PERFECTPAY_ERR', error.message); res.status(500).json({ success: false }); }
 });
 
-// ⭐ FIX 10/05: dedup de webhook Evolution por key.id (Evolution retenta — mesma mensagem pode chegar 2-3x)
-// TTL 5min. Map cleanup automático ao crescer (>5000 entries) pra evitar leak.
-const _evolutionWebhookSeen = new Map();
-function isDuplicateEvolutionWebhook(messageKey) {
-    const id = messageKey?.id;
-    if (!id) return false;
-    const now = Date.now();
-    const seen = _evolutionWebhookSeen.get(id);
-    if (seen && (now - seen) < 5 * 60 * 1000) return true;
-    _evolutionWebhookSeen.set(id, now);
-    if (_evolutionWebhookSeen.size > 5000) {
-        const cutoff = now - 5 * 60 * 1000;
-        for (const [k, t] of _evolutionWebhookSeen.entries()) {
-            if (t < cutoff) _evolutionWebhookSeen.delete(k);
-        }
-    }
-    return false;
-}
-
-app.post('/webhook/evolution', async (req, res) => {
-    try {
-        // ⭐ FIX 10/05: token opcional via env (Evolution não tem HMAC nativo, então usa shared token).
-        // Sem o token configurado, mantém comportamento atual (compat). Quando configurar, exige.
-        if (EVOLUTION_WEBHOOK_TOKEN) {
-            const provided = req.query.t || req.headers['x-evolution-token'] || req.headers['x-webhook-token'] || '';
-            if (!timingSafeStringCompare(String(provided), EVOLUTION_WEBHOOK_TOKEN)) {
-                addLog('EVO_AUTH_FAIL', '🚫 Webhook Evolution sem token válido — rejeitado');
-                return res.status(401).json({ success: false, message: 'invalid token' });
-            }
-        }
-        const data = req.body;
-        const event = data.event;
-        if (event && !event.includes('message')) return res.json({ success: true });
-        const messageData = data.data;
-        if (!messageData?.key) return res.json({ success: true });
-        // ⭐ FIX 10/05: dedup por key.id (Evolution retenta — mesma mensagem chega 2-3x = advanceConversation duplicado)
-        if (isDuplicateEvolutionWebhook(messageData.key)) {
-            return res.json({ success: true, deduped: true });
-        }
-        const remoteJid = messageData.key.remoteJid;
-        if (messageData.key.fromMe) return res.json({ success: true });
-        const messageText = extractMessageText(messageData.message);
-        // Nome da instância (Evolution API envia em data.instance)
-        const incomingInstanceName = data.instance || data.instanceName || messageData.instanceName || null;
-        const isLid = remoteJid.includes('@lid');
-        let phoneToSearch = remoteJid;
-        if (isLid) {
-            if (messageData.key.participant) phoneToSearch = messageData.key.participant;
-            else { const mk = lidMapping.get(remoteJid); if (mk) { const mc = conversations.get(mk); if (mc) phoneToSearch = mc.remoteJid; } }
-        }
-        const incomingPhone = phoneToSearch.split('@')[0];
-        const phoneKey = normalizePhoneKey(incomingPhone);
-        if (!phoneKey || phoneKey.length !== 8) return res.json({ success: true });
-        if (db.isBlacklisted(phoneKey)) return res.json({ success: true });
-
-        const hasLock = await acquireWebhookLock(phoneKey);
-        if (!hasLock) return res.json({ success: false });
-
-        try {
-            const conversation = findConversationUniversal(phoneToSearch);
-            if (conversation && isLid) registerLidMapping(remoteJid, conversation.phoneKey);
-
-            // Verifica reativação de lead antigo
-            if (!conversation || conversation.canceled || conversation.completed) {
-                const history = db.getCompletedConversationsByPhone(phoneKey);
-                if (history.length > 0) {
-                    const lastConv = history[0];
-                    const daysSince = (Date.now() - new Date(lastConv.created_at).getTime()) / 86400000;
-                    const reactivationDays = parseInt(process.env.REACTIVATION_DAYS || '3');
-                    if (daysSince >= reactivationDays) {
-                        const reactivationFunnel = process.env.REACTIVATION_FUNNEL_ID || (lastConv.product_id + '_REATIVACAO');
-                        const reactivFunnel = db.getFunnelById(reactivationFunnel);
-                        if (reactivFunnel) {
-                            addLog('REACTIVATION', `♻️ Reativando lead antigo: ${phoneKey}`, { daysSince: Math.round(daysSince) });
-                            const reactivConv = {
-                                phoneKey, remoteJid: phoneToSearch,
-                                funnelId: reactivationFunnel, stepIndex: 0,
-                                orderCode: 'REATIV_' + Date.now(),
-                                customerName: lastConv.customer_name,
-                                productId: lastConv.product_id, productName: lastConv.product_name,
-                                orderBumps: [], amount: 0, amountDisplay: '', netValue: 0,
-                                ddd: lastConv.ddd, city: lastConv.city, state: lastConv.state,
-                                waiting_for_response: false, createdAt: new Date(),
-                                canceled: false, completed: false, paused: false, reactivation: true
-                            };
-                            conversations.set(phoneKey, reactivConv);
-                            registerPhoneUniversal(phoneToSearch, phoneKey);
-                            await sendStep(phoneKey);
-                            return res.json({ success: true });
-                        }
-                    }
-                }
-
-                // ============ START TRIGGERS (gatilho de início para lead novo) ============
-                // Verifica se a mensagem dispara algum funil novo via palavra-chave.
-                // Falha silenciosa: se algo der errado, segue pro EVO_IGNORED original.
-                try {
-                    const startTrigger = checkStartTriggers(messageText, incomingInstanceName);
-                    if (startTrigger) {
-                        const location = db.getLocationFromPhone(incomingPhone);
-                        const started = await startConversationFromTrigger(startTrigger, phoneKey, phoneToSearch, location, incomingInstanceName, messageData.pushName);
-                        if (started) return res.json({ success: true });
-                    }
-                } catch(stErr) {
-                    addLog('START_TRIGGER_FAIL', `⚠️ Erro start_trigger (seguindo fluxo): ${stErr.message}`);
-                }
-
-                addLog('EVO_IGNORED', `Sem conversa ativa para ${phoneKey}`);
-                return res.json({ success: true });
-            }
-
-            if (conversation.pixWaiting || conversation.paused || conversation.invalidNumber) return res.json({ success: true });
-            
-            // Garante que estamos usando a conversa mais atualizada da memória
-            const freshConv = conversations.get(conversation.phoneKey) || conversation;
-            if (!freshConv.waiting_for_response) { 
-                addLog('NOT_WAITING', `⚠️ Não aguardando — ignorando (${conversation.phoneKey})`, { phoneKey }); 
-                return res.json({ success: true }); 
-            }
-            // Atualiza referência para a conversa fresca
-            Object.assign(conversation, freshConv);
-
-            db.logMessage(phoneKey, 'in', messageText, null, null);
-            db.processWordFrequency(messageText, conversation.productId);
-            addLog('CLIENT_REPLY', `✅ Resposta: "${messageText.substring(0, 50)}"`, { phoneKey });
-            sendSSE('client_reply', { phoneKey, text: messageText.substring(0, 100) });
-            await advanceConversation(phoneKey, messageText, 'reply');
-            res.json({ success: true });
-        } finally { releaseWebhookLock(phoneKey); }
-    } catch (error) { addLog('EVO_ERR', error.message); res.status(500).json({ success: false }); }
-});
-
 // ============ PIX PAGE PÚBLICA ============
 // URL do app de membros — usada nos botões da página PIX (expirado / pago)
 const MEMBERS_APP_URL = process.env.MEMBERS_APP_URL || 'https://m.membrosvips.com';
@@ -3965,8 +3001,9 @@ app.get('/api/dashboard', authMiddleware, (req, res) => {
         revenue_net_today: today.revenue || 0,
         pix_generated_today: today.pix_generated || 0,
         conversion_rate: convRate,
-        active_instances: getActiveInstances().length,
-        total_instances: db.getInstances().filter(i => !i.is_notification).length,
+        active_instances: isWabaConfigured() ? 1 : 0,
+        total_instances: 1,
+        waba_configured: isWabaConfigured(),
         test_mode: isTestModeActive(),
         funnel_breakdown: funnelBreakdown,
         recovery_stats: recoveryStats,
@@ -3984,7 +3021,7 @@ app.get('/api/conversations', authMiddleware, (req, res) => {
         city: conv.city, state: conv.state, ddd: conv.ddd,
         waiting_for_response: conv.waiting_for_response, pixWaiting: conv.pixWaiting || false,
         createdAt: conv.createdAt, lastMessageAt: conv.lastSystemMessage, lastReplyAt: conv.lastReply,
-        orderCode: conv.orderCode, stickyInstance: stickyInstances.get(phoneKey),
+        orderCode: conv.orderCode, stickyInstance: null,
         canceled: conv.canceled || false, completed: conv.completed || false,
         hasError: conv.hasError || false, paused: conv.paused || false,
         invalidNumber: conv.invalidNumber || false, reactivation: conv.reactivation || false,
@@ -4079,8 +3116,7 @@ app.post('/api/recover-stuck', authMiddleware, (req, res) => {
             if (conv.canceled || conv.completed || conv.paused || conv.invalidNumber || conv.pixWaiting) continue;
             const createdAt = conv.createdAt ? new Date(conv.createdAt).getTime() : 0;
             if (createdAt < cutoff) continue;
-            const hasSticky = !!stickyInstances.get(phoneKey);
-            const isStuck = (conv.waiting_for_response || conv.hasError || conv.awaitingPool) && !hasSticky;
+            const isStuck = !!conv.hasError; // canal oficial: só conversa com erro real de envio
             if (!isStuck) continue;
 
             // ⭐ FIX 10/05: Lead aguardando resposta legitimamente NÃO entra em recovery
@@ -4170,7 +3206,6 @@ app.delete('/api/conversations/:phoneKey', authMiddleware, (req, res) => {
     try {
         // Remove da memória
         conversations.delete(phoneKey);
-        stickyInstances.delete(phoneKey);
         const pt = pixTimeouts.get(phoneKey);
         if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
         // Remove do banco
@@ -4209,7 +3244,6 @@ app.post('/api/cleanup-test-data', authMiddleware, (req, res) => {
         } catch(e) {}
         // Limpa estado em memória
         conversations.clear();
-        stickyInstances.clear();
         for (const pt of pixTimeouts.values()) clearTimeout(pt.timeout);
         pixTimeouts.clear();
         logs.length = 0;
@@ -4276,7 +3310,7 @@ app.get('/api/products', authMiddleware, (req, res) => res.json({ success: true,
 app.post('/api/products', authMiddleware, (req, res) => {
     const p = req.body;
     if (!p.id || !p.name) return res.status(400).json({ success: false });
-    db.saveProduct(p); refreshInstanceCache();
+    db.saveProduct(p);
     addLog('PRODUCT_SAVED', `Produto: ${p.name}`); res.json({ success: true });
 });
 app.post('/api/products/:id/toggle', authMiddleware, (req, res) => { db.toggleProduct(req.params.id, req.body.active); res.json({ success: true }); });
@@ -4535,214 +3569,6 @@ app.post('/api/lead/:phoneKey/pause', authMiddleware, (req, res) => {
         try { convToDb(phoneKey, conv); } catch(e) {}
         addLog(conv.paused ? 'LEAD_PAUSED_APP' : 'LEAD_RESUMED_APP', `${conv.paused?'⏸️ Pausado':'▶️ Retomado'} pelo app: ${phoneKey}`);
         res.json({ success: true, paused: conv.paused });
-    } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-app.get('/api/instances', authMiddleware, (req, res) => {
-    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 90);
-    res.json({ success: true, data: db.getInstances(), stats: db.getInstanceStats(days) });
-});
-
-// ⭐ DIAGNÓSTICO 04/05: testa a Evolution diretamente — connection state + envio teste — e retorna a resposta crua.
-// Use quando ver SEND_FAILED em massa: revela se é problema de auth, instância, formato, timeout, etc.
-app.post('/api/diag-evolution', authMiddleware, async (req, res) => {
-    try {
-        const testPhone = String(req.body?.phone || '').replace(/\D/g, '');
-        const instances = db.getInstances().filter(i => !i.paused && i.name && !i.is_notification);
-        const results = [];
-        for (const inst of instances) {
-            const result = { instance: inst.name, phone_number: inst.phone_number };
-            // 1) connectionState
-            try {
-                const r = await axios.get(`${EVOLUTION_BASE_URL}/instance/connectionState/${inst.name}`, { headers: { 'apikey': EVOLUTION_API_KEY }, timeout: 10000 });
-                result.connection = { http: r.status, data: r.data };
-            } catch(e) {
-                result.connection = { http: e.response?.status || e.code, error: e.response?.data || e.message };
-            }
-            // 2) envio teste (só se phone fornecido)
-            if (testPhone && testPhone.length >= 10) {
-                try {
-                    const r = await axios.post(`${EVOLUTION_BASE_URL}/message/sendText/${inst.name}`,
-                        { number: testPhone, text: `[diag] teste de envio ${new Date().toISOString()}` },
-                        { headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY }, timeout: 15000 });
-                    result.send = { http: r.status, data: r.data };
-                } catch(e) {
-                    result.send = { http: e.response?.status || e.code, error: e.response?.data || e.message };
-                }
-            }
-            results.push(result);
-        }
-        res.json({ success: true, evolutionUrl: EVOLUTION_BASE_URL, hasApiKey: !!EVOLUTION_API_KEY, testedPhone: testPhone || null, results });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-// ⭐ v1.3 — Endpoint de diagnóstico do balanceamento
-app.get('/api/load-balance', authMiddleware, (req, res) => {
-    const active = getActiveInstances();
-    const scores = computeInstanceScores(active);
-    scores.sort((a, b) => a.score - b.score);
-
-    // Conta conversas em estado especial
-    let waitingSticky = 0;
-    let totalSticky = 0;
-    const stickyDist = {};
-    for (const [phoneKey, instName] of stickyInstances.entries()) {
-        if (!instName) continue;
-        const conv = conversations.get(phoneKey);
-        if (conv && !conv.canceled) {
-            totalSticky++;
-            stickyDist[instName] = (stickyDist[instName] || 0) + 1;
-            if (conv.waitingForStickyReturn) waitingSticky++;
-        }
-    }
-
-    res.json({
-        success: true,
-        active_instances: active,
-        instance_count: active.length,
-        scores,                            // Score de carga (menor = mais ociosa)
-        sticky_distribution: stickyDist,   // Quantos clientes cada instância tem como sticky
-        total_active_stickys: totalSticky,
-        waiting_sticky_return: waitingSticky,  // Quantos aguardando instância voltar
-        grace_period_days: parseInt(process.env.GRACE_PERIOD_DAYS || '3')
-    });
-});
-
-app.post('/api/instances/:name/pause', authMiddleware, (req, res) => {
-    db.ensureInstance(req.params.name); db.setInstancePaused(req.params.name, req.body.paused);
-    refreshInstanceCache(); addLog('INST_PAUSE', `${req.body.paused ? '⏸️' : '▶️'} ${req.params.name}`);
-    res.json({ success: true });
-});
-app.post('/api/instances/:name/abandono', authMiddleware, (req, res) => {
-    const name = req.params.name;
-    // Não permite marcar instância de notificação como abandono
-    if (name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
-        return res.status(400).json({ success: false, error: 'Instância de notificação não pode ser de abandono' });
-    }
-    db.setInstanceAbandono(name, !!req.body.is_abandono);
-    refreshInstanceCache();
-    addLog('INST_ABANDONO', `${req.body.is_abandono ? '🛒' : '📱'} ${name} — ${req.body.is_abandono ? 'agora é de abandono' : 'voltou ao pool principal'}`);
-    res.json({ success: true });
-});
-
-// ⭐ FIX 05/05: bloquear instância de receber mensagens de carrinho abandonado (proteção do número principal)
-app.post('/api/instances/:name/block-abandono', authMiddleware, (req, res) => {
-    const name = req.params.name;
-    try {
-        db.getDb().prepare('UPDATE instances SET block_abandono = ? WHERE name = ?').run(req.body.block_abandono ? 1 : 0, name);
-        refreshInstanceCache();
-        addLog('INST_BLOCK_ABANDONO', `${req.body.block_abandono ? '🛡️' : '🛒'} ${name} — ${req.body.block_abandono ? 'NÃO recebe mais carrinho abandonado' : 'voltou a receber carrinho abandonado'}`);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
-});
-// Identificação física do chip/celular (pra saber qual aparelho pegar quando instância cair)
-// ENDPOINT ANTIGO — mantido por compatibilidade, mas agora também grava no sistema novo por número
-app.post('/api/instances/:name/identity', authMiddleware, (req, res) => {
-    try {
-        const { phone_number, device_name, device_slot, account_type } = req.body || {};
-        // Mantém campos na tabela instances (legado)
-        db.updateInstanceIdentity(req.params.name, { phone_number, device_name, device_slot, account_type });
-        // Se veio número, grava também no sistema novo (fonte da verdade)
-        if (phone_number && String(phone_number).trim()) {
-            const cleanPhone = String(phone_number).replace(/\D/g, '');
-            if (cleanPhone) {
-                db.upsertPhoneNumber(cleanPhone, { instance: req.params.name, device_name, device_slot, account_type });
-            }
-        }
-        addLog('INST_IDENTITY', `📝 ${req.params.name} identificado: ${device_name || '?'} · ${phone_number || '?'} · ${account_type || '?'}`);
-        res.json({ success: true });
-    } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-// ===== SAÚDE POR NÚMERO (nova API) =====
-// Lista todos os números conhecidos com sua saúde
-app.get('/api/phones', authMiddleware, (req, res) => {
-    try {
-        const phones = db.getAllPhoneNumbers();
-        const summary = db.getPhoneSummary();
-        res.json({ success: true, data: phones, summary });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-// Detalhe completo de um número: identidade + histórico de quedas + mensagens por dia
-app.get('/api/phones/:number', authMiddleware, (req, res) => {
-    try {
-        const phone = db.getPhoneNumber(req.params.number);
-        if (!phone) return res.status(404).json({ success: false, error: 'Número não encontrado' });
-        const drops = db.getPhoneDrops(req.params.number, 50);
-        const messages = db.getPhoneMessageStats(req.params.number, 30);
-        res.json({ success: true, data: phone, drops, messages });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-// Atualiza identidade de um número (celular físico, tipo, notas)
-app.post('/api/phones/:number/identity', authMiddleware, (req, res) => {
-    try {
-        const { device_name, device_slot, account_type, notes, status } = req.body || {};
-        // Garante que o número existe (cria se não existir)
-        db.upsertPhoneNumber(req.params.number, {});
-        db.updatePhoneIdentity(req.params.number, { device_name, device_slot, account_type, notes, status });
-        addLog('PHONE_IDENTITY', `📝 Número ${req.params.number}: ${device_name || '?'} · ${account_type || '?'}`);
-        res.json({ success: true });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-// Reclassifica uma queda (usuário marca como "era só desconexão técnica" ou "ban real")
-app.post('/api/phones/drops/:id/reclassify', authMiddleware, (req, res) => {
-    try {
-        const { drop_type } = req.body || {};
-        if (!['BAN','DISCONNECT','UNKNOWN'].includes(drop_type)) {
-            return res.status(400).json({ success: false, error: 'Tipo inválido. Use BAN, DISCONNECT ou UNKNOWN' });
-        }
-        const ok = db.reclassifyDrop(parseInt(req.params.id), drop_type);
-        if (!ok) return res.status(404).json({ success: false, error: 'Queda não encontrada' });
-        addLog('DROP_RECLASSIFIED', `🔄 Queda #${req.params.id} reclassificada como ${drop_type}`);
-        res.json({ success: true });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-// Força resincronização do número conectado em cada instância (útil pra pegar novos números)
-app.post('/api/phones/sync', authMiddleware, async (req, res) => {
-    try {
-        const instances = db.getInstances().filter(i => !i.paused && i.name);
-        let synced = 0;
-        for (const inst of instances) {
-            const connected = await checkInstanceConnected(inst.name);
-            // ⭐ 20/07: sincronizar agora TAMBÉM atualiza o status de conexão no banco (antes só o
-            // cadastro de números — instância "online" podia continuar fora do pool de envio)
-            if (connected !== !!inst.connected) db.setInstanceConnected(inst.name, connected);
-            if (!connected) continue;
-            const phone = await fetchInstanceOwnerNumber(inst.name);
-            if (phone) {
-                db.upsertPhoneNumber(phone, { instance: inst.name });
-                synced++;
-            }
-        }
-        refreshInstanceCache(); // pool de envio atualizado na hora
-        res.json({ success: true, synced });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-app.delete('/api/instances/:name', authMiddleware, (req, res) => {
-    const name = req.params.name;
-    // Não permite deletar a instância de notificação
-    if (name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
-        return res.status(400).json({ success: false, error: 'Não é possível remover instância de notificação' });
-    }
-    try {
-        db.getDb().prepare('DELETE FROM instances WHERE name = ?').run(name);
-        db.getDb().prepare('DELETE FROM instance_daily_stats WHERE instance = ?').run(name);
-        // Remove sticky dessa instância
-        for (const [k, v] of stickyInstances.entries()) {
-            if (v === name) stickyInstances.delete(k);
-        }
-        refreshInstanceCache();
-        addLog('INST_DELETE', `🗑️ Instância removida: ${name}`);
-        res.json({ success: true });
     } catch(e) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -5020,57 +3846,6 @@ app.post('/api/abandono/fire', authMiddleware, (req, res) => {
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-// Detalhe da instância pro drill-down do app: stats hoje, histórico de quedas 7d, flags atuais.
-app.get('/api/instances/:name/detail', authMiddleware, (req, res) => {
-    try {
-        const name = req.params.name;
-        const inst = db.getInstances().find(i => i.name === name);
-        if (!inst) return res.status(404).json({ success: false, error: 'Instância não encontrada' });
-
-        const stats7d = db.getInstanceStats(7).filter(s => s.instance === name);
-        const today = new Date().toISOString().split('T')[0];
-        const todayStats = stats7d.find(s => s.date === today) || { messages_sent: 0, leads_attended: 0, conversions: 0 };
-        const avg7d = stats7d.length ? stats7d.reduce((a, s) => a + (s.messages_sent || 0), 0) / stats7d.length : 0;
-
-        let phoneInfo = null;
-        try { phoneInfo = db.getPhoneNumberByInstance(name); } catch(e) {}
-        let drops = [];
-        try { drops = phoneInfo?.phone_number ? db.getPhoneDrops(phoneInfo.phone_number, 30) : []; } catch(e) {}
-        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const drops7dCount = drops.filter(d => new Date(d.dropped_at).getTime() > sevenDaysAgo).length;
-
-        res.json({
-            success: true,
-            instance: {
-                name: inst.name,
-                connected: !!inst.connected,
-                paused: !!inst.paused,
-                is_notification: !!inst.is_notification,
-                is_abandono: !!inst.is_abandono,
-                block_abandono: !!inst.block_abandono,
-                phone_number: phoneInfo?.phone_number || inst.phone_number || null,
-                device_name: phoneInfo?.device_name || inst.device_name || null,
-                device_slot: phoneInfo?.device_slot || inst.device_slot || null,
-                last_connected: inst.last_connected,
-                last_disconnected: inst.last_disconnected
-            },
-            today: {
-                messages_sent: todayStats.messages_sent || 0,
-                leads_attended: todayStats.leads_attended || 0,
-                conversions: todayStats.conversions || 0
-            },
-            avg7d_messages: Math.round(avg7d),
-            drops7d: drops7dCount,
-            drops_recent: drops.slice(0, 5).map(d => ({
-                at: d.dropped_at,
-                type: d.drop_type,
-                recovered_at: d.recovered_at
-            })),
-            stats7d
-        });
-    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
 // ===== RESUMO DIÁRIO (histórico financeiro) =====
 // GET /api/daily-summary?days=7  OR  ?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Mantém compat com ?days=N. Se vier from+to, usa o range (máx 92 dias).
@@ -5134,17 +3909,6 @@ app.get('/api/daily-summary', authMiddleware, (req, res) => {
     } catch(e) {
         res.status(500).json({ success: false, error: e.message });
     }
-});
-
-// ===== INSTANCE HEALTH API =====
-app.get('/api/instances/health', authMiddleware, (req, res) => {
-    res.json({ success: true, data: db.getInstanceHealth() });
-});
-
-// ===== PHONE VARIATIONS API =====
-app.get('/api/phone-variations', authMiddleware, (req, res) => {
-    const rows = db.getDb().prepare('SELECT * FROM phone_variation_log ORDER BY id DESC LIMIT 100').all();
-    res.json({ success: true, data: rows });
 });
 
 // ===== FUNNEL METRICS API =====
@@ -5630,65 +4394,19 @@ setTimeout(backfillContactsData, 3000);
 // ============ INICIALIZAÇÃO ============
 app.listen(PORT, async () => {
     console.log('='.repeat(60));
-    console.log(`🌌 ORION v${APP_VERSION} — Sistema de Automação WhatsApp`);
+    console.log(`🌌 ORION v${APP_VERSION} — Automação WhatsApp (Cloud API oficial da Meta)`);
     console.log('='.repeat(60));
-    console.log(`✅ Porta: ${PORT} | Evolution: ${EVOLUTION_BASE_URL}`);
-    console.log(`✅ Instâncias: ${CONFIGURED_INSTANCES.join(', ')}`);
-    console.log('🔔 Notificações: apenas push do app (canal WhatsApp removido)');
+    console.log(`✅ Porta: ${PORT}`);
+    console.log(`${isWabaConfigured() ? '✅' : '⚠️ '} API oficial: ${isWabaConfigured() ? 'configurada (número ' + WABA_PHONE_NUMBER_ID + ')' : 'AGUARDANDO WABA_TOKEN / WABA_PHONE_NUMBER_ID no ambiente'}`);
+    console.log(`${META_WEBHOOK_VERIFY_TOKEN ? '✅' : '⚠️ '} Webhook da Meta: ${META_WEBHOOK_VERIFY_TOKEN ? 'token de verificação definido' : 'defina META_WEBHOOK_VERIFY_TOKEN'}`);
+    if (process.env.APP_URL) console.log(`✅ PIX pages ativas → ${process.env.APP_URL}/pix/:token`);
+    if (PIX_DOMAIN) console.log(`✅ Isolamento de domínio PIX → ${PIX_DOMAIN}`);
+    if (LINKROTATOR_URL && LINKROTATOR_TOKEN) console.log(`✅ Relay LinkRotator ativo → ${LINKROTATOR_URL}`);
     console.log('='.repeat(60));
-    console.log('🔧 Funcionalidades v2.0:');
-    console.log('  ✅ A/B Test com rotação por instância');
-    console.log('  ✅ Gatilhos globais (contém/exato/similar)');
-    console.log('  ✅ Blacklist global por gatilho');
-    console.log('  ✅ Delay com variação aleatória ±20%');
-    console.log('  ✅ Variáveis: {NOME} {SAUDACAO} {CIDADE} {ESTADO}');
-    console.log('  ✅ Personalização por horário (manhã/tarde/noite)');
-    console.log('  ✅ Reativação de lead antigo');
-    console.log('  ✅ Push no app: vendas + resumos 9h e 23:59 (preferências em /api/notification-prefs)');
-    console.log('  ✅ Bloqueio automático via gatilho');
-    console.log('  ✅ Figurinha como bloco de funil');
-    if (process.env.APP_URL) {
-        console.log(`  ✅ PIX pages ativas → ${process.env.APP_URL}/pix/:token`);
-    }
-    if (PIX_DOMAIN) {
-        console.log(`  ✅ Isolamento de domínio PIX → ${PIX_DOMAIN}`);
-    }
-    if (LINKROTATOR_URL && LINKROTATOR_TOKEN) {
-        console.log(`  ✅ Relay LinkRotator ativo → ${LINKROTATOR_URL}`);
-    } else {
-        console.log(`  ⚠️  Relay LinkRotator desativado (configure LINKROTATOR_URL e LINKROTATOR_TOKEN para ativar)`);
-    }
-    console.log('='.repeat(60));
-    await checkInstancesHealth();
-    restoreStickyFromDB();
     restorePendingConversations();
     restorePendingPixTimeouts();
-    recoverStuckConversations();
-    // Sync inicial dos números conectados (em paralelo, sem bloquear boot)
-    (async () => {
-        try {
-            const instances = db.getInstances().filter(i => !i.paused && i.name);
-            for (const inst of instances) {
-                const connected = await checkInstanceConnected(inst.name);
-                if (!connected) continue;
-                const phone = await fetchInstanceOwnerNumber(inst.name);
-                if (phone) {
-                    db.upsertPhoneNumber(phone, { instance: inst.name });
-                    console.log(`📞 ${inst.name} → ${phone}`);
-                }
-            }
-        } catch(e) { console.log('Sync inicial números:', e.message); }
-    })();
+    // Sincroniza números oficiais da WABA (qualidade/limite) no boot, se configurado
+    if (WABA_TOKEN && WABA_ID) {
+        waSyncNumbers().then(rows => console.log(`📱 ${rows.length} número(s) oficial(is) sincronizado(s) da Meta`)).catch(e => console.log('Sync números oficiais:', e.message));
+    }
 });
-// A cada 5 minutos, resincroniza números (detecta troca de chip)
-setInterval(async () => {
-    try {
-        const instances = db.getInstances().filter(i => !i.paused && i.name);
-        for (const inst of instances) {
-            const connected = await checkInstanceConnected(inst.name);
-            if (!connected) continue;
-            const phone = await fetchInstanceOwnerNumber(inst.name);
-            if (phone) db.upsertPhoneNumber(phone, { instance: inst.name });
-        }
-    } catch(e) {}
-}, 5 * 60 * 1000);
