@@ -46,6 +46,19 @@ const pushSubscriptions = new Map();
 // ============ CONFIGURAÇÕES ============
 const EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+
+// ⭐ 22/07: WHATSAPP CLOUD API OFICIAL (Meta) — canal novo pós-Evolution.
+// WABA_TOKEN: token permanente do system user (whatsapp_business_messaging + management)
+// WABA_ID: ID da conta WhatsApp Business (pra listar números e templates)
+// WABA_PHONE_NUMBER_ID: ID do número padrão de envio (não é o telefone — é o ID que a Meta gera)
+// META_WEBHOOK_VERIFY_TOKEN: string secreta que você define e repete na tela de webhook da Meta
+const WABA_TOKEN = process.env.WABA_TOKEN || '';
+const WABA_ID = process.env.WABA_ID || '';
+const WABA_PHONE_NUMBER_ID = process.env.WABA_PHONE_NUMBER_ID || '';
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
+const META_WEBHOOK_VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || '';
+const GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+function isWabaConfigured() { return !!(WABA_TOKEN && WABA_PHONE_NUMBER_ID); }
 // ⭐ FIX 04/05: parseInt("7m") = NaN → setTimeout(fn, NaN) dispara em 0ms (sem espera dos 7min).
 // ⭐ FIX 11/05: editável no admin via settings.PIX_TIMEOUT_MS. Fallback mantido em 7min pra
 //              retrocompat (NÃO mudar comportamento sem o Iago trocar no admin manualmente).
@@ -2958,6 +2971,222 @@ app.get('/api/events-public', (req, res) => {
     sseClients.push(res);
     const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { clearInterval(ping); } }, 25000);
     req.on('close', () => { clearInterval(ping); sseClients = sseClients.filter(c => c !== res); });
+});
+
+// ============ WHATSAPP CLOUD API OFICIAL — NÚCLEO DE ENVIO ============
+// Toda mensagem enviada fica em wa_messages (status atualizado pelos webhooks da Meta:
+// sent → delivered → read; failed com o erro; pricing diz se foi cobrada e a categoria).
+
+async function waRequest(method, path, payload = null) {
+    const url = `${GRAPH_BASE}/${path}`;
+    const config = { method, url, headers: { Authorization: `Bearer ${WABA_TOKEN}` }, timeout: 30000 };
+    if (payload) { config.data = payload; config.headers['Content-Type'] = 'application/json'; }
+    const resp = await axios(config);
+    return resp.data;
+}
+
+// Envia uma mensagem pelo número oficial. `message` é o objeto no formato da Meta
+// (ex: { type:'text', text:{...} }). Retorna o wamid ou lança erro descritivo.
+async function waSendMessage(to, message, meta = {}) {
+    if (!isWabaConfigured()) throw new Error('API oficial não configurada (WABA_TOKEN/WABA_PHONE_NUMBER_ID ausentes)');
+    const phoneNumberId = meta.phoneNumberId || WABA_PHONE_NUMBER_ID;
+    const toPhone = String(to || '').replace(/\D/g, '');
+    if (!toPhone) throw new Error('Destinatário inválido');
+    const payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to: toPhone, ...message };
+    try {
+        const data = await waRequest('post', `${phoneNumberId}/messages`, payload);
+        const wamid = data?.messages?.[0]?.id || null;
+        if (wamid) {
+            try {
+                db.getDb().prepare(`INSERT OR REPLACE INTO wa_messages
+                    (wamid, phone_number_id, phone_key, to_phone, direction, msg_type, template_name, campaign_id, status)
+                    VALUES (?, ?, ?, ?, 'out', ?, ?, ?, 'accepted')`)
+                .run(wamid, phoneNumberId, normalizePhoneKey(toPhone), toPhone, message.type || 'text', meta.templateName || null, meta.campaignId || null);
+            } catch(e) {}
+        }
+        return wamid;
+    } catch (e) {
+        const apiErr = e.response?.data?.error;
+        const msg = apiErr ? `${apiErr.message} (código ${apiErr.code}${apiErr.error_subcode ? '/' + apiErr.error_subcode : ''})` : e.message;
+        addLog('WA_SEND_ERR', `❌ Envio oficial falhou pra ${toPhone}: ${msg}`);
+        throw new Error(msg);
+    }
+}
+
+// Construtores de mensagem (formato da Meta)
+function waText(body) { return { type: 'text', text: { body: String(body || ''), preview_url: true } }; }
+function waTemplate(name, lang = 'pt_BR', components = null) {
+    const t = { type: 'template', template: { name, language: { code: lang } } };
+    if (components) t.template.components = components;
+    return t;
+}
+function waImage(link, caption) { return { type: 'image', image: caption ? { link, caption } : { link } }; }
+function waVideo(link, caption) { return { type: 'video', video: caption ? { link, caption } : { link } }; }
+function waAudio(link) { return { type: 'audio', audio: { link } }; }
+// Botões de resposta rápida (até 3) — grátis dentro da janela
+function waButtons(bodyText, buttons) {
+    return { type: 'interactive', interactive: {
+        type: 'button',
+        body: { text: String(bodyText || '') },
+        action: { buttons: buttons.slice(0, 3).map(b => ({ type: 'reply', reply: { id: String(b.id), title: String(b.title).slice(0, 20) } })) }
+    } };
+}
+
+// ===== Janela de 24h =====
+function touchWaWindow(phoneKey, phone, referralJson = null) {
+    try {
+        db.getDb().prepare(`INSERT INTO wa_windows (phone_key, phone, last_inbound_at, last_referral_json)
+            VALUES (?, ?, datetime('now'), ?)
+            ON CONFLICT(phone_key) DO UPDATE SET phone = excluded.phone, last_inbound_at = datetime('now'),
+                last_referral_json = COALESCE(excluded.last_referral_json, wa_windows.last_referral_json)`)
+        .run(phoneKey, phone, referralJson);
+    } catch(e) {}
+}
+function isWaWindowOpen(phoneKey) {
+    try {
+        const row = db.getDb().prepare("SELECT 1 FROM wa_windows WHERE phone_key = ? AND datetime(last_inbound_at) > datetime('now', '-24 hours')").get(phoneKey);
+        return !!row;
+    } catch(e) { return false; }
+}
+
+// ===== Sincroniza os números da WABA (qualidade e limite vêm da Meta) =====
+async function waSyncNumbers() {
+    if (!WABA_TOKEN || !WABA_ID) throw new Error('WABA_TOKEN/WABA_ID ausentes');
+    const data = await waRequest('get', `${WABA_ID}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier`);
+    const rows = data?.data || [];
+    const up = db.getDb().prepare(`INSERT INTO official_numbers (phone_number_id, display_number, verified_name, quality_rating, messaging_limit, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(phone_number_id) DO UPDATE SET display_number = excluded.display_number, verified_name = excluded.verified_name,
+            quality_rating = excluded.quality_rating, messaging_limit = excluded.messaging_limit, updated_at = datetime('now')`);
+    for (const n of rows) up.run(n.id, n.display_phone_number || null, n.verified_name || null, n.quality_rating || null, n.messaging_limit_tier || null);
+    return rows;
+}
+
+// ============ WEBHOOK DA META (mensagens recebidas + status + qualidade) ============
+// GET: verificação inicial da Meta (hub.challenge). POST: eventos.
+app.get('/webhook/meta', (req, res) => {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
+    if (mode === 'subscribe' && META_WEBHOOK_VERIFY_TOKEN && token === META_WEBHOOK_VERIFY_TOKEN) {
+        addLog('META_WEBHOOK', '✅ Webhook da Meta verificado com sucesso');
+        return res.status(200).send(challenge);
+    }
+    res.sendStatus(403);
+});
+
+app.post('/webhook/meta', async (req, res) => {
+    res.sendStatus(200); // responde na hora — a Meta reenvia se demorar
+    try {
+        const entries = req.body?.entry || [];
+        for (const entry of entries) {
+            for (const change of (entry.changes || [])) {
+                const field = change.field;
+                const value = change.value || {};
+
+                if (field === 'messages') {
+                    // ----- Mensagens RECEBIDAS dos clientes -----
+                    for (const msg of (value.messages || [])) {
+                        const fromPhone = String(msg.from || '').replace(/\D/g, '');
+                        const phoneKey = normalizePhoneKey(fromPhone);
+                        if (!phoneKey) continue;
+                        const contactName = value.contacts?.[0]?.profile?.name || '';
+                        let text = '';
+                        if (msg.type === 'text') text = msg.text?.body || '';
+                        else if (msg.type === 'button') text = msg.button?.text || '';
+                        else if (msg.type === 'interactive') text = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
+                        else text = `[${String(msg.type || 'mídia').toUpperCase()}]`;
+                        const referral = msg.referral ? JSON.stringify(msg.referral) : null; // anúncio Click-to-WhatsApp
+
+                        touchWaWindow(phoneKey, fromPhone, referral);
+                        try {
+                            db.getDb().prepare(`INSERT OR REPLACE INTO wa_messages (wamid, phone_number_id, phone_key, to_phone, direction, msg_type, status)
+                                VALUES (?, ?, ?, ?, 'in', ?, 'received')`)
+                            .run(msg.id || ('in_' + Date.now()), value.metadata?.phone_number_id || null, phoneKey, fromPhone, msg.type || 'text');
+                        } catch(e) {}
+                        try { db.logMessage(phoneKey, 'in', text, 'oficial', null, true); } catch(e) {}
+
+                        addLog('WA_REPLY', `💬 ${contactName || fromPhone}: ${text.substring(0, 80)}${referral ? ' · veio de ANÚNCIO' : ''}`, { phoneKey });
+                        sendSSE('client_reply', { phoneKey, customerName: contactName || fromPhone, message: text.substring(0, 120) });
+                        // Opt-out imediato (política da Meta: opt-out fácil)
+                        const lower = text.trim().toLowerCase();
+                        if (['sair', 'parar', 'cancelar', 'stop', 'descadastrar'].includes(lower)) {
+                            try { db.addToBlacklist(phoneKey, fromPhone, 'opt-out via mensagem (' + lower + ')'); } catch(e) {}
+                            try { await waSendMessage(fromPhone, waText('Pronto! Você não vai mais receber mensagens nossas. Se mudar de ideia, é só mandar um oi. 👋')); } catch(e) {}
+                            addLog('WA_OPTOUT', `🚫 ${fromPhone} pediu pra sair — blacklist`, { phoneKey });
+                        }
+                    }
+
+                    // ----- Status das mensagens ENVIADAS (sent/delivered/read/failed + cobrança) -----
+                    for (const st of (value.statuses || [])) {
+                        try {
+                            const billable = st.pricing ? (st.pricing.billable ? 1 : 0) : null;
+                            const category = st.pricing?.category || null;
+                            const err = st.errors?.length ? JSON.stringify(st.errors[0]).substring(0, 300) : null;
+                            db.getDb().prepare(`UPDATE wa_messages SET status = ?, billable = COALESCE(?, billable),
+                                category = COALESCE(?, category), error = COALESCE(?, error), updated_at = datetime('now') WHERE wamid = ?`)
+                            .run(st.status, billable, category, err, st.id);
+                            if (st.status === 'failed') addLog('WA_FAILED', `❌ Mensagem oficial falhou pra ${st.recipient_id}: ${err || 'sem detalhe'}`);
+                        } catch(e) {}
+                    }
+                }
+
+                // ----- Qualidade do número mudou (verde/amarelo/vermelho) — avisa NA HORA -----
+                if (field === 'phone_number_quality_update' || field === 'account_update') {
+                    const ev = value.event || field;
+                    const limit = value.current_limit || null;
+                    addLog('WA_QUALITY', `⚠️ Atualização da Meta: ${ev}${limit ? ' · limite ' + limit : ''}`, {});
+                    try { await sendPushNotification('Qualidade do número oficial', `Meta avisou: ${ev}${limit ? ' · limite atual ' + limit : ''}. Confira o painel.`, 'info'); } catch(e) {}
+                    try { await waSyncNumbers(); } catch(e) {}
+                }
+            }
+        }
+    } catch (e) { addLog('META_WEBHOOK_ERR', e.message); }
+});
+
+// ============ API OFICIAL — ROTAS DO PAINEL ============
+app.get('/api/wa/status', authMiddleware, async (req, res) => {
+    try {
+        let numbers = [];
+        try { numbers = db.getDb().prepare('SELECT * FROM official_numbers ORDER BY created_at').all(); } catch(e) {}
+        res.json({
+            success: true,
+            configured: isWabaConfigured(),
+            has_waba_id: !!WABA_ID,
+            has_verify_token: !!META_WEBHOOK_VERIFY_TOKEN,
+            default_phone_number_id: WABA_PHONE_NUMBER_ID || null,
+            graph_version: META_GRAPH_VERSION,
+            numbers
+        });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.post('/api/wa/sync-numbers', authMiddleware, async (req, res) => {
+    try { const rows = await waSyncNumbers(); res.json({ success: true, count: rows.length, numbers: rows }); }
+    catch(e) { res.status(500).json({ success: false, error: e.response?.data?.error?.message || e.message }); }
+});
+
+// Lista os templates da WABA com status de aprovação e categoria
+app.get('/api/wa/templates', authMiddleware, async (req, res) => {
+    try {
+        if (!WABA_ID) return res.status(400).json({ success: false, error: 'WABA_ID não configurado' });
+        const data = await waRequest('get', `${WABA_ID}/message_templates?fields=name,status,category,language,components&limit=100`);
+        res.json({ success: true, templates: data?.data || [] });
+    } catch(e) { res.status(500).json({ success: false, error: e.response?.data?.error?.message || e.message }); }
+});
+
+// Envio de teste (texto livre exige janela aberta; template funciona sempre)
+app.post('/api/wa/test-send', authMiddleware, async (req, res) => {
+    try {
+        const { to, text, template_name, template_lang } = req.body || {};
+        if (!to) return res.status(400).json({ success: false, error: 'Informe o número de destino (to)' });
+        let wamid;
+        if (template_name) wamid = await waSendMessage(to, waTemplate(template_name, template_lang || 'pt_BR'), { templateName: template_name });
+        else if (text) wamid = await waSendMessage(to, waText(text));
+        else return res.status(400).json({ success: false, error: 'Informe text ou template_name' });
+        addLog('WA_TEST', `🧪 Teste oficial enviado pra ${to} (${template_name || 'texto'})`);
+        res.json({ success: true, wamid });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // ============ WEBHOOKS ============

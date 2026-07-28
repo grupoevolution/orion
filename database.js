@@ -360,6 +360,50 @@ function initDatabase() {
         );
     `);
 
+    // ⭐ 22/07: WhatsApp Cloud API OFICIAL (Meta) — fundação da migração pós-Evolution
+    db.exec(`
+        -- Números oficiais registrados na WABA (papel, qualidade e limite vêm da Meta)
+        CREATE TABLE IF NOT EXISTS official_numbers (
+            phone_number_id TEXT PRIMARY KEY,
+            display_number TEXT,
+            verified_name TEXT,
+            label TEXT,
+            role TEXT DEFAULT 'transacional',
+            quality_rating TEXT,
+            messaging_limit TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT
+        );
+
+        -- Log de TODA mensagem da API oficial (base das métricas: entregue/lida/resposta/custo)
+        CREATE TABLE IF NOT EXISTS wa_messages (
+            wamid TEXT PRIMARY KEY,
+            phone_number_id TEXT,
+            phone_key TEXT,
+            to_phone TEXT,
+            direction TEXT,
+            msg_type TEXT,
+            template_name TEXT,
+            category TEXT,
+            billable INTEGER,
+            status TEXT,
+            error TEXT,
+            campaign_id TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT
+        );
+
+        -- Janela de 24h por cliente (última mensagem RECEBIDA dele; anúncio CTWA guarda o referral)
+        CREATE TABLE IF NOT EXISTS wa_windows (
+            phone_key TEXT PRIMARY KEY,
+            phone TEXT,
+            last_inbound_at TEXT,
+            last_referral_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_wa_messages_phone ON wa_messages(phone_key, created_at);
+    `);
+
     // Tabela de páginas PIX únicas por cliente
     db.exec(`
         -- ⭐ FIX 11/05: Log de disparos de START_TRIGGER (palavra-chave do anúncio → WhatsApp)
