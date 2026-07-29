@@ -657,6 +657,18 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Categoria</th><th>Idioma</th><th>Status</th></tr></thead><tbody id="wa-templates-body"></tbody></table></div>
       </div>
       <div class="section" style="margin-top:16px">
+        <div class="sh"><div><div class="sh-title">🧪 Testar funil de atendimento (simular cliente)</div><div class="sh-sub">Roda o fluxo REAL como se o cliente tivesse mandado a mensagem: checa os gatilhos, dispara o funil e você recebe as mensagens no seu WhatsApp. Use o SEU número.</div></div></div>
+        <div style="padding:16px">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+            <div class="fe-row" style="max-width:220px;margin:0"><label class="fe-lbl">Seu número (com DDD)</label><input class="fe-inp" id="sim-phone" placeholder="5575999999999" inputmode="numeric"></div>
+            <div class="fe-row" style="max-width:260px;margin:0"><label class="fe-lbl">Mensagem que o "cliente" manda</label><input class="fe-inp" id="sim-text" placeholder="quero"></div>
+            <button class="btn btn-sm" style="background:#f59e0b;color:#000;font-weight:700" onclick="waSimulate()">▶ Simular mensagem</button>
+            <button class="btn btn-g btn-sm" onclick="waDiagnose()">🔍 Diagnóstico do canal</button>
+          </div>
+          <pre id="sim-out" style="display:none;background:#000;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;color:#cbd5e1;max-height:340px;overflow:auto;white-space:pre-wrap;font-family:var(--mono)"></pre>
+        </div>
+      </div>
+      <div class="section" style="margin-top:16px">
         <div class="sh"><div><div class="sh-title">Registrar número na API</div><div class="sh-sub">Use se o botão "Registrar" da Meta falhar — este é o método oficial via API. Escolha um PIN de 6 dígitos e ANOTE (vira a senha de verificação em 2 etapas do número)</div></div></div>
         <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
           <div class="fe-row" style="max-width:200px;margin:0"><label class="fe-lbl">PIN de 6 dígitos (você escolhe)</label><input class="fe-inp" id="wa-reg-pin" placeholder="ex: 758802" maxlength="6" inputmode="numeric"></div>
@@ -2905,6 +2917,7 @@ function waLimitLabel(t){
   return map[String(t||'').toUpperCase()] || (t || '—');
 }
 async function loadInstances(){
+  const sp = document.getElementById('sim-phone'); if(sp && !sp.value) sp.value = localStorage.getItem('orion_sim_phone') || '';
   const r = await api('/api/wa/status');
   if(!r.success) return;
   document.getElementById('wa-status-cards').innerHTML = `
@@ -3034,6 +3047,43 @@ async function wipeFunnels(){
   const r = await api('/api/funnels/delete-all', { method:'POST', body: JSON.stringify({ confirm: 'APAGAR FUNIS' }) });
   if(r.success){ showToast(`${r.deleted} funis apagados — recomeço limpo!`, 'success'); loadFunnelList(); }
   else showToast('Erro: ' + (r.error||''), 'error');
+}
+function simOut(txt){ const el=document.getElementById('sim-out'); el.style.display='block'; el.textContent = txt; }
+async function waSimulate(){
+  const phone = document.getElementById('sim-phone').value.replace(/\D/g,'');
+  const text = document.getElementById('sim-text').value.trim();
+  if(!phone || !text){ showToast('Preencha número e mensagem', 'error'); return; }
+  localStorage.setItem('orion_sim_phone', phone);
+  simOut('Simulando...');
+  const r = await api('/api/wa/simulate-inbound', { method:'POST', body: JSON.stringify({ phone, text }) });
+  simOut((r.trace||[]).map(t=>'• '+t).join('\n') + (r.error?('\n\n❌ '+r.error):''));
+  if(r.started) showToast('Funil disparado! Confira seu WhatsApp', 'success');
+}
+async function waDiagnose(){
+  simOut('Consultando...');
+  const d = await api('/api/wa/diagnose');
+  if(!d.success){ simOut('Erro: '+(d.error||'')); return; }
+  const L = [];
+  L.push('CANAL OFICIAL: ' + (d.canal.configurado ? '✅ conectado' : '❌ NÃO configurado (WABA_TOKEN/PHONE_NUMBER_ID)'));
+  L.push('ENVIO AUTOMÁTICO (interruptor geral): ' + (d.envio_automatico ? 'LIGADO' : 'DESLIGADO — eventos PIX/aprovada/abandono não disparam; atendimento de anúncio continua funcionando'));
+  L.push('ÚLTIMA MENSAGEM RECEBIDA: ' + (d.ultima_mensagem_recebida ? `${d.ultima_mensagem_recebida.to_phone} em ${d.ultima_mensagem_recebida.created_at} ✅ (webhook da Meta está chegando)` : '❌ NENHUMA — a Meta não está entregando mensagens no webhook (confira a URL de callback e o campo "messages" assinado)'));
+  L.push('ÚLTIMA MENSAGEM ENVIADA: ' + (d.ultima_mensagem_enviada ? `${d.ultima_mensagem_enviada.to_phone} · ${d.ultima_mensagem_enviada.msg_type} · ${d.ultima_mensagem_enviada.status} em ${d.ultima_mensagem_enviada.created_at}` : 'nenhuma ainda'));
+  L.push('BLACKLIST: ' + d.blacklist_total + ' número(s)');
+  L.push('');
+  L.push('JANELAS DE 24H:');
+  (d.janelas||[]).forEach(w=>L.push(`  ${w.phone||w.phone_key} — última msg dele ${w.last_inbound_at} ${w.aberta?'· ABERTA ✅':'· fechada'}`));
+  if(!(d.janelas||[]).length) L.push('  (nenhuma — nenhum cliente escreveu ainda)');
+  L.push('');
+  L.push('GATILHOS DE INÍCIO (palavra-chave → funil):');
+  (d.gatilhos_de_inicio||[]).forEach(t=>L.push(`  "${t.name}" · palavras: ${t.keywords} · tipo ${t.match_type||'contains'} · funil ${t.funnel} ${t.funnel_ok?'✅':'❌ VAZIO/INEXISTENTE'} · filtro de instância: ${t.instances_filter}`));
+  if(!(d.gatilhos_de_inicio||[]).length) L.push('  ❌ NENHUM gatilho de início ativo — crie um em "Gatilhos de Início"');
+  L.push('');
+  L.push('FUNIS:');
+  (d.funis||[]).forEach(f=>L.push(`  ${f.id} · tipo ${f.type} · produto ${f.product} · ${f.steps} passo(s) ${f.steps?'':'❌ VAZIO'}`));
+  L.push('');
+  L.push('LOGS RECENTES:');
+  (d.logs_recentes||[]).forEach(l=>L.push(`  [${l.type}] ${l.message}`));
+  simOut(L.join('\n'));
 }
 async function waRegister(){
   const pin = document.getElementById('wa-reg-pin').value.trim();

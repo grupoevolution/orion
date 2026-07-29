@@ -877,7 +877,8 @@ function checkStartTriggers(text, instanceName, debug = false) {
             // Filtro por instância
             let allowedInstances = [];
             try { allowedInstances = JSON.parse(trigger.instances || '[]'); } catch(e) { allowedInstances = []; }
-            if (allowedInstances.length > 0 && instanceName && !allowedInstances.includes(instanceName)) {
+            // ⭐ 29/07: canal oficial é único — filtro de instância (era Evolution) não se aplica
+            if (instanceName !== 'oficial' && allowedInstances.length > 0 && instanceName && !allowedInstances.includes(instanceName)) {
                 const r = `[${tName}] PULADO — instância "${instanceName}" não está em [${allowedInstances.join(', ')}]`;
                 if (debug) reasons.push(r);
                 continue;
@@ -1327,10 +1328,19 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
                 if (/\.(mp4|mov)(\?|$)/i.test(actualMediaUrl)) header = { type: 'video', video: { link: actualMediaUrl } };
                 else if (/\.(jpe?g|png|webp)(\?|$)/i.test(actualMediaUrl)) header = { type: 'image', image: { link: actualMediaUrl } };
             }
-            const btns = Array.isArray(step.buttons) && step.buttons.length
-                ? step.buttons
-                : String(step.buttonsText || '').split('\n').map(s => s.trim()).filter(Boolean).map((t, i) => ({ id: 'btn' + (i + 1), title: t }));
-            message = waButtons(actualText, btns, header, step.footerText ? replaceVariables(step.footerText, conversation) : null);
+            const lines = String(step.buttonsText || '').split('\n').map(s => s.trim()).filter(Boolean);
+            const footer = step.footerText ? replaceVariables(step.footerText, conversation) : null;
+            // Linha com "Texto|https://..." = botão de LINK (só 1 por mensagem, regra da Meta)
+            const urlLine = lines.find(l => /\|\s*https?:\/\//i.test(l));
+            if (urlLine) {
+                const [label, ...rest] = urlLine.split('|');
+                message = waCtaUrl(actualText, replaceVariables(label.trim(), conversation), replaceVariables(rest.join('|').trim(), conversation), header, footer);
+            } else {
+                const btns = Array.isArray(step.buttons) && step.buttons.length
+                    ? step.buttons
+                    : lines.map((t, i) => ({ id: 'btn' + (i + 1), title: t }));
+                message = waButtons(actualText, btns, header, footer);
+            }
         }
         else return { success: true }; // tipo desconhecido: não trava o funil
 
@@ -1731,8 +1741,11 @@ async function sendStep(phoneKey) {
     const conversation = conversations.get(phoneKey);
     if (!conversation || conversation.canceled || conversation.pixWaiting || conversation.paused || conversation.invalidNumber) return;
 
-    // ⭐ 22/07: kill switch universal — interrompe funil automático em andamento (Envio Manual passa)
-    if (conversation.funnelType !== 'MANUAL' && !isAutoSendEnabled()) {
+    // ⭐ 22/07: kill switch — interrompe funis que NÓS iniciamos (PIX/APROVADA/ABANDONO/...).
+    // ⭐ 29/07: funis iniciados PELO CLIENTE (atendimento de anúncio, palavra-chave, reativação,
+    // envio manual) NÃO são bloqueados: são grátis, esperados e sem risco de bloqueio.
+    const INBOUND_TYPES = ['MANUAL', 'DIRETO', 'REATIVACAO', 'ATENDIMENTO'];
+    if (!INBOUND_TYPES.includes(conversation.funnelType) && !isAutoSendEnabled()) {
         conversation.canceled = true; conversation.canceledAt = new Date(); conversation.cancelReason = 'envio_desligado';
         conversations.set(phoneKey, conversation);
         try { convToDb(phoneKey, conversation); } catch(e) {}
@@ -2175,6 +2188,17 @@ function waImage(link, caption) { return { type: 'image', image: caption ? { lin
 function waVideo(link, caption) { return { type: 'video', video: caption ? { link, caption } : { link } }; }
 function waAudio(link) { return { type: 'audio', audio: { link } }; }
 // Botões de resposta rápida (até 3) — grátis dentro da janela. header opcional: vídeo/imagem em cima.
+// Botão que abre um LINK (a Meta só permite 1 por mensagem)
+function waCtaUrl(bodyText, buttonText, url, header = null, footerText = null) {
+    const interactive = {
+        type: 'cta_url',
+        body: { text: String(bodyText || '') },
+        action: { name: 'cta_url', parameters: { display_text: String(buttonText || 'Abrir').slice(0, 20), url: String(url) } }
+    };
+    if (header) interactive.header = header;
+    if (footerText) interactive.footer = { text: String(footerText).slice(0, 60) };
+    return { type: 'interactive', interactive };
+}
 function waButtons(bodyText, buttons, header = null, footerText = null) {
     const interactive = {
         type: 'button',
@@ -2406,6 +2430,83 @@ app.get('/api/wa/media/:id', async (req, res) => {
         res.setHeader('Cache-Control', 'private, max-age=3600');
         media.data.pipe(res);
     } catch(e) { res.status(500).end(); }
+});
+
+// ============ DIAGNÓSTICO DO CANAL (responde "por que não aconteceu nada?") ============
+app.get('/api/wa/diagnose', authMiddleware, (req, res) => {
+    try {
+        const dbi = db.getDb();
+        const lastIn = dbi.prepare("SELECT phone_key, to_phone, created_at FROM wa_messages WHERE direction='in' ORDER BY created_at DESC LIMIT 1").get();
+        const lastOut = dbi.prepare("SELECT to_phone, msg_type, status, created_at FROM wa_messages WHERE direction='out' ORDER BY created_at DESC LIMIT 1").get();
+        const windows = dbi.prepare("SELECT phone, phone_key, last_inbound_at, (CASE WHEN datetime(last_inbound_at) > datetime('now','-24 hours') THEN 1 ELSE 0 END) AS aberta FROM wa_windows ORDER BY last_inbound_at DESC LIMIT 5").all();
+        const startTriggers = db.getActiveStartTriggers().map(t => ({
+            name: t.name, keywords: t.keywords, match_type: t.match_type,
+            funnel: t.target_funnel_id,
+            funnel_ok: (() => { const f = db.getFunnelById(t.target_funnel_id); return !!(f && f.steps && f.steps.length); })(),
+            instances_filter: t.instances || '[]'
+        }));
+        const funnels = db.getFunnels().map(f => ({ id: f.id, type: f.type, product: f.product_id, steps: (f.steps || []).length }));
+        const recentLogs = logs.filter(l => /WA_|START_TRIGGER|STEP_|SEND_|AUTO_SEND|FUNNEL_/.test(l.type)).slice(0, 25)
+            .map(l => ({ type: l.type, message: String(l.message).substring(0, 160), at: l.timestamp || l.time }));
+        res.json({
+            success: true,
+            canal: { configurado: isWabaConfigured(), waba_id: !!WABA_ID, verify_token: !!META_WEBHOOK_VERIFY_TOKEN },
+            envio_automatico: isAutoSendEnabled(),
+            ultima_mensagem_recebida: lastIn || null,
+            ultima_mensagem_enviada: lastOut || null,
+            janelas: windows,
+            gatilhos_de_inicio: startTriggers,
+            funis: funnels,
+            blacklist_total: (dbi.prepare('SELECT COUNT(*) c FROM blacklist').get() || {}).c || 0,
+            logs_recentes: recentLogs
+        });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ⭐ 29/07: SIMULA uma mensagem recebida — roda o pipeline REAL (gatilhos, funis, janela).
+// Use com o SEU número pra ver o funil chegando no seu WhatsApp antes de expor a clientes.
+app.post('/api/wa/simulate-inbound', authMiddleware, async (req, res) => {
+    try {
+        const phoneRaw = String(req.body?.phone || '').replace(/\D/g, '');
+        const text = String(req.body?.text || '').trim();
+        if (!phoneRaw || !text) return res.status(400).json({ success: false, error: 'Informe phone e text' });
+        const fromPhone = normalizeFullPhone(phoneRaw);
+        const phoneKey = normalizePhoneKey(phoneRaw);
+        if (!phoneKey || phoneKey.length !== 8) return res.status(400).json({ success: false, error: 'Telefone inválido' });
+
+        const trace = [];
+        trace.push(`Telefone: ${fromPhone} (chave ${phoneKey})`);
+        if (db.isBlacklisted(phoneKey)) return res.json({ success: false, error: 'Esse número está na BLACKLIST — remova antes de testar', trace });
+
+        touchWaWindow(phoneKey, fromPhone, null, req.body?.name || 'Teste Simulado');
+        db.logMessage(phoneKey, 'in', text, 'oficial', null, true);
+        trace.push('Janela de 24h aberta + mensagem registrada no Chat');
+
+        const existing = findConversationUniversal(fromPhone);
+        if (existing && !existing.canceled && !existing.completed) {
+            trace.push(`Já existe conversa ATIVA (funil ${existing.funnelId}, passo ${(existing.stepIndex||0)+1}) — a resposta vai AVANÇAR esse funil`);
+            if (existing.waiting_for_response) { await advanceConversation(existing.phoneKey, text, 'reply'); trace.push('advanceConversation executado'); }
+            else trace.push('Conversa não estava aguardando resposta — nada avançou (é o comportamento normal)');
+            return res.json({ success: true, trace });
+        }
+
+        const dbg = checkStartTriggers(text, 'oficial', true);
+        (dbg.reasons || []).forEach(r => trace.push('Gatilho: ' + r));
+        if (!dbg.trigger) {
+            trace.push('❌ Nenhum gatilho de início bateu — o lead não entraria em funil nenhum');
+            return res.json({ success: true, matched: false, trace });
+        }
+        const funnel = db.getFunnelById(dbg.trigger.target_funnel_id);
+        if (!funnel || !(funnel.steps || []).length) {
+            trace.push(`❌ Gatilho aponta pro funil "${dbg.trigger.target_funnel_id}" que está VAZIO ou não existe`);
+            return res.json({ success: true, matched: true, trace });
+        }
+        trace.push(`✅ Gatilho "${dbg.trigger.name}" → funil ${funnel.id} (${funnel.steps.length} passos). Disparando...`);
+        const location = db.getLocationFromPhone(fromPhone);
+        const started = await startConversationFromTrigger(dbg.trigger, phoneKey, phoneToRemoteJid(fromPhone), location, 'oficial', req.body?.name || null);
+        trace.push(started ? '✅ Funil iniciado — confira seu WhatsApp e a aba Chat' : '❌ startConversationFromTrigger retornou falso (veja os logs)');
+        res.json({ success: true, matched: true, started, trace });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // ============ CAIXA DE CONVERSAS (o "WhatsApp Web" da Orion) ============
