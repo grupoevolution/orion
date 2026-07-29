@@ -650,6 +650,13 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Categoria</th><th>Idioma</th><th>Status</th></tr></thead><tbody id="wa-templates-body"></tbody></table></div>
       </div>
       <div class="section" style="margin-top:16px">
+        <div class="sh"><div><div class="sh-title">Registrar número na API</div><div class="sh-sub">Use se o botão "Registrar" da Meta falhar — este é o método oficial via API. Escolha um PIN de 6 dígitos e ANOTE (vira a senha de verificação em 2 etapas do número)</div></div></div>
+        <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <div class="fe-row" style="max-width:200px;margin:0"><label class="fe-lbl">PIN de 6 dígitos (você escolhe)</label><input class="fe-inp" id="wa-reg-pin" placeholder="ex: 758802" maxlength="6" inputmode="numeric"></div>
+          <button class="btn btn-sm" style="background:#3b82f6;color:#fff;font-weight:700" onclick="waRegister()">Registrar número</button>
+        </div>
+      </div>
+      <div class="section" style="margin-top:16px">
         <div class="sh"><div><div class="sh-title">Envio de teste</div><div class="sh-sub">Template funciona sempre · texto livre só com janela de 24h aberta</div></div></div>
         <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
           <div class="fe-row" style="max-width:220px;margin:0"><label class="fe-lbl">Número destino (com DDD)</label><input class="fe-inp" id="wa-test-to" placeholder="5575999999999"></div>
@@ -2892,6 +2899,14 @@ async function waLoadTemplates(){
   const stLabel = s => s==='APPROVED'?'Aprovado':(s==='REJECTED'?'Recusado':'Em análise');
   body.innerHTML = tps.map(t=>`<tr class="tr"><td style="font-family:var(--mono)">${t.name}</td><td>${t.category||'—'}</td><td>${t.language||''}</td><td style="color:${stColor(t.status)};font-weight:600">${stLabel(t.status)}</td></tr>`).join('');
   if(sel) sel.innerHTML = '<option value="">— texto livre —</option>' + tps.filter(t=>t.status==='APPROVED').map(t=>`<option value="${t.name}|${t.language||'pt_BR'}">${t.name}</option>`).join('');
+}
+async function waRegister(){
+  const pin = document.getElementById('wa-reg-pin').value.trim();
+  if(!/^\d{6}$/.test(pin)){ showToast('PIN precisa ter exatamente 6 dígitos', 'error'); return; }
+  if(!confirm(`Registrar o número oficial com o PIN ${pin}?\n\nANOTE ESSE PIN — ele vira a senha de verificação em 2 etapas do número.`)) return;
+  const r = await api('/api/wa/register', { method:'POST', body: JSON.stringify({ pin }) });
+  if(r.success){ showToast('✅ Número registrado na API! Já pode enviar e receber', 'success'); loadInstances(); }
+  else showToast('Erro: ' + (r.error||''), 'error');
 }
 async function waTestSend(){
   const to = document.getElementById('wa-test-to').value.trim();

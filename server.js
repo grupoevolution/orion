@@ -2319,6 +2319,25 @@ app.get('/api/wa/templates', authMiddleware, async (req, res) => {
     } catch(e) { res.status(500).json({ success: false, error: e.response?.data?.error?.message || e.message }); }
 });
 
+// ⭐ 28/07: registro do número direto pela API (a tela da Meta às vezes falha; este é o método canônico).
+// Define o PIN de verificação em 2 etapas no ato. Requer WABA_TOKEN + WABA_PHONE_NUMBER_ID.
+app.post('/api/wa/register', authMiddleware, async (req, res) => {
+    try {
+        const pin = String(req.body?.pin || '').replace(/\D/g, '');
+        if (pin.length !== 6) return res.status(400).json({ success: false, error: 'PIN precisa ter exatamente 6 dígitos' });
+        if (!isWabaConfigured()) return res.status(400).json({ success: false, error: 'WABA_TOKEN / WABA_PHONE_NUMBER_ID não configurados' });
+        const data = await waRequest('post', `${WABA_PHONE_NUMBER_ID}/register`, { messaging_product: 'whatsapp', pin });
+        addLog('WA_REGISTER', `✅ Número oficial REGISTRADO na API (PIN definido)`);
+        try { await waSyncNumbers(); } catch(e) {}
+        res.json({ success: true, data });
+    } catch(e) {
+        const apiErr = e.response?.data?.error;
+        const msg = apiErr ? `${apiErr.message}${apiErr.error_data?.details ? ' — ' + apiErr.error_data.details : ''} (código ${apiErr.code})` : e.message;
+        addLog('WA_REGISTER_ERR', `❌ Registro falhou: ${msg}`);
+        res.status(500).json({ success: false, error: msg });
+    }
+});
+
 // Envio de teste (texto livre exige janela aberta; template funciona sempre)
 app.post('/api/wa/test-send', authMiddleware, async (req, res) => {
     try {
