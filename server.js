@@ -119,17 +119,35 @@ function isAutoSendEnabled() {
     try { return db.getSetting('AUTO_SEND_ENABLED', '1') !== '0'; } catch(e) { return true; }
 }
 
-// Regras de envio automático por valor (bruto — o que o cliente paga).
+// Regras de envio automático POR EVENTO (toggle individual + valor mínimo + só 1ª compra).
 // Retorna null se pode enviar, ou o motivo do bloqueio (pra log).
-function autoSendBlockReason(funnelType, amount) {
+function countPaidEvents(phoneKey) {
+    try { return db.getDb().prepare("SELECT COUNT(*) c FROM events WHERE phone_key = ? AND type IN ('PIX_PAID','CARD_PAID')").get(phoneKey).c || 0; } catch(e) { return 0; }
+}
+function autoSendBlockReason(funnelType, amount, phoneKey = null) {
     if (funnelType === 'MANUAL') return null;
     if (!isAutoSendEnabled()) return 'envio automático DESLIGADO no painel';
-    let key = null;
-    if (funnelType === 'PIX') key = 'AUTO_SEND_MIN_PIX';
-    else if (funnelType === 'APROVADA') key = 'AUTO_SEND_MIN_APROVADA';
-    if (key) {
-        const min = parseFloat(db.getSetting(key, '0')) || 0;
-        if (min > 0 && (amount || 0) < min) return `valor R$${(amount || 0).toFixed(2)} abaixo do mínimo R$${min.toFixed(2)}`;
+    const cfgMap = {
+        PIX:      { enabled: 'AUTO_SEND_PIX_ENABLED',      min: 'AUTO_SEND_MIN_PIX',      firstOnly: 'AUTO_SEND_FIRST_ONLY_PIX' },
+        APROVADA: { enabled: 'AUTO_SEND_APROVADA_ENABLED', min: 'AUTO_SEND_MIN_APROVADA', firstOnly: 'AUTO_SEND_FIRST_ONLY_APROVADA' },
+        ABANDONO: { enabled: null /* usa o toggle ABANDONO_ENABLED que já existe */, min: 'AUTO_SEND_MIN_ABANDONO', firstOnly: null }
+    };
+    const cfg = cfgMap[funnelType];
+    if (!cfg) return null; // outros tipos: só o interruptor geral
+    if (cfg.enabled && db.getSetting(cfg.enabled, '1') === '0') return `envio de ${funnelType} desligado no painel`;
+    const min = parseFloat(db.getSetting(cfg.min, '0')) || 0;
+    if (min > 0 && (amount || 0) < min) return `valor R$${(amount || 0).toFixed(2)} abaixo do mínimo R$${min.toFixed(2)}`;
+    if (cfg.firstOnly && phoneKey && db.getSetting(cfg.firstOnly, '0') === '1') {
+        const paid = countPaidEvents(phoneKey);
+        if (funnelType === 'PIX' && paid >= 1) return 'cliente já comprou antes (regra: só 1ª compra)';
+        if (funnelType === 'APROVADA' && paid > 1) return 'não é a 1ª compra do cliente (regra: só 1ª compra)';
+    }
+    // Abandono: máx 1 disparo REAL a cada 24h (conta só funil ENVIADO — abandono barato ignorado não conta)
+    if (funnelType === 'ABANDONO' && phoneKey) {
+        try {
+            const row = db.getDb().prepare("SELECT 1 FROM funnel_receipts WHERE phone_key = ? AND funnel_type = 'ABANDONO' AND datetime(received_at) > datetime('now','-24 hours') LIMIT 1").get(phoneKey);
+            if (row) return 'já recebeu mensagem de abandono nas últimas 24h';
+        } catch(e) {}
     }
     return null;
 }
@@ -1256,7 +1274,14 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
         if (step.type === 'template') {
             const tplName = step.templateName || (step.text || '').trim();
             if (!tplName) return { success: false, error: 'TEMPLATE_SEM_NOME' };
-            message = waTemplate(tplName, step.templateLang || 'pt_BR');
+            // Variáveis do template ({{1}}, {{2}}...) — uma por linha, aceitam {NOME} {VALOR} {PIX_LINK} etc.
+            let components = null;
+            const rawParams = Array.isArray(step.templateParams)
+                ? step.templateParams
+                : (typeof step.templateParams === 'string' && step.templateParams.trim() ? step.templateParams.split('\n') : []);
+            const params = rawParams.map(p => replaceVariables(String(p).trim(), conversation)).filter(p => p !== '');
+            if (params.length) components = [{ type: 'body', parameters: params.map(t => ({ type: 'text', text: t })) }];
+            message = waTemplate(tplName, step.templateLang || 'pt_BR', components);
         }
         else if (step.type === 'text') message = waText(actualText);
         else if (step.type === 'image') message = waImage(actualMediaUrl);
@@ -1421,7 +1446,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 
     // ⭐ 22/07: kill switch / regra de valor — registra evento, notifica e gera a página PIX
     // (o link continua disponível na aba Números pro envio manual), mas NÃO cria funil nem timer.
-    const pixBlockReason = autoSendBlockReason('PIX', amount);
+    const pixBlockReason = autoSendBlockReason('PIX', amount, phoneKey);
     if (pixBlockReason) {
         db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps, customer_name: customerName, customer_phone: jidToPhone(remoteJid) });
         sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), netValue: netValue || amount, orderCode, skipped: true });
@@ -1459,7 +1484,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     const timeout = setTimeout(async () => {
         const c = conversations.get(phoneKey);
         // ⭐ 22/07: re-checa o kill switch na hora do disparo (pode ter sido desligado durante os 7min)
-        const fireBlockReason = c ? autoSendBlockReason('PIX', amount) : null;
+        const fireBlockReason = c ? autoSendBlockReason('PIX', amount, phoneKey) : null;
         if (c && fireBlockReason && c.orderCode === orderCode && !c.canceled && c.pixWaiting) {
             c.canceled = true; c.canceledAt = new Date(); c.cancelReason = 'envio_desligado';
             conversations.set(phoneKey, c);
@@ -1518,7 +1543,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     }
 
     // ⭐ 22/07: kill switch / valor mínimo — a venda JÁ foi registrada e notificada acima; só o funil não sai
-    const aprovadaBlockReason = autoSendBlockReason('APROVADA', amount);
+    const aprovadaBlockReason = autoSendBlockReason('APROVADA', amount, phoneKey);
     if (aprovadaBlockReason) {
         addLog('AUTO_SEND_BLOCKED', `⏸️ Funil APROVADA não disparado — ${aprovadaBlockReason} (${customerName})`, { phoneKey, orderCode });
         return;
@@ -1627,7 +1652,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
     }
 
     // ⭐ 22/07: kill switch / valor mínimo — eventos/notificações acima já saíram; só o funil não dispara
-    const blockReason = autoSendBlockReason(funnelType, amount);
+    const blockReason = autoSendBlockReason(funnelType, amount, phoneKey);
     if (blockReason) {
         addLog('AUTO_SEND_BLOCKED', `⏸️ Funil ${funnelType} não disparado — ${blockReason} (${customerName})`, { phoneKey, orderCode });
         return;
@@ -2319,6 +2344,91 @@ app.get('/api/wa/templates', authMiddleware, async (req, res) => {
     } catch(e) { res.status(500).json({ success: false, error: e.response?.data?.error?.message || e.message }); }
 });
 
+// ============ CAIXA DE CONVERSAS (o "WhatsApp Web" da Orion) ============
+// Números oficiais não têm app nem Web — toda conversa vive aqui.
+app.get('/api/wa/chats', authMiddleware, (req, res) => {
+    try {
+        const rows = db.getDb().prepare(`
+            SELECT m.phone_key,
+                   MAX(m.created_at) AS last_at,
+                   (SELECT content FROM messages_log m2 WHERE m2.phone_key = m.phone_key ORDER BY m2.created_at DESC, m2.id DESC LIMIT 1) AS last_content,
+                   (SELECT direction FROM messages_log m3 WHERE m3.phone_key = m.phone_key ORDER BY m3.created_at DESC, m3.id DESC LIMIT 1) AS last_direction
+            FROM messages_log m
+            WHERE datetime(m.created_at) >= datetime('now', '-30 days')
+            GROUP BY m.phone_key
+            ORDER BY last_at DESC LIMIT 100`).all();
+        const nameStmt = db.getDb().prepare('SELECT customer_name, customer_phone FROM events WHERE phone_key = ? AND customer_name IS NOT NULL ORDER BY id DESC LIMIT 1');
+        const winStmt = db.getDb().prepare('SELECT phone, last_inbound_at FROM wa_windows WHERE phone_key = ?');
+        const chats = rows.map(r => {
+            const ev = nameStmt.get(r.phone_key) || {};
+            const win = winStmt.get(r.phone_key) || {};
+            const conv = conversations.get(r.phone_key);
+            const windowOpen = win.last_inbound_at ? (Date.now() - new Date(win.last_inbound_at.replace(' ', 'T') + 'Z').getTime()) < 24 * 60 * 60 * 1000 : false;
+            const windowHoursLeft = windowOpen ? Math.max(0, 24 - (Date.now() - new Date(win.last_inbound_at.replace(' ', 'T') + 'Z').getTime()) / 3600000) : 0;
+            return {
+                phone_key: r.phone_key,
+                phone: win.phone || ev.customer_phone || jidToPhone(conv?.remoteJid) || null,
+                name: conv?.customerName || ev.customer_name || win.phone || r.phone_key,
+                last_at: r.last_at,
+                last_content: (r.last_content || '').substring(0, 80),
+                last_direction: r.last_direction,
+                window_open: windowOpen,
+                window_hours_left: Math.round(windowHoursLeft * 10) / 10,
+                funnel_type: conv && !conv.canceled && !conv.completed ? conv.funnelType : null
+            };
+        });
+        res.json({ success: true, data: chats });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.get('/api/wa/chats/:phoneKey', authMiddleware, (req, res) => {
+    try {
+        const phoneKey = req.params.phoneKey;
+        const msgs = db.getDb().prepare(`SELECT direction, content, instance, created_at FROM messages_log
+            WHERE phone_key = ? ORDER BY created_at ASC, id ASC LIMIT 300`).all(phoneKey);
+        const win = db.getDb().prepare('SELECT phone, last_inbound_at FROM wa_windows WHERE phone_key = ?').get(phoneKey) || {};
+        const ev = db.getDb().prepare('SELECT customer_name, customer_phone FROM events WHERE phone_key = ? AND customer_name IS NOT NULL ORDER BY id DESC LIMIT 1').get(phoneKey) || {};
+        const conv = conversations.get(phoneKey);
+        const windowOpen = win.last_inbound_at ? (Date.now() - new Date(win.last_inbound_at.replace(' ', 'T') + 'Z').getTime()) < 24 * 60 * 60 * 1000 : false;
+        res.json({
+            success: true,
+            name: conv?.customerName || ev.customer_name || win.phone || phoneKey,
+            phone: win.phone || ev.customer_phone || jidToPhone(conv?.remoteJid) || null,
+            window_open: windowOpen,
+            window_hours_left: windowOpen ? Math.round(Math.max(0, 24 - (Date.now() - new Date(win.last_inbound_at.replace(' ', 'T') + 'Z').getTime()) / 3600000) * 10) / 10 : 0,
+            messages: msgs
+        });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Resposta manual pelo painel (só com janela aberta — igual atendimento humano)
+app.post('/api/wa/chats/:phoneKey/send', authMiddleware, async (req, res) => {
+    try {
+        const phoneKey = req.params.phoneKey;
+        const text = String(req.body?.text || '').trim();
+        if (!text) return res.status(400).json({ success: false, error: 'Mensagem vazia' });
+        const win = db.getDb().prepare('SELECT phone FROM wa_windows WHERE phone_key = ?').get(phoneKey);
+        const ev = db.getDb().prepare('SELECT customer_phone FROM events WHERE phone_key = ? AND customer_phone IS NOT NULL ORDER BY id DESC LIMIT 1').get(phoneKey);
+        const phone = win?.phone || ev?.customer_phone;
+        if (!phone) return res.status(400).json({ success: false, error: 'Telefone completo desconhecido pra esse cliente' });
+        if (!isWaWindowOpen(phoneKey)) return res.status(400).json({ success: false, error: 'Janela de 24h fechada — o cliente precisa mandar mensagem primeiro (ou use um template)' });
+        await waSendMessage(phone, waText(text));
+        db.logMessage(phoneKey, 'out', text, 'oficial', null, true);
+        addLog('WA_MANUAL_REPLY', `💬 Resposta manual pra ${phone}: ${text.substring(0, 60)}`, { phoneKey });
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ⭐ 28/07: apagar todos os funis (recomeço limpo pra era da API oficial). Exige confirmação exata.
+app.post('/api/funnels/delete-all', authMiddleware, (req, res) => {
+    try {
+        if (req.body?.confirm !== 'APAGAR FUNIS') return res.status(400).json({ success: false, error: 'Confirmação obrigatória' });
+        const n = db.getDb().prepare('DELETE FROM funnels').run().changes;
+        addLog('FUNNELS_WIPED', `🗑️ ${n} funis apagados — recomeço limpo pro canal oficial`);
+        res.json({ success: true, deleted: n });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // ⭐ 28/07: registro do número direto pela API (a tela da Meta às vezes falha; este é o método canônico).
 // Define o PIN de verificação em 2 etapas no ato. Requer WABA_TOKEN + WABA_PHONE_NUMBER_ID.
 app.post('/api/wa/register', authMiddleware, async (req, res) => {
@@ -2341,10 +2451,15 @@ app.post('/api/wa/register', authMiddleware, async (req, res) => {
 // Envio de teste (texto livre exige janela aberta; template funciona sempre)
 app.post('/api/wa/test-send', authMiddleware, async (req, res) => {
     try {
-        const { to, text, template_name, template_lang } = req.body || {};
+        const { to, text, template_name, template_lang, template_params } = req.body || {};
         if (!to) return res.status(400).json({ success: false, error: 'Informe o número de destino (to)' });
         let wamid;
-        if (template_name) wamid = await waSendMessage(to, waTemplate(template_name, template_lang || 'pt_BR'), { templateName: template_name });
+        if (template_name) {
+            let components = null;
+            const params = Array.isArray(template_params) ? template_params.map(p => String(p).trim()).filter(Boolean) : [];
+            if (params.length) components = [{ type: 'body', parameters: params.map(t => ({ type: 'text', text: t })) }];
+            wamid = await waSendMessage(to, waTemplate(template_name, template_lang || 'pt_BR', components), { templateName: template_name });
+        }
         else if (text) wamid = await waSendMessage(to, waText(text));
         else return res.status(400).json({ success: false, error: 'Informe text ou template_name' });
         addLog('WA_TEST', `🧪 Teste oficial enviado pra ${to} (${template_name || 'texto'})`);
@@ -3753,14 +3868,21 @@ app.get('/api/abandono/status', authMiddleware, (req, res) => {
 });
 
 // ============ ENVIO AUTOMÁTICO — kill switch universal + regras de valor ============
-app.get('/api/auto-send', authMiddleware, (req, res) => {
-    res.json({
+function autoSendState() {
+    return {
         success: true,
         enabled: isAutoSendEnabled(),
+        pix_enabled: db.getSetting('AUTO_SEND_PIX_ENABLED', '1') !== '0',
+        aprovada_enabled: db.getSetting('AUTO_SEND_APROVADA_ENABLED', '1') !== '0',
+        abandono_enabled: isAbandonoEnabled(),
         min_pix: parseFloat(db.getSetting('AUTO_SEND_MIN_PIX', '0')) || 0,
-        min_aprovada: parseFloat(db.getSetting('AUTO_SEND_MIN_APROVADA', '0')) || 0
-    });
-});
+        min_aprovada: parseFloat(db.getSetting('AUTO_SEND_MIN_APROVADA', '0')) || 0,
+        min_abandono: parseFloat(db.getSetting('AUTO_SEND_MIN_ABANDONO', '0')) || 0,
+        first_only_pix: db.getSetting('AUTO_SEND_FIRST_ONLY_PIX', '0') === '1',
+        first_only_aprovada: db.getSetting('AUTO_SEND_FIRST_ONLY_APROVADA', '0') === '1'
+    };
+}
+app.get('/api/auto-send', authMiddleware, (req, res) => { res.json(autoSendState()); });
 app.post('/api/auto-send', authMiddleware, (req, res) => {
     try {
         const b = req.body || {};
@@ -3771,12 +3893,13 @@ app.post('/api/auto-send', authMiddleware, (req, res) => {
         }
         if (b.min_pix !== undefined) db.setSetting('AUTO_SEND_MIN_PIX', String(Math.max(0, parseFloat(b.min_pix) || 0)));
         if (b.min_aprovada !== undefined) db.setSetting('AUTO_SEND_MIN_APROVADA', String(Math.max(0, parseFloat(b.min_aprovada) || 0)));
-        res.json({
-            success: true,
-            enabled: isAutoSendEnabled(),
-            min_pix: parseFloat(db.getSetting('AUTO_SEND_MIN_PIX', '0')) || 0,
-            min_aprovada: parseFloat(db.getSetting('AUTO_SEND_MIN_APROVADA', '0')) || 0
-        });
+        if (b.min_abandono !== undefined) db.setSetting('AUTO_SEND_MIN_ABANDONO', String(Math.max(0, parseFloat(b.min_abandono) || 0)));
+        if (b.pix_enabled !== undefined) db.setSetting('AUTO_SEND_PIX_ENABLED', b.pix_enabled ? '1' : '0');
+        if (b.aprovada_enabled !== undefined) db.setSetting('AUTO_SEND_APROVADA_ENABLED', b.aprovada_enabled ? '1' : '0');
+        if (b.abandono_enabled !== undefined) db.setSetting('ABANDONO_ENABLED', b.abandono_enabled ? '1' : '0');
+        if (b.first_only_pix !== undefined) db.setSetting('AUTO_SEND_FIRST_ONLY_PIX', b.first_only_pix ? '1' : '0');
+        if (b.first_only_aprovada !== undefined) db.setSetting('AUTO_SEND_FIRST_ONLY_APROVADA', b.first_only_aprovada ? '1' : '0');
+        res.json(autoSendState());
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 

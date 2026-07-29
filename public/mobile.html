@@ -555,6 +555,28 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
       </div>
     </div>
 
+    <!-- CHAT (caixa de conversas) -->
+    <div id="pg-chatm" class="page">
+      <div id="chatm-list-view">
+        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding:0 2px">Conversas · Canal Oficial</div>
+        <div class="sec"><div id="chatm-list"></div></div>
+      </div>
+      <div id="chatm-thread-view" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <button onclick="chatmBack()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:8px 12px;color:#fff;font-size:13px;cursor:pointer;font-family:var(--font)">←</button>
+          <div style="flex:1;min-width:0">
+            <div id="chatm-head-name" style="font-size:14px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+            <div id="chatm-head-sub" style="font-size:10px;color:var(--text3)"></div>
+          </div>
+        </div>
+        <div class="sec" style="margin-bottom:10px"><div id="chatm-thread" style="padding:12px;display:flex;flex-direction:column;gap:8px;max-height:58vh;overflow-y:auto"></div></div>
+        <div style="display:flex;gap:8px">
+          <input class="inp" id="chatm-input" placeholder="Escreva sua resposta..." style="flex:1;margin:0">
+          <button onclick="chatmSend()" style="background:var(--accent);border:none;border-radius:10px;padding:0 18px;color:#fff;font-weight:800;font-family:var(--font);cursor:pointer">➤</button>
+        </div>
+      </div>
+    </div>
+
     <!-- CANAL OFICIAL -->
     <div id="pg-inst" class="page">
       <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding:0 2px">Canal Oficial · WhatsApp Cloud API</div>
@@ -665,6 +687,10 @@ body{display:flex;flex-direction:column;padding-top:var(--safe-top)}
     <button class="nav-btn active" id="nb-dash" onclick="showPage('dash',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg>
       Dashboard
+    </button>
+    <button class="nav-btn" id="nb-chatm" onclick="showPage('chatm',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+      Chat
     </button>
     <button class="nav-btn" id="nb-numbers" onclick="showPage('numbers',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
@@ -1487,6 +1513,7 @@ function showPage(page, btn) {
   if(btn) btn.classList.add('active');
   if(page === 'inst') loadInstances();
   if(page === 'numbers') loadNumbers();
+  if(page === 'chatm') loadChatm();
   if(page === 'analytics') { loadAnalytics(); loadDailySummary(); loadFunnelEffectiveness(); }
   document.getElementById('content').scrollTop = 0;
 }
@@ -1897,7 +1924,7 @@ async function loadAutoSendStatus() {
   try {
     const r = await api('/api/auto-send');
     if (!r.success) return;
-    _autoSendState = { enabled: !!r.enabled, min_pix: r.min_pix || 0, min_aprovada: r.min_aprovada || 0 };
+    _autoSendState = { enabled: !!r.enabled, min_pix: r.min_pix || 0, min_aprovada: r.min_aprovada || 0, min_abandono: r.min_abandono || 0 };
     if (!_autoSendRulesOpen) renderAutoSendCard(); // não re-renderiza com o painel de regras aberto (usuário digitando)
   } catch(e) {}
 }
@@ -1936,7 +1963,12 @@ function renderAutoSendCard() {
           <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Venda aprovada ≥ R$</div>
           <input class="inp" id="as-min-aprovada" type="number" inputmode="decimal" min="0" step="1" value="${_autoSendState.min_aprovada || ''}" placeholder="0" style="margin:0">
         </div>
+        <div style="flex:1">
+          <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Abandonado ≥ R$</div>
+          <input class="inp" id="as-min-abandono" type="number" inputmode="decimal" min="0" step="1" value="${_autoSendState.min_abandono || ''}" placeholder="0" style="margin:0">
+        </div>
       </div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Regras completas (ligar/desligar cada evento, "só 1ª compra") ficam nas Configurações do painel desktop.</div>
       <button onclick="saveAutoSendRules()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:10px;color:#fff;font-size:12px;font-weight:800;font-family:var(--font);cursor:pointer">Salvar regras</button>
       <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">Abaixo do valor mínimo o funil automático não dispara — mas o evento é registrado, notifica e entra na aba Números pro contato manual.</div>
     </div>`;
@@ -1962,8 +1994,9 @@ async function toggleAutoSend() {
 async function saveAutoSendRules() {
   const min_pix = parseFloat(document.getElementById('as-min-pix').value) || 0;
   const min_aprovada = parseFloat(document.getElementById('as-min-aprovada').value) || 0;
+  const min_abandono = parseFloat(document.getElementById('as-min-abandono').value) || 0;
   try {
-    const r = await api('/api/auto-send', { method: 'POST', body: JSON.stringify({ min_pix, min_aprovada }) });
+    const r = await api('/api/auto-send', { method: 'POST', body: JSON.stringify({ min_pix, min_aprovada, min_abandono }) });
     if (r.success) {
       _autoSendState.min_pix = r.min_pix; _autoSendState.min_aprovada = r.min_aprovada;
       _autoSendRulesOpen = false;
@@ -2179,6 +2212,66 @@ async function loadDashboard() {
       navigator.clearAppBadge().catch(()=>{});
     }
   } catch(e) {}
+}
+
+// ============ CHAT (caixa de conversas) ============
+let chatmCurrent = null;
+let chatmTimer = null;
+async function loadChatm(){
+  const r = await api('/api/wa/chats');
+  if(!r.success) return;
+  const el = document.getElementById('chatm-list');
+  if(!(r.data||[]).length){ el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhuma conversa ainda</div>'; return; }
+  el.innerHTML = r.data.map(c=>{
+    const t = new Date(c.last_at.replace(' ','T')+'Z').toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const win = c.window_open ? `<span style="color:#34d399">janela ${c.window_hours_left}h</span>` : '<span style="color:var(--text3)">janela fechada</span>';
+    return `<div onclick="chatmOpen('${c.phone_key}')" style="padding:11px 14px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</span><span style="font-size:10px;color:var(--text3);flex-shrink:0">${t}</span></div>
+      <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.last_direction==='out'?'Você: ':''}${c.last_content||''}</div>
+      <div style="font-size:9.5px;margin-top:2px">${win}</div>
+    </div>`;
+  }).join('');
+}
+async function chatmOpen(phoneKey){
+  chatmCurrent = phoneKey;
+  document.getElementById('chatm-list-view').style.display = 'none';
+  document.getElementById('chatm-thread-view').style.display = 'block';
+  await chatmRefresh(true);
+  if(chatmTimer) clearInterval(chatmTimer);
+  chatmTimer = setInterval(()=>{ if(chatmCurrent && document.getElementById('pg-chatm').classList.contains('active')) chatmRefresh(false); else { clearInterval(chatmTimer); chatmTimer=null; } }, 5000);
+}
+function chatmBack(){
+  chatmCurrent = null;
+  document.getElementById('chatm-thread-view').style.display = 'none';
+  document.getElementById('chatm-list-view').style.display = 'block';
+  loadChatm();
+}
+async function chatmRefresh(scroll){
+  if(!chatmCurrent) return;
+  const r = await api('/api/wa/chats/'+chatmCurrent);
+  if(!r.success) return;
+  document.getElementById('chatm-head-name').textContent = r.name;
+  document.getElementById('chatm-head-sub').textContent = (r.phone||'') + (r.window_open ? ` · janela ${r.window_hours_left}h — grátis` : ' · janela fechada');
+  const th = document.getElementById('chatm-thread');
+  th.innerHTML = (r.messages||[]).map(m=>{
+    const t = new Date(String(m.created_at).replace(' ','T')+'Z').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const out = m.direction==='out';
+    return `<div style="align-self:${out?'flex-end':'flex-start'};max-width:80%;background:${out?'rgba(34,197,94,.14)':'rgba(255,255,255,.05)'};border:1px solid ${out?'rgba(34,197,94,.3)':'var(--border)'};border-radius:${out?'12px 12px 4px 12px':'12px 12px 12px 4px'};padding:8px 11px">
+      <div style="font-size:12.5px;color:#fff;white-space:pre-wrap;word-break:break-word">${(m.content||'').replace(/</g,'&lt;')}</div>
+      <div style="font-size:9px;color:var(--text3);margin-top:2px;text-align:right">${t}</div>
+    </div>`;
+  }).join('') || '<div style="text-align:center;color:var(--text3);font-size:11px">Sem mensagens</div>';
+  if(scroll!==false) th.scrollTop = th.scrollHeight;
+}
+async function chatmSend(){
+  const inp = document.getElementById('chatm-input');
+  const text = inp.value.trim();
+  if(!text || !chatmCurrent) return;
+  haptic(8);
+  inp.value = '';
+  const r = await api('/api/wa/chats/'+chatmCurrent+'/send', { method:'POST', body: JSON.stringify({ text }) });
+  if(r.success) chatmRefresh(true);
+  else { showToast('' + (r.error||'Erro'), 'error'); inp.value = text; }
 }
 
 // CANAL OFICIAL (WhatsApp Cloud API)

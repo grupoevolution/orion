@@ -346,6 +346,10 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg>
         <span>Dashboard</span>
       </button>
+      <button class="nav-item" onclick="showPage('chat',this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        <span>Chat</span>
+      </button>
       <button class="nav-item" onclick="showPage('conversations',this)">
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         <span>Conversas</span>
@@ -538,6 +542,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
               </label>
               <button class="btn btn-g btn-sm" onclick="openEditCurrentFunnel()" title="Editar nome, produto vinculado ou tipo do funil">Editar</button>
               <button class="btn btn-g btn-sm" onclick="exportFunnels()">↑ Export</button>
+              <button class="btn btn-d btn-sm" onclick="wipeFunnels()" title="Apaga TODOS os funis (faça Export antes!)">🗑 Apagar todos</button>
               <button class="btn btn-g btn-sm" onclick="importFunnels()">↓ Import</button>
               <button class="btn btn-g btn-sm" onclick="duplicateFunnel()" title="Cria uma cópia deste funil para usar no A/B Test">⚗️ Duplicar</button>
               <button class="btn btn-p btn-sm" onclick="saveFunnel()">Salvar Funil</button>
@@ -663,6 +668,29 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
           <div class="fe-row" style="max-width:220px;margin:0"><label class="fe-lbl">Template (opcional)</label><select class="fe-inp" id="wa-test-template"><option value="">— texto livre —</option></select></div>
           <div class="fe-row" style="flex:1;min-width:200px;margin:0"><label class="fe-lbl">Texto (se não usar template)</label><input class="fe-inp" id="wa-test-text" placeholder="Olá! Teste do canal oficial."></div>
           <button class="btn btn-sm" style="background:#10b981;color:#000;font-weight:700" onclick="waTestSend()">Enviar teste</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT (caixa de conversas do canal oficial) -->
+    <div id="page-chat" class="page">
+      <div class="section" style="height:calc(100vh - 120px);display:flex;overflow:hidden">
+        <div style="width:320px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0">
+          <div class="sh" style="border-bottom:1px solid var(--border)"><div class="sh-title">Conversas</div><button class="btn btn-g btn-xs" onclick="loadChat()">↻</button></div>
+          <div id="chat-list" style="flex:1;overflow-y:auto"></div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div id="chat-thread-head" style="padding:12px 18px;border-bottom:1px solid var(--border);display:none">
+            <div style="font-weight:700" id="chat-head-name"></div>
+            <div style="font-size:11px;color:var(--text3)" id="chat-head-sub"></div>
+          </div>
+          <div id="chat-thread" style="flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+            <div style="margin:auto;color:var(--text3);font-size:13px">Escolhe uma conversa na lista ← </div>
+          </div>
+          <div id="chat-reply-bar" style="padding:12px 18px;border-top:1px solid var(--border);display:none;gap:8px">
+            <input class="fe-inp" id="chat-reply-input" placeholder="Escreva sua resposta..." style="flex:1" onkeydown="if(event.key==='Enter')chatSend()">
+            <button class="btn btn-sm" style="background:#10b981;color:#000;font-weight:700" onclick="chatSend()">Enviar</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1052,22 +1080,33 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
     <div id="page-settings" class="page">
       <div class="section" style="margin-bottom:16px">
         <div class="sh"><div class="sh-title">Envio Automático de Mensagens</div><div class="sh-sub">Interruptor universal — desligado, nenhuma mensagem automática sai (notificações, eventos e a aba Números continuam; Envio Manual também)</div></div>
-        <div style="padding:20px;display:flex;gap:24px;align-items:end;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding-bottom:8px">
+        <div style="padding:20px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:16px">
             <label class="sw"><input type="checkbox" id="as-enabled" onchange="asToggle(this.checked)"><span class="sl"></span></label>
             <span id="as-enabled-lbl" style="font-size:13px;font-weight:700">—</span>
+            <span style="font-size:11px;color:var(--text3)">interruptor geral — desligado, NADA sai automático</span>
           </label>
-          <div class="fe-row" style="max-width:200px">
-            <label class="fe-lbl">Funil de PIX gerado só a partir de (R$)</label>
-            <input type="number" class="fe-inp" id="as-min-pix" placeholder="0" min="0" step="1">
-            <div style="font-size:10px;color:var(--text3);margin-top:3px">0 = envia pra todos os valores</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+            <div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px"><label class="sw"><input type="checkbox" id="as-pix-on"><span class="sl"></span></label><b style="font-size:12px">PIX gerado</b></label>
+              <label class="fe-lbl">Só a partir de (R$) — 0 = todos</label>
+              <input type="number" class="fe-inp" id="as-min-pix" placeholder="0" min="0" step="1">
+              <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:8px;cursor:pointer"><input type="checkbox" id="as-first-pix"> Só quem nunca comprou</label>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px"><label class="sw"><input type="checkbox" id="as-aprovada-on"><span class="sl"></span></label><b style="font-size:12px">Venda aprovada</b></label>
+              <label class="fe-lbl">Só a partir de (R$) — 0 = todas</label>
+              <input type="number" class="fe-inp" id="as-min-aprovada" placeholder="0" min="0" step="1">
+              <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:8px;cursor:pointer"><input type="checkbox" id="as-first-aprovada"> Só na 1ª compra do cliente</label>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px"><label class="sw"><input type="checkbox" id="as-abandono-on"><span class="sl"></span></label><b style="font-size:12px">Carrinho abandonado</b></label>
+              <label class="fe-lbl">Só a partir de (R$) — 0 = todos</label>
+              <input type="number" class="fe-inp" id="as-min-abandono" placeholder="0" min="0" step="1">
+              <div style="font-size:10px;color:var(--text3);margin-top:8px">Máx. 1 mensagem por cliente a cada 24h (só conta a que foi realmente enviada)</div>
+            </div>
           </div>
-          <div class="fe-row" style="max-width:200px">
-            <label class="fe-lbl">Funil de venda aprovada só a partir de (R$)</label>
-            <input type="number" class="fe-inp" id="as-min-aprovada" placeholder="0" min="0" step="1">
-            <div style="font-size:10px;color:var(--text3);margin-top:3px">0 = envia pra todas as vendas</div>
-          </div>
-          <button class="fin-btn" onclick="asSaveRules()" style="margin-bottom:8px">Salvar regras</button>
+          <button class="fin-btn" onclick="asSaveRules()" style="margin-top:14px">Salvar regras</button>
         </div>
       </div>
       <div class="section">
@@ -1553,9 +1592,9 @@ function showPage(p,btn){
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   if(btn)btn.classList.add('active');
-  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos','start-triggers':'Gatilhos de Início',products:'Produtos',instances:'Canal Oficial',blacklist:'Blacklist',analytics:'Análises',finance:'Financeiro',numbers:'Números',settings:'Configurações'};
+  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos','start-triggers':'Gatilhos de Início',products:'Produtos',instances:'Canal Oficial',chat:'Chat',blacklist:'Blacklist',analytics:'Análises',finance:'Financeiro',numbers:'Números',settings:'Configurações'};
   document.getElementById('pg-title').textContent=t[p]||p;
-  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,'start-triggers':loadStartTriggers,products:loadProducts,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist,finance:()=>finShowTab('day'),numbers:loadNumbers,settings:loadSettings})[p]?.();
+  ({chat:loadChat,conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,'start-triggers':loadStartTriggers,products:loadProducts,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist,finance:()=>finShowTab('day'),numbers:loadNumbers,settings:loadSettings})[p]?.();
 }
 
 // DASHBOARD
@@ -2049,7 +2088,7 @@ async function saveCreateFunnel(){
   }
 }
 async function loadFunnelEditor(){const id=document.getElementById('fsel').value;const r=await api('/api/funnels');if(!r.success)return;currentFunnel=r.data.find(f=>f.id===id);if(currentFunnel)renderFunnelEditor();}
-function addStep(type){if(!currentFunnel)return;currentFunnel.steps.push({id:'step_'+Date.now(),type,text:'',mediaUrl:'',waitForReply:false,delayBefore:0,showTyping:false,is_intro:false});renderFunnelEditor();}
+function addStep(type){if(!currentFunnel)return;const st={id:'step_'+Date.now(),type,text:'',mediaUrl:'',waitForReply:false,delayBefore:0,showTyping:false,is_intro:false};if(type==='template'){st.templateParams='{NOME}';st.templateLang='pt_BR';}currentFunnel.steps.push(st);renderFunnelEditor();}
 function removeStep(i){if(!currentFunnel)return;currentFunnel.steps.splice(i,1);renderFunnelEditor();}
 function renderFunnelEditor(){
   if(!currentFunnel)return;
@@ -2073,6 +2112,7 @@ function renderFunnelEditor(){
       <div class="sc-edit" id="se${i}">
         ${s.type==='template'?`<div class="fe-row"><label class="fe-lbl">Nome do template aprovado na Meta (aba Canal Oficial mostra a lista)</label><input class="fe-inp" value="${s.templateName||''}" oninput="upStep(${i},'templateName',this.value)" placeholder="ex: pix_pendente"></div>
           <div class="fe-row"><label class="fe-lbl">Idioma</label><input class="fe-inp" value="${s.templateLang||'pt_BR'}" oninput="upStep(${i},'templateLang',this.value)"></div>
+          <div class="fe-row"><label class="fe-lbl">Variáveis do template — UMA POR LINHA, na ordem {{1}}, {{2}}... (aceita {NOME} {VALOR} {PIX_LINK} {PRODUTO} {EMAIL})</label><textarea class="fe-ta" style="min-height:56px" oninput="upStep(${i},'templateParams',this.value)">${s.templateParams||''}</textarea></div>
           <div style="font-size:11px;color:var(--text3);line-height:1.5;padding:8px 10px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:8px">O template é a ÚNICA mensagem que pode iniciar a conversa (e a única paga). Os passos seguintes só saem quando o cliente responder — e aí são grátis.</div>`:s.type==='delay'?`<div class="fe-row"><label class="fe-lbl">Segundos (±20% variação automática)</label><input type="number" class="fe-inp" value="${s.delaySeconds||10}" oninput="upStep(${i},'delaySeconds',this.value)"></div>`:`
           ${!['audio','image','video','viewonce_image','viewonce_video','sticker','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">Texto — {NOME} {SAUDACAO} {CIDADE} {ESTADO} {PIX_LINK} {VALOR} {EMAIL}</label><textarea class="fe-ta" oninput="upStep(${i},'text',this.value)">${s.text||''}</textarea></div>`:''}
           ${!['text','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">URL da Mídia</label><input type="url" class="fe-inp" value="${s.mediaUrl||''}" oninput="upStep(${i},'mediaUrl',this.value)" placeholder="https://..."></div>`:''}
@@ -2900,6 +2940,68 @@ async function waLoadTemplates(){
   body.innerHTML = tps.map(t=>`<tr class="tr"><td style="font-family:var(--mono)">${t.name}</td><td>${t.category||'—'}</td><td>${t.language||''}</td><td style="color:${stColor(t.status)};font-weight:600">${stLabel(t.status)}</td></tr>`).join('');
   if(sel) sel.innerHTML = '<option value="">— texto livre —</option>' + tps.filter(t=>t.status==='APPROVED').map(t=>`<option value="${t.name}|${t.language||'pt_BR'}">${t.name}</option>`).join('');
 }
+// ==================== CHAT (caixa de conversas do canal oficial) ====================
+let chatCurrent = null;
+let chatTimer = null;
+async function loadChat(){
+  const r = await api('/api/wa/chats');
+  if(!r.success) return;
+  const el = document.getElementById('chat-list');
+  if(!(r.data||[]).length){ el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhuma conversa ainda.<br>Quando um cliente mandar mensagem, aparece aqui.</div>'; return; }
+  el.innerHTML = r.data.map(c=>{
+    const t = new Date(c.last_at.replace(' ','T')+'Z');
+    const hm = t.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const winBadge = c.window_open ? `<span style="font-size:9px;color:#10b981;font-weight:700">janela ${c.window_hours_left}h</span>` : '<span style="font-size:9px;color:var(--text3)">janela fechada</span>';
+    return `<div onclick="chatOpen('${c.phone_key}')" style="padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;${chatCurrent===c.phone_key?'background:rgba(16,185,129,.06)':''}">
+      <div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</span><span style="font-size:10px;color:var(--text3);flex-shrink:0">${hm}</span></div>
+      <div style="font-size:11.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.last_direction==='out'?'Você: ':''}${c.last_content||''}</div>
+      <div style="margin-top:2px">${winBadge}${c.funnel_type?` · <span style="font-size:9px;color:#60a5fa">funil ${c.funnel_type}</span>`:''}</div>
+    </div>`;
+  }).join('');
+}
+async function chatOpen(phoneKey){
+  chatCurrent = phoneKey;
+  loadChat();
+  await chatRefreshThread(true);
+  if(chatTimer) clearInterval(chatTimer);
+  chatTimer = setInterval(()=>{ if(document.getElementById('page-chat').classList.contains('active') && chatCurrent) chatRefreshThread(false); else { clearInterval(chatTimer); chatTimer=null; } }, 5000);
+}
+async function chatRefreshThread(scroll){
+  if(!chatCurrent) return;
+  const r = await api('/api/wa/chats/'+chatCurrent);
+  if(!r.success) return;
+  document.getElementById('chat-thread-head').style.display = 'block';
+  document.getElementById('chat-reply-bar').style.display = 'flex';
+  document.getElementById('chat-head-name').textContent = r.name;
+  document.getElementById('chat-head-sub').textContent = (r.phone||'') + (r.window_open ? ` · janela aberta (${r.window_hours_left}h restantes) — resposta grátis` : ' · janela fechada — só template alcança');
+  const th = document.getElementById('chat-thread');
+  th.innerHTML = (r.messages||[]).map(m=>{
+    const t = new Date(String(m.created_at).replace(' ','T')+'Z').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const out = m.direction==='out';
+    return `<div style="align-self:${out?'flex-end':'flex-start'};max-width:70%;background:${out?'rgba(16,185,129,.14)':'var(--bg2)'};border:1px solid ${out?'rgba(16,185,129,.3)':'var(--border)'};border-radius:${out?'12px 12px 4px 12px':'12px 12px 12px 4px'};padding:8px 12px">
+      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${(m.content||'').replace(/</g,'&lt;')}</div>
+      <div style="font-size:9px;color:var(--text3);margin-top:3px;text-align:right">${t}</div>
+    </div>`;
+  }).join('') || '<div style="margin:auto;color:var(--text3);font-size:12px">Sem mensagens</div>';
+  if(scroll!==false) th.scrollTop = th.scrollHeight;
+}
+async function chatSend(){
+  const inp = document.getElementById('chat-reply-input');
+  const text = inp.value.trim();
+  if(!text || !chatCurrent) return;
+  inp.value = '';
+  const r = await api('/api/wa/chats/'+chatCurrent+'/send', { method:'POST', body: JSON.stringify({ text }) });
+  if(r.success) chatRefreshThread(true);
+  else { showToast('' + (r.error||'Erro'), 'error'); inp.value = text; }
+}
+async function wipeFunnels(){
+  if(!confirm('Apagar TODOS os funis?\n\nFaça o Export antes se quiser guardar as copys antigas. Essa ação não tem volta.')) return;
+  const typed = prompt('Pra confirmar, digite: APAGAR FUNIS');
+  if(typed !== 'APAGAR FUNIS'){ showToast('Cancelado', 'info'); return; }
+  const r = await api('/api/funnels/delete-all', { method:'POST', body: JSON.stringify({ confirm: 'APAGAR FUNIS' }) });
+  if(r.success){ showToast(`${r.deleted} funis apagados — recomeço limpo!`, 'success'); loadFunnelList(); }
+  else showToast('Erro: ' + (r.error||''), 'error');
+}
 async function waRegister(){
   const pin = document.getElementById('wa-reg-pin').value.trim();
   if(!/^\d{6}$/.test(pin)){ showToast('PIN precisa ter exatamente 6 dígitos', 'error'); return; }
@@ -3107,8 +3209,14 @@ async function loadAutoSend(){
     document.getElementById('as-enabled').checked = !!r.enabled;
     document.getElementById('as-enabled-lbl').textContent = r.enabled ? 'LIGADO' : 'DESLIGADO';
     document.getElementById('as-enabled-lbl').style.color = r.enabled ? '#34d399' : '#f87171';
+    document.getElementById('as-pix-on').checked = !!r.pix_enabled;
+    document.getElementById('as-aprovada-on').checked = !!r.aprovada_enabled;
+    document.getElementById('as-abandono-on').checked = !!r.abandono_enabled;
     document.getElementById('as-min-pix').value = r.min_pix || '';
     document.getElementById('as-min-aprovada').value = r.min_aprovada || '';
+    document.getElementById('as-min-abandono').value = r.min_abandono || '';
+    document.getElementById('as-first-pix').checked = !!r.first_only_pix;
+    document.getElementById('as-first-aprovada').checked = !!r.first_only_aprovada;
   } catch(e){}
 }
 async function asToggle(on){
@@ -3124,9 +3232,17 @@ async function asToggle(on){
   }
 }
 async function asSaveRules(){
-  const min_pix = parseFloat(document.getElementById('as-min-pix').value) || 0;
-  const min_aprovada = parseFloat(document.getElementById('as-min-aprovada').value) || 0;
-  const r = await api('/api/auto-send', { method:'POST', body: JSON.stringify({ min_pix, min_aprovada }) });
+  const body = {
+    min_pix: parseFloat(document.getElementById('as-min-pix').value) || 0,
+    min_aprovada: parseFloat(document.getElementById('as-min-aprovada').value) || 0,
+    min_abandono: parseFloat(document.getElementById('as-min-abandono').value) || 0,
+    pix_enabled: document.getElementById('as-pix-on').checked,
+    aprovada_enabled: document.getElementById('as-aprovada-on').checked,
+    abandono_enabled: document.getElementById('as-abandono-on').checked,
+    first_only_pix: document.getElementById('as-first-pix').checked,
+    first_only_aprovada: document.getElementById('as-first-aprovada').checked
+  };
+  const r = await api('/api/auto-send', { method:'POST', body: JSON.stringify(body) });
   if(r.success) showToast('Regras de envio salvas', 'success');
   else showToast('Erro: ' + (r.error||''), 'error');
 }
