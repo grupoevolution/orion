@@ -544,6 +544,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
               <button class="btn btn-g btn-sm" onclick="openEditCurrentFunnel()" title="Editar nome, produto vinculado ou tipo do funil">Editar</button>
               <button class="btn btn-g btn-sm" onclick="exportFunnels()">↑ Export</button>
               <button class="btn btn-d btn-sm" onclick="wipeFunnels()" title="Apaga TODOS os funis (faça Export antes!)">🗑 Apagar todos</button>
+              <button class="btn btn-p btn-sm" onclick="seedModelFunnels()" title="Cria os funis prontos do canal oficial (global aprovada, PIX e atendimento com botões)">🌱 Criar funis modelo</button>
               <button class="btn btn-g btn-sm" onclick="importFunnels()">↓ Import</button>
               <button class="btn btn-g btn-sm" onclick="duplicateFunnel()" title="Cria uma cópia deste funil para usar no A/B Test">⚗️ Duplicar</button>
               <button class="btn btn-p btn-sm" onclick="saveFunnel()">Salvar Funil</button>
@@ -2117,7 +2118,8 @@ function renderFunnelEditor(){
           <div style="font-size:11px;color:var(--text3);line-height:1.5;padding:8px 10px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:8px">O template é a ÚNICA mensagem que pode iniciar a conversa (e a única paga). Os passos seguintes só saem quando o cliente responder — e aí são grátis.</div>`:s.type==='delay'?`<div class="fe-row"><label class="fe-lbl">Segundos (±20% variação automática)</label><input type="number" class="fe-inp" value="${s.delaySeconds||10}" oninput="upStep(${i},'delaySeconds',this.value)"></div>`:`
           ${!['audio','image','video','viewonce_image','viewonce_video','sticker','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">Texto — {NOME} {SAUDACAO} {CIDADE} {ESTADO} {PIX_LINK} {VALOR} {EMAIL}</label><textarea class="fe-ta" oninput="upStep(${i},'text',this.value)">${s.text||''}</textarea></div>`:''}
           ${!['text','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">${s.type==='buttons'?'URL do vídeo ou imagem do topo (opcional — .mp4/.jpg)':'URL da Mídia'}</label><input type="url" class="fe-inp" value="${s.mediaUrl||''}" oninput="upStep(${i},'mediaUrl',this.value)" placeholder="https://..."></div>`:''}
-          ${s.type==='buttons'?`<div class="fe-row"><label class="fe-lbl">Botões — UM POR LINHA (máx. 3, até 20 letras cada). O clique vira "resposta" do cliente: crie um Gatilho com o texto do botão pra direcionar o funil</label><textarea class="fe-ta" style="min-height:56px" oninput="upStep(${i},'buttonsText',this.value)">${s.buttonsText||''}</textarea></div>`:''}
+          ${s.type==='buttons'?`<div class="fe-row"><label class="fe-lbl">Botões — UM POR LINHA (máx. 3, até 20 letras cada). O clique vira "resposta" do cliente: crie um Gatilho com o texto do botão pra direcionar o funil</label><textarea class="fe-ta" style="min-height:56px" oninput="upStep(${i},'buttonsText',this.value)">${s.buttonsText||''}</textarea></div>
+          <div class="fe-row"><label class="fe-lbl">Rodapé (opcional, cinza embaixo — ex: "Clique em um dos botões")</label><input class="fe-inp" value="${s.footerText||''}" oninput="upStep(${i},'footerText',this.value)"></div>`:''}
           <div class="fe-row"><label class="fe-lbl">Delay antes (segundos, ±20% automático)</label><input type="number" class="fe-inp" value="${s.delayBefore||0}" oninput="upStep(${i},'delayBefore',this.value)"></div>
           <div class="fe-chk"><input type="checkbox" id="wr${i}" ${s.waitForReply?'checked':''} onchange="upStep(${i},'waitForReply',this.checked)"><label for="wr${i}">⏸ Aguardar resposta para continuar</label></div>
           <div class="fe-chk"><input type="checkbox" id="st${i}" ${s.showTyping?'checked':''} onchange="upStep(${i},'showTyping',this.checked)"><label for="st${i}">💬 Mostrar digitando</label></div>
@@ -3013,6 +3015,17 @@ async function chatSend(){
   const r = await api('/api/wa/chats/'+chatCurrent+'/send', { method:'POST', body: JSON.stringify({ text }) });
   if(r.success) chatRefreshThread(true);
   else { showToast('' + (r.error||'Erro'), 'error'); inp.value = text; }
+}
+async function seedModelFunnels(){
+  const tplA = prompt('Nome EXATO do template aprovado pra VENDA APROVADA (como está na Meta):', 'aprovada');
+  if(tplA === null) return;
+  const tplP = prompt('Nome do template pro PIX GERADO (se ainda não tem um próprio, deixe o mesmo da aprovada):', tplA);
+  if(tplP === null) return;
+  const r = await api('/api/funnels/seed-models', { method:'POST', body: JSON.stringify({ template_aprovada: tplA.trim(), template_pix: tplP.trim() }) });
+  if(r.success){
+    showToast(`${r.created.length} funis criados${r.skipped.length?` · ${r.skipped.length} já existiam`:''} · ${r.triggers_created} gatilhos`, 'success');
+    loadFunnelList();
+  } else showToast('Erro: ' + (r.error||''), 'error');
 }
 async function wipeFunnels(){
   if(!confirm('Apagar TODOS os funis?\n\nFaça o Export antes se quiser guardar as copys antigas. Essa ação não tem volta.')) return;

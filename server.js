@@ -1330,7 +1330,7 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
             const btns = Array.isArray(step.buttons) && step.buttons.length
                 ? step.buttons
                 : String(step.buttonsText || '').split('\n').map(s => s.trim()).filter(Boolean).map((t, i) => ({ id: 'btn' + (i + 1), title: t }));
-            message = waButtons(actualText, btns, header);
+            message = waButtons(actualText, btns, header, step.footerText ? replaceVariables(step.footerText, conversation) : null);
         }
         else return { success: true }; // tipo desconhecido: não trava o funil
 
@@ -2175,13 +2175,14 @@ function waImage(link, caption) { return { type: 'image', image: caption ? { lin
 function waVideo(link, caption) { return { type: 'video', video: caption ? { link, caption } : { link } }; }
 function waAudio(link) { return { type: 'audio', audio: { link } }; }
 // Botões de resposta rápida (até 3) — grátis dentro da janela. header opcional: vídeo/imagem em cima.
-function waButtons(bodyText, buttons, header = null) {
+function waButtons(bodyText, buttons, header = null, footerText = null) {
     const interactive = {
         type: 'button',
         body: { text: String(bodyText || '') },
         action: { buttons: (buttons || []).slice(0, 3).map((b, i) => ({ type: 'reply', reply: { id: String(b.id || ('btn' + (i + 1))), title: String(b.title || b).slice(0, 20) } })) }
     };
     if (header) interactive.header = header;
+    if (footerText) interactive.footer = { text: String(footerText).slice(0, 60) };
     return { type: 'interactive', interactive };
 }
 
@@ -2479,6 +2480,73 @@ app.post('/api/wa/chats/:phoneKey/send', authMiddleware, async (req, res) => {
         db.logMessage(phoneKey, 'out', text, 'oficial', null, true);
         addLog('WA_MANUAL_REPLY', `💬 Resposta manual pra ${phone}: ${text.substring(0, 60)}`, { phoneKey });
         res.json({ success: true });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ⭐ 29/07: cria os FUNIS MODELO do canal oficial já montados (o operador só preenche textos/URLs).
+// Idempotente: funil que já existe com passos não é sobrescrito.
+app.post('/api/funnels/seed-models', authMiddleware, (req, res) => {
+    try {
+        const tplAprovada = String(req.body?.template_aprovada || 'aprovada').trim();
+        const tplPix = String(req.body?.template_pix || tplAprovada).trim();
+        const models = [
+            {
+                id: 'GLOBAL_APROVADA', product_id: 'GLOBAL', type: 'APROVADA', name: '🌐 Venda aprovada (todos os produtos)',
+                steps: [
+                    { id: 'ga1', type: 'template', templateName: tplAprovada, templateLang: 'pt_BR', templateParams: 'nome={NOME}', waitForReply: true, text: '' },
+                    { id: 'ga2', type: 'text', text: 'Prontinho {NOME}! 😊 Seu acesso já está liberado no app:\n\nhttps://m.membrosvips.com\n\nÉ só entrar com o e-mail da compra: {EMAIL}', waitForReply: false, delayBefore: 0 },
+                    { id: 'ga3', type: 'text', text: '[EDITE ESTA MENSAGEM — oferta 1]', waitForReply: false, delayBefore: 300 },
+                    { id: 'ga4', type: 'text', text: '[EDITE ESTA MENSAGEM — oferta 2]', waitForReply: false, delayBefore: 900 }
+                ]
+            },
+            {
+                id: 'GLOBAL_PIX', product_id: 'GLOBAL', type: 'PIX', name: '🌐 PIX gerado (todos os produtos)',
+                steps: [
+                    { id: 'gp1', type: 'template', templateName: tplPix, templateLang: 'pt_BR', templateParams: 'nome={NOME}', waitForReply: true, text: '' },
+                    { id: 'gp2', type: 'audio', mediaUrl: '', text: '', waitForReply: false, delayBefore: 3 },
+                    { id: 'gp3', type: 'text', text: 'Aqui está, {NOME} 😉\n\n{PIX_LINK}\n\nÉ só tocar no botão verde pra copiar o código e pagar no app do seu banco. Qualquer coisa me chama aqui!', waitForReply: false, delayBefore: 5 },
+                    { id: 'gp4', type: 'text', text: '[EDITE — oferta com desconto se ele não pagar]', waitForReply: false, delayBefore: 600 }
+                ]
+            },
+            {
+                id: 'GLOBAL_ATENDIMENTO', product_id: 'GLOBAL', type: 'DIRETO', name: '🌐 Atendimento (lead do anúncio)',
+                steps: [
+                    { id: 'gt1', type: 'audio', mediaUrl: '', text: '', waitForReply: false, delayBefore: 2 },
+                    { id: 'gt2', type: 'buttons', mediaUrl: '', text: 'NOSSO APLICATIVO COMPLETO PRA VOCÊ!\n\nESCOLHA O QUE VOCÊ MAIS TEM INTERESSE 👇', footerText: 'Clique em um dos botões', buttonsText: 'CONVERSAS\nGRUPOS\nCHAMADAS DE VÍDEO', waitForReply: true, delayBefore: 3 }
+                ]
+            },
+            { id: 'GLOBAL_OPCAO_CONVERSAS', product_id: 'GLOBAL', type: 'DIRETO', name: '🌐 Escolha: CONVERSAS', steps: [
+                { id: 'oc1', type: 'text', text: '[EDITE — link/explicação de CONVERSAS]', waitForReply: false },
+                { id: 'oc2', type: 'text', text: '[EDITE — oferta/pergunta final]', waitForReply: false, delayBefore: 3600 } ] },
+            { id: 'GLOBAL_OPCAO_GRUPOS', product_id: 'GLOBAL', type: 'DIRETO', name: '🌐 Escolha: GRUPOS', steps: [
+                { id: 'og1', type: 'text', text: '[EDITE — link/explicação de GRUPOS]', waitForReply: false },
+                { id: 'og2', type: 'text', text: '[EDITE — oferta/pergunta final]', waitForReply: false, delayBefore: 3600 } ] },
+            { id: 'GLOBAL_OPCAO_CHAMADAS', product_id: 'GLOBAL', type: 'DIRETO', name: '🌐 Escolha: CHAMADAS DE VÍDEO', steps: [
+                { id: 'ov1', type: 'text', text: '[EDITE — link/explicação de CHAMADAS DE VÍDEO]', waitForReply: false },
+                { id: 'ov2', type: 'text', text: '[EDITE — oferta/pergunta final]', waitForReply: false, delayBefore: 3600 } ] }
+        ];
+        const created = [], skipped = [];
+        for (const m of models) {
+            const existing = db.getFunnelById(m.id);
+            if (existing && Array.isArray(existing.steps) && existing.steps.length) { skipped.push(m.id); continue; }
+            db.saveFunnel(m);
+            created.push(m.id);
+        }
+        // Gatilhos que ligam o clique do botão ao mini-funil da escolha
+        const triggers = [
+            { name: 'Botão CONVERSAS', keywords: 'CONVERSAS', target_funnel_id: 'GLOBAL_OPCAO_CONVERSAS' },
+            { name: 'Botão GRUPOS', keywords: 'GRUPOS', target_funnel_id: 'GLOBAL_OPCAO_GRUPOS' },
+            { name: 'Botão CHAMADAS', keywords: 'CHAMADAS', target_funnel_id: 'GLOBAL_OPCAO_CHAMADAS' }
+        ];
+        let trigCreated = 0;
+        const existingTrigs = db.getTriggers();
+        for (const t of triggers) {
+            if (existingTrigs.some(x => x.name === t.name)) continue;
+            db.saveTrigger({ name: t.name, keywords: t.keywords, match_type: 'contains', target_funnel_id: t.target_funnel_id, auto_block: 0, active: 1 });
+            trigCreated++;
+        }
+        addLog('FUNNELS_SEEDED', `🌱 Funis modelo criados: ${created.join(', ') || 'nenhum novo'} · ${trigCreated} gatilhos`);
+        res.json({ success: true, created, skipped, triggers_created: trigCreated });
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
