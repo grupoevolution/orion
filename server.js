@@ -2171,7 +2171,14 @@ async function waSendMessage(to, message, meta = {}) {
         return wamid;
     } catch (e) {
         const apiErr = e.response?.data?.error;
-        const msg = apiErr ? `${apiErr.message} (código ${apiErr.code}${apiErr.error_subcode ? '/' + apiErr.error_subcode : ''})` : e.message;
+        let msg;
+        if (apiErr) {
+            const parts = [apiErr.message];
+            if (apiErr.error_data?.details) parts.push(apiErr.error_data.details);
+            if (apiErr.error_user_title) parts.push(apiErr.error_user_title);
+            if (apiErr.error_user_msg) parts.push(apiErr.error_user_msg);
+            msg = `${parts.join(' — ')} (código ${apiErr.code}${apiErr.error_subcode ? '/' + apiErr.error_subcode : ''})`;
+        } else msg = e.message;
         addLog('WA_SEND_ERR', `❌ Envio oficial falhou pra ${toPhone}: ${msg}`);
         throw new Error(msg);
     }
@@ -2430,6 +2437,49 @@ app.get('/api/wa/media/:id', async (req, res) => {
         res.setHeader('Cache-Control', 'private, max-age=3600');
         media.data.pipe(res);
     } catch(e) { res.status(500).end(); }
+});
+
+// ⭐ 29/07: SAÚDE NA META — pergunta pra própria Meta por que não dá pra enviar.
+// health_status é o campo oficial que lista o que está bloqueando (verificação, review, pagamento...)
+app.get('/api/wa/health', authMiddleware, async (req, res) => {
+    const out = { success: true, erros: [] };
+    try {
+        if (!isWabaConfigured()) return res.json({ success: false, error: 'WABA_TOKEN / WABA_PHONE_NUMBER_ID não configurados' });
+        try {
+            out.numero = await waRequest('get', `${WABA_PHONE_NUMBER_ID}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,name_status,status,platform_type,messaging_limit_tier,health_status`);
+        } catch(e) { out.erros.push('Número: ' + (e.response?.data?.error?.message || e.message)); }
+        if (WABA_ID) {
+            try {
+                out.conta = await waRequest('get', `${WABA_ID}?fields=id,name,account_review_status,business_verification_status,country,currency,timezone_id,health_status`);
+            } catch(e) { out.erros.push('Conta (WABA): ' + (e.response?.data?.error?.message || e.message)); }
+        }
+        try {
+            out.token = await waRequest('get', 'me?fields=id,name');
+        } catch(e) { out.erros.push('Token: ' + (e.response?.data?.error?.message || e.message)); }
+        // Interpretação amigável
+        const hs = out.numero?.health_status || out.conta?.health_status;
+        const dicas = [];
+        if (hs) {
+            if (hs.can_send_message === 'AVAILABLE') dicas.push('✅ A Meta diz que ESTE número PODE enviar mensagens agora.');
+            else if (hs.can_send_message === 'LIMITED') dicas.push('⚠️ Envio LIMITADO — veja os motivos abaixo.');
+            else dicas.push('❌ A Meta diz que o envio está BLOQUEADO — veja os motivos abaixo.');
+            for (const ent of (hs.entities || [])) {
+                if (ent.can_send_message && ent.can_send_message !== 'AVAILABLE') {
+                    const nome = { PHONE_NUMBER: 'Número', WABA: 'Conta WhatsApp Business', BUSINESS: 'Empresa (portfólio)', APP: 'App', TEMPLATE: 'Template' }[ent.entity_type] || ent.entity_type;
+                    for (const err of (ent.errors || [])) {
+                        dicas.push(`• ${nome}: ${err.error_description || err.error_code}${err.possible_solution ? ' → SOLUÇÃO: ' + err.possible_solution : ''}`);
+                    }
+                    if (!(ent.errors || []).length) dicas.push(`• ${nome}: ${ent.can_send_message}`);
+                }
+            }
+        }
+        if (out.conta?.account_review_status && out.conta.account_review_status !== 'APPROVED') dicas.push(`⚠️ Análise da conta: ${out.conta.account_review_status}`);
+        if (out.conta?.business_verification_status && out.conta.business_verification_status !== 'verified') dicas.push(`ℹ️ Verificação da empresa: ${out.conta.business_verification_status} (limita volume, mas não deveria bloquear)`);
+        if (out.numero?.status && out.numero.status !== 'CONNECTED') dicas.push(`⚠️ Status do número: ${out.numero.status}`);
+        if (out.numero?.name_status && !['APPROVED', 'AVAILABLE_WITHOUT_REVIEW'].includes(out.numero.name_status)) dicas.push(`ℹ️ Nome de exibição: ${out.numero.name_status}`);
+        out.resumo = dicas;
+        res.json(out);
+    } catch(e) { res.status(500).json({ success: false, error: e.message, parcial: out }); }
 });
 
 // ============ DIAGNÓSTICO DO CANAL (responde "por que não aconteceu nada?") ============

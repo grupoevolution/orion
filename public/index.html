@@ -664,6 +664,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             <div class="fe-row" style="max-width:260px;margin:0"><label class="fe-lbl">Mensagem que o "cliente" manda</label><input class="fe-inp" id="sim-text" placeholder="quero"></div>
             <button class="btn btn-sm" style="background:#f59e0b;color:#000;font-weight:700" onclick="waSimulate()">▶ Simular mensagem</button>
             <button class="btn btn-g btn-sm" onclick="waDiagnose()">🔍 Diagnóstico do canal</button>
+            <button class="btn btn-sm" style="background:#3b82f6;color:#fff;font-weight:700" onclick="waHealth()">🩺 Perguntar pra Meta o que está bloqueando</button>
           </div>
           <pre id="sim-out" style="display:none;background:#000;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;color:#cbd5e1;max-height:340px;overflow:auto;white-space:pre-wrap;font-family:var(--mono)"></pre>
         </div>
@@ -3058,6 +3059,34 @@ async function waSimulate(){
   const r = await api('/api/wa/simulate-inbound', { method:'POST', body: JSON.stringify({ phone, text }) });
   simOut((r.trace||[]).map(t=>'• '+t).join('\n') + (r.error?('\n\n❌ '+r.error):''));
   if(r.started) showToast('Funil disparado! Confira seu WhatsApp', 'success');
+}
+async function waHealth(){
+  simOut('Consultando a Meta...');
+  const d = await api('/api/wa/health');
+  if(!d.success){ simOut('Erro: '+(d.error||JSON.stringify(d))); return; }
+  const L = ['=== O QUE A META RESPONDEU ==='];
+  (d.resumo||[]).forEach(x=>L.push(x));
+  if(!(d.resumo||[]).length) L.push('(a Meta não retornou health_status — veja os dados brutos abaixo)');
+  L.push('');
+  if(d.token) L.push('TOKEN válido — usuário: ' + (d.token.name||d.token.id));
+  if(d.numero){
+    L.push('');
+    L.push('NÚMERO: ' + (d.numero.display_phone_number||'') + ' · nome "' + (d.numero.verified_name||'') + '"');
+    L.push('  status: ' + (d.numero.status||'?') + ' · qualidade: ' + (d.numero.quality_rating||'?') + ' · limite: ' + (d.numero.messaging_limit_tier||'?'));
+    L.push('  nome de exibição: ' + (d.numero.name_status||'?') + ' · verificação do número: ' + (d.numero.code_verification_status||'?'));
+  }
+  if(d.conta){
+    L.push('');
+    L.push('CONTA (WABA): ' + (d.conta.name||d.conta.id));
+    L.push('  análise da conta: ' + (d.conta.account_review_status||'?'));
+    L.push('  verificação da empresa: ' + (d.conta.business_verification_status||'?'));
+    L.push('  moeda: ' + (d.conta.currency||'?'));
+  }
+  (d.erros||[]).forEach(e=>L.push('❌ ' + e));
+  L.push('');
+  L.push('--- dados brutos ---');
+  L.push(JSON.stringify({numero:d.numero, conta:d.conta}, null, 2));
+  simOut(L.join('\n'));
 }
 async function waDiagnose(){
   simOut('Consultando...');
