@@ -764,6 +764,21 @@ function selectABFunnel(productId, funnelType) {
     });
 
     if (pool.length === 0) {
+        // ⭐ 29/07: FUNIL GLOBAL — sem funil específico do produto, cai no funil GLOBAL_<TIPO>
+        // (um funil só que vale pra TODOS os produtos — assinatura, GRUPO VIP, ZAP VIP...)
+        const globalPool = db.getFunnels().filter(f =>
+            (f.product_id === 'GLOBAL' || (f.id || '').startsWith('GLOBAL_')) &&
+            (f.type === funnelType || (f.id || '').toUpperCase().includes(funnelType)) &&
+            Array.isArray(f.steps) && f.steps.length > 0
+        );
+        if (globalPool.length > 0) {
+            const gKey = 'GLOBAL_' + funnelType;
+            const gIdx = abIndexMap.get(gKey) || 0;
+            const chosen = globalPool[gIdx % globalPool.length].id;
+            abIndexMap.set(gKey, gIdx + 1);
+            addLog('FUNNEL_GLOBAL', `🌐 ${funnelType} → funil GLOBAL ${chosen} (produto ${productId} sem funil próprio)`, { productId, funnelType });
+            return chosen;
+        }
         // Nenhum funil com conteúdo — retorna o padrão (dispara o alerta de "funil vazio" no sendStep)
         addLog('AB_NO_CONTENT', `⚠️ Nenhum funil de ${funnelType} com passos para ${productId} — usando ${defaultFunnel}`, { productId, funnelType });
         return defaultFunnel;
@@ -1306,7 +1321,17 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
         else if (step.type === 'sticker') message = { type: 'sticker', sticker: { link: actualMediaUrl } };
         else if (step.type === 'viewonce_image') message = waImage(actualMediaUrl); // API oficial não tem "ver 1x" — vai como imagem normal
         else if (step.type === 'viewonce_video') message = waVideo(actualMediaUrl);
-        else if (step.type === 'buttons') message = waButtons(actualText, step.buttons || []);
+        else if (step.type === 'buttons') {
+            let header = null;
+            if (actualMediaUrl) {
+                if (/\.(mp4|mov)(\?|$)/i.test(actualMediaUrl)) header = { type: 'video', video: { link: actualMediaUrl } };
+                else if (/\.(jpe?g|png|webp)(\?|$)/i.test(actualMediaUrl)) header = { type: 'image', image: { link: actualMediaUrl } };
+            }
+            const btns = Array.isArray(step.buttons) && step.buttons.length
+                ? step.buttons
+                : String(step.buttonsText || '').split('\n').map(s => s.trim()).filter(Boolean).map((t, i) => ({ id: 'btn' + (i + 1), title: t }));
+            message = waButtons(actualText, btns, header);
+        }
         else return { success: true }; // tipo desconhecido: não trava o funil
 
         await waSendMessage(toPhone, message, { templateName: step.templateName || null });
@@ -2149,13 +2174,15 @@ function waTemplate(name, lang = 'pt_BR', components = null) {
 function waImage(link, caption) { return { type: 'image', image: caption ? { link, caption } : { link } }; }
 function waVideo(link, caption) { return { type: 'video', video: caption ? { link, caption } : { link } }; }
 function waAudio(link) { return { type: 'audio', audio: { link } }; }
-// Botões de resposta rápida (até 3) — grátis dentro da janela
-function waButtons(bodyText, buttons) {
-    return { type: 'interactive', interactive: {
+// Botões de resposta rápida (até 3) — grátis dentro da janela. header opcional: vídeo/imagem em cima.
+function waButtons(bodyText, buttons, header = null) {
+    const interactive = {
         type: 'button',
         body: { text: String(bodyText || '') },
-        action: { buttons: buttons.slice(0, 3).map(b => ({ type: 'reply', reply: { id: String(b.id), title: String(b.title).slice(0, 20) } })) }
-    } };
+        action: { buttons: (buttons || []).slice(0, 3).map((b, i) => ({ type: 'reply', reply: { id: String(b.id || ('btn' + (i + 1))), title: String(b.title || b).slice(0, 20) } })) }
+    };
+    if (header) interactive.header = header;
+    return { type: 'interactive', interactive };
 }
 
 // ===== Janela de 24h =====

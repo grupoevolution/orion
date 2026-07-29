@@ -298,6 +298,8 @@ function initDatabase() {
         db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_APROVADA', 'GRUPO_VIP', 'APROVADA', 'GRUPO VIP - Compra Aprovada', '[]');
         db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_ABANDONO', 'GRUPO_VIP', 'ABANDONO', 'GRUPO VIP - Carrinho Abandonado', '[]');
         db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_CARTAO_RECUSADO', 'GRUPO_VIP', 'CARTAO_RECUSADO', 'GRUPO VIP - Cartão Recusado', '[]');
+        // ⭐ 29/07: "produto" GLOBAL — funis criados nele valem pra TODOS os produtos (era da API oficial)
+        db.prepare("INSERT OR IGNORE INTO products (id, name, active) VALUES ('GLOBAL', '🌐 GLOBAL — vale pra todos os produtos', 1)").run();
     }
 
     // ===== MIGRAÇÕES AUTOMÁTICAS =====
