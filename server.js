@@ -1274,13 +1274,27 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
         if (step.type === 'template') {
             const tplName = step.templateName || (step.text || '').trim();
             if (!tplName) return { success: false, error: 'TEMPLATE_SEM_NOME' };
-            // Variáveis do template ({{1}}, {{2}}...) — uma por linha, aceitam {NOME} {VALOR} {PIX_LINK} etc.
+            // Variáveis do template — uma por linha. Dois formatos:
+            //   "nome={NOME}"  → variável NOMEADA {{nome}} (padrão das contas novas da Meta)
+            //   "{NOME}"       → variável numerada {{1}}, {{2}}... na ordem das linhas
             let components = null;
             const rawParams = Array.isArray(step.templateParams)
                 ? step.templateParams
                 : (typeof step.templateParams === 'string' && step.templateParams.trim() ? step.templateParams.split('\n') : []);
-            const params = rawParams.map(p => replaceVariables(String(p).trim(), conversation)).filter(p => p !== '');
-            if (params.length) components = [{ type: 'body', parameters: params.map(t => ({ type: 'text', text: t })) }];
+            const parsed = rawParams.map(line => {
+                const s = String(line).trim();
+                const eq = s.indexOf('=');
+                if (eq > 0 && /^[a-z0-9_]+$/.test(s.slice(0, eq).trim())) {
+                    return { name: s.slice(0, eq).trim(), value: replaceVariables(s.slice(eq + 1).trim(), conversation) };
+                }
+                return { name: null, value: replaceVariables(s, conversation) };
+            }).filter(p => p.value !== '');
+            if (parsed.length) {
+                const named = parsed.some(p => p.name);
+                components = [{ type: 'body', parameters: parsed.map(p => named
+                    ? { type: 'text', parameter_name: p.name || '', text: p.value }
+                    : { type: 'text', text: p.value }) }];
+            }
             message = waTemplate(tplName, step.templateLang || 'pt_BR', components);
         }
         else if (step.type === 'text') message = waText(actualText);
@@ -2478,8 +2492,18 @@ app.post('/api/wa/test-send', authMiddleware, async (req, res) => {
         let wamid;
         if (template_name) {
             let components = null;
-            const params = Array.isArray(template_params) ? template_params.map(p => String(p).trim()).filter(Boolean) : [];
-            if (params.length) components = [{ type: 'body', parameters: params.map(t => ({ type: 'text', text: t })) }];
+            const raw = Array.isArray(template_params) ? template_params.map(p => String(p).trim()).filter(Boolean) : [];
+            const parsed = raw.map(s => {
+                const eq = s.indexOf('=');
+                if (eq > 0 && /^[a-z0-9_]+$/.test(s.slice(0, eq).trim())) return { name: s.slice(0, eq).trim(), value: s.slice(eq + 1).trim() };
+                return { name: null, value: s };
+            });
+            if (parsed.length) {
+                const named = parsed.some(p => p.name);
+                components = [{ type: 'body', parameters: parsed.map(p => named
+                    ? { type: 'text', parameter_name: p.name || '', text: p.value }
+                    : { type: 'text', text: p.value }) }];
+            }
             wamid = await waSendMessage(to, waTemplate(template_name, template_lang || 'pt_BR', components), { templateName: template_name });
         }
         else if (text) wamid = await waSendMessage(to, waText(text));

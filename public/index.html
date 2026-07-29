@@ -2088,7 +2088,7 @@ async function saveCreateFunnel(){
   }
 }
 async function loadFunnelEditor(){const id=document.getElementById('fsel').value;const r=await api('/api/funnels');if(!r.success)return;currentFunnel=r.data.find(f=>f.id===id);if(currentFunnel)renderFunnelEditor();}
-function addStep(type){if(!currentFunnel)return;const st={id:'step_'+Date.now(),type,text:'',mediaUrl:'',waitForReply:false,delayBefore:0,showTyping:false,is_intro:false};if(type==='template'){st.templateParams='{NOME}';st.templateLang='pt_BR';}currentFunnel.steps.push(st);renderFunnelEditor();}
+function addStep(type){if(!currentFunnel)return;const st={id:'step_'+Date.now(),type,text:'',mediaUrl:'',waitForReply:false,delayBefore:0,showTyping:false,is_intro:false};if(type==='template'){st.templateParams='nome={NOME}';st.templateLang='pt_BR';}currentFunnel.steps.push(st);renderFunnelEditor();}
 function removeStep(i){if(!currentFunnel)return;currentFunnel.steps.splice(i,1);renderFunnelEditor();}
 function renderFunnelEditor(){
   if(!currentFunnel)return;
@@ -2112,7 +2112,7 @@ function renderFunnelEditor(){
       <div class="sc-edit" id="se${i}">
         ${s.type==='template'?`<div class="fe-row"><label class="fe-lbl">Nome do template aprovado na Meta (aba Canal Oficial mostra a lista)</label><input class="fe-inp" value="${s.templateName||''}" oninput="upStep(${i},'templateName',this.value)" placeholder="ex: pix_pendente"></div>
           <div class="fe-row"><label class="fe-lbl">Idioma</label><input class="fe-inp" value="${s.templateLang||'pt_BR'}" oninput="upStep(${i},'templateLang',this.value)"></div>
-          <div class="fe-row"><label class="fe-lbl">Variáveis do template — UMA POR LINHA, na ordem {{1}}, {{2}}... (aceita {NOME} {VALOR} {PIX_LINK} {PRODUTO} {EMAIL})</label><textarea class="fe-ta" style="min-height:56px" oninput="upStep(${i},'templateParams',this.value)">${s.templateParams||''}</textarea></div>
+          <div class="fe-row"><label class="fe-lbl">Variáveis do template — UMA POR LINHA. Formato: nome_da_variavel={NOME} (ex: se o template tem {{nome}}, escreva nome={NOME}). Aceita {NOME} {VALOR} {PIX_LINK} {PRODUTO} {EMAIL}</label><textarea class="fe-ta" style="min-height:56px" oninput="upStep(${i},'templateParams',this.value)">${s.templateParams||''}</textarea></div>
           <div style="font-size:11px;color:var(--text3);line-height:1.5;padding:8px 10px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:8px">O template é a ÚNICA mensagem que pode iniciar a conversa (e a única paga). Os passos seguintes só saem quando o cliente responder — e aí são grátis.</div>`:s.type==='delay'?`<div class="fe-row"><label class="fe-lbl">Segundos (±20% variação automática)</label><input type="number" class="fe-inp" value="${s.delaySeconds||10}" oninput="upStep(${i},'delaySeconds',this.value)"></div>`:`
           ${!['audio','image','video','viewonce_image','viewonce_video','sticker','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">Texto — {NOME} {SAUDACAO} {CIDADE} {ESTADO} {PIX_LINK} {VALOR} {EMAIL}</label><textarea class="fe-ta" oninput="upStep(${i},'text',this.value)">${s.text||''}</textarea></div>`:''}
           ${!['text','template'].includes(s.type)?`<div class="fe-row"><label class="fe-lbl">URL da Mídia</label><input type="url" class="fe-inp" value="${s.mediaUrl||''}" oninput="upStep(${i},'mediaUrl',this.value)" placeholder="https://..."></div>`:''}
