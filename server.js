@@ -2145,13 +2145,14 @@ function waButtons(bodyText, buttons) {
 }
 
 // ===== Janela de 24h =====
-function touchWaWindow(phoneKey, phone, referralJson = null) {
+function touchWaWindow(phoneKey, phone, referralJson = null, profileName = null) {
     try {
-        db.getDb().prepare(`INSERT INTO wa_windows (phone_key, phone, last_inbound_at, last_referral_json)
-            VALUES (?, ?, datetime('now'), ?)
+        db.getDb().prepare(`INSERT INTO wa_windows (phone_key, phone, last_inbound_at, last_referral_json, profile_name)
+            VALUES (?, ?, datetime('now'), ?, ?)
             ON CONFLICT(phone_key) DO UPDATE SET phone = excluded.phone, last_inbound_at = datetime('now'),
-                last_referral_json = COALESCE(excluded.last_referral_json, wa_windows.last_referral_json)`)
-        .run(phoneKey, phone, referralJson);
+                last_referral_json = COALESCE(excluded.last_referral_json, wa_windows.last_referral_json),
+                profile_name = COALESCE(excluded.profile_name, wa_windows.profile_name)`)
+        .run(phoneKey, phone, referralJson, profileName);
     } catch(e) {}
 }
 function isWaWindowOpen(phoneKey) {
@@ -2207,10 +2208,16 @@ app.post('/webhook/meta', async (req, res) => {
                         if (msg.type === 'text') text = msg.text?.body || '';
                         else if (msg.type === 'button') text = msg.button?.text || '';
                         else if (msg.type === 'interactive') text = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
+                        else if (['audio', 'image', 'video', 'document', 'sticker'].includes(msg.type)) {
+                            // Guarda o ID da mídia — o chat busca o arquivo real via /api/wa/media/:id
+                            const mediaId = msg[msg.type]?.id || '';
+                            const caption = msg[msg.type]?.caption || '';
+                            text = mediaId ? `[media:${msg.type}:${mediaId}]${caption ? ' ' + caption : ''}` : `[${msg.type.toUpperCase()}]`;
+                        }
                         else text = `[${String(msg.type || 'mídia').toUpperCase()}]`;
                         const referral = msg.referral ? JSON.stringify(msg.referral) : null; // anúncio Click-to-WhatsApp
 
-                        touchWaWindow(phoneKey, fromPhone, referral);
+                        touchWaWindow(phoneKey, fromPhone, referral, contactName || null);
                         try {
                             db.getDb().prepare(`INSERT OR REPLACE INTO wa_messages (wamid, phone_number_id, phone_key, to_phone, direction, msg_type, status)
                                 VALUES (?, ?, ?, ?, 'in', ?, 'received')`)
@@ -2344,6 +2351,21 @@ app.get('/api/wa/templates', authMiddleware, async (req, res) => {
     } catch(e) { res.status(500).json({ success: false, error: e.response?.data?.error?.message || e.message }); }
 });
 
+// Proxy de mídia recebida: a Meta exige o token pra baixar — o chat usa esta rota.
+// Token via query (?t=) porque <img>/<audio> não mandam header de autorização.
+app.get('/api/wa/media/:id', async (req, res) => {
+    try {
+        const t = req.query.t || String(req.headers.authorization || '').replace('Bearer ', '');
+        try { jwt.verify(t, JWT_SECRET); } catch { return res.status(401).end(); }
+        const info = await waRequest('get', `${req.params.id}`);
+        if (!info?.url) return res.status(404).end();
+        const media = await axios.get(info.url, { headers: { Authorization: `Bearer ${WABA_TOKEN}` }, responseType: 'stream', timeout: 30000 });
+        res.setHeader('Content-Type', media.headers['content-type'] || 'application/octet-stream');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        media.data.pipe(res);
+    } catch(e) { res.status(500).end(); }
+});
+
 // ============ CAIXA DE CONVERSAS (o "WhatsApp Web" da Orion) ============
 // Números oficiais não têm app nem Web — toda conversa vive aqui.
 app.get('/api/wa/chats', authMiddleware, (req, res) => {
@@ -2351,14 +2373,14 @@ app.get('/api/wa/chats', authMiddleware, (req, res) => {
         const rows = db.getDb().prepare(`
             SELECT m.phone_key,
                    MAX(m.created_at) AS last_at,
-                   (SELECT content FROM messages_log m2 WHERE m2.phone_key = m.phone_key ORDER BY m2.created_at DESC, m2.id DESC LIMIT 1) AS last_content,
-                   (SELECT direction FROM messages_log m3 WHERE m3.phone_key = m.phone_key ORDER BY m3.created_at DESC, m3.id DESC LIMIT 1) AS last_direction
+                   (SELECT content FROM messages_log m2 WHERE m2.phone_key = m.phone_key AND m2.instance = 'oficial' ORDER BY m2.created_at DESC, m2.id DESC LIMIT 1) AS last_content,
+                   (SELECT direction FROM messages_log m3 WHERE m3.phone_key = m.phone_key AND m3.instance = 'oficial' ORDER BY m3.created_at DESC, m3.id DESC LIMIT 1) AS last_direction
             FROM messages_log m
-            WHERE datetime(m.created_at) >= datetime('now', '-30 days')
+            WHERE m.instance = 'oficial' AND datetime(m.created_at) >= datetime('now', '-30 days')
             GROUP BY m.phone_key
             ORDER BY last_at DESC LIMIT 100`).all();
         const nameStmt = db.getDb().prepare('SELECT customer_name, customer_phone FROM events WHERE phone_key = ? AND customer_name IS NOT NULL ORDER BY id DESC LIMIT 1');
-        const winStmt = db.getDb().prepare('SELECT phone, last_inbound_at FROM wa_windows WHERE phone_key = ?');
+        const winStmt = db.getDb().prepare('SELECT phone, last_inbound_at, profile_name FROM wa_windows WHERE phone_key = ?');
         const chats = rows.map(r => {
             const ev = nameStmt.get(r.phone_key) || {};
             const win = winStmt.get(r.phone_key) || {};
@@ -2368,7 +2390,7 @@ app.get('/api/wa/chats', authMiddleware, (req, res) => {
             return {
                 phone_key: r.phone_key,
                 phone: win.phone || ev.customer_phone || jidToPhone(conv?.remoteJid) || null,
-                name: conv?.customerName || ev.customer_name || win.phone || r.phone_key,
+                name: conv?.customerName || ev.customer_name || win.profile_name || win.phone || r.phone_key,
                 last_at: r.last_at,
                 last_content: (r.last_content || '').substring(0, 80),
                 last_direction: r.last_direction,
@@ -2385,14 +2407,14 @@ app.get('/api/wa/chats/:phoneKey', authMiddleware, (req, res) => {
     try {
         const phoneKey = req.params.phoneKey;
         const msgs = db.getDb().prepare(`SELECT direction, content, instance, created_at FROM messages_log
-            WHERE phone_key = ? ORDER BY created_at ASC, id ASC LIMIT 300`).all(phoneKey);
-        const win = db.getDb().prepare('SELECT phone, last_inbound_at FROM wa_windows WHERE phone_key = ?').get(phoneKey) || {};
+            WHERE phone_key = ? AND instance = 'oficial' ORDER BY created_at ASC, id ASC LIMIT 300`).all(phoneKey);
+        const win = db.getDb().prepare('SELECT phone, last_inbound_at, profile_name FROM wa_windows WHERE phone_key = ?').get(phoneKey) || {};
         const ev = db.getDb().prepare('SELECT customer_name, customer_phone FROM events WHERE phone_key = ? AND customer_name IS NOT NULL ORDER BY id DESC LIMIT 1').get(phoneKey) || {};
         const conv = conversations.get(phoneKey);
         const windowOpen = win.last_inbound_at ? (Date.now() - new Date(win.last_inbound_at.replace(' ', 'T') + 'Z').getTime()) < 24 * 60 * 60 * 1000 : false;
         res.json({
             success: true,
-            name: conv?.customerName || ev.customer_name || win.phone || phoneKey,
+            name: conv?.customerName || ev.customer_name || win.profile_name || win.phone || phoneKey,
             phone: win.phone || ev.customer_phone || jidToPhone(conv?.remoteJid) || null,
             window_open: windowOpen,
             window_hours_left: windowOpen ? Math.round(Math.max(0, 24 - (Date.now() - new Date(win.last_inbound_at.replace(' ', 'T') + 'Z').getTime()) / 3600000) * 10) / 10 : 0,

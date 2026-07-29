@@ -347,6 +347,8 @@ function initDatabase() {
         // ⭐ 22/07: nome e telefone completo no evento (lista de números pra contato manual)
         "ALTER TABLE events ADD COLUMN customer_name TEXT",
         "ALTER TABLE events ADD COLUMN customer_phone TEXT",
+        // ⭐ 28/07: nome do perfil do WhatsApp (aparece no chat mesmo sem compra)
+        "ALTER TABLE wa_windows ADD COLUMN profile_name TEXT",
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch(e) { /* coluna já existe, ignora */ }

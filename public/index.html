@@ -2941,6 +2941,24 @@ async function waLoadTemplates(){
   if(sel) sel.innerHTML = '<option value="">— texto livre —</option>' + tps.filter(t=>t.status==='APPROVED').map(t=>`<option value="${t.name}|${t.language||'pt_BR'}">${t.name}</option>`).join('');
 }
 // ==================== CHAT (caixa de conversas do canal oficial) ====================
+function chatRenderContent(c){
+  c = String(c||'').trim();
+  const esc = s => s.replace(/</g,'&lt;');
+  const tok = encodeURIComponent(token);
+  const m = c.match(/^\[media:(audio|image|video|document|sticker):([\w.\-]+)\]\s*([\s\S]*)$/);
+  if(m){
+    const src2 = '/api/wa/media/'+m[2]+'?t='+tok;
+    const cap = m[3] ? `<div style="margin-top:4px">${esc(m[3])}</div>` : '';
+    if(m[1]==='audio') return `<audio controls src="${src2}" style="max-width:240px"></audio>`;
+    if(m[1]==='image'||m[1]==='sticker') return `<img src="${src2}" style="max-width:220px;border-radius:8px;display:block">`+cap;
+    if(m[1]==='video') return `<video controls src="${src2}" style="max-width:240px;border-radius:8px"></video>`+cap;
+    return `<a href="${src2}" target="_blank" style="color:#60a5fa">📄 Abrir documento</a>`;
+  }
+  if(/^https?:\/\/\S+\.(mp3|ogg|m4a|opus)(\?\S*)?$/i.test(c)) return `<audio controls src="${c}" style="max-width:240px"></audio>`;
+  if(/^https?:\/\/\S+\.(jpe?g|png|webp|gif)(\?\S*)?$/i.test(c)) return `<img src="${c}" style="max-width:220px;border-radius:8px;display:block">`;
+  if(/^https?:\/\/\S+\.(mp4|mov)(\?\S*)?$/i.test(c)) return `<video controls src="${c}" style="max-width:240px;border-radius:8px"></video>`;
+  return esc(c);
+}
 let chatCurrent = null;
 let chatTimer = null;
 async function loadChat(){
@@ -2954,7 +2972,7 @@ async function loadChat(){
     const winBadge = c.window_open ? `<span style="font-size:9px;color:#10b981;font-weight:700">janela ${c.window_hours_left}h</span>` : '<span style="font-size:9px;color:var(--text3)">janela fechada</span>';
     return `<div onclick="chatOpen('${c.phone_key}')" style="padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;${chatCurrent===c.phone_key?'background:rgba(16,185,129,.06)':''}">
       <div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</span><span style="font-size:10px;color:var(--text3);flex-shrink:0">${hm}</span></div>
-      <div style="font-size:11.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.last_direction==='out'?'Você: ':''}${c.last_content||''}</div>
+      <div style="font-size:11.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.last_direction==='out'?'Você: ':''}${String(c.last_content||'').replace(/\[media:(audio|image|video|document|sticker):[^\]]+\]/,'🎬 mídia')}</div>
       <div style="margin-top:2px">${winBadge}${c.funnel_type?` · <span style="font-size:9px;color:#60a5fa">funil ${c.funnel_type}</span>`:''}</div>
     </div>`;
   }).join('');
@@ -2979,7 +2997,7 @@ async function chatRefreshThread(scroll){
     const t = new Date(String(m.created_at).replace(' ','T')+'Z').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
     const out = m.direction==='out';
     return `<div style="align-self:${out?'flex-end':'flex-start'};max-width:70%;background:${out?'rgba(16,185,129,.14)':'var(--bg2)'};border:1px solid ${out?'rgba(16,185,129,.3)':'var(--border)'};border-radius:${out?'12px 12px 4px 12px':'12px 12px 12px 4px'};padding:8px 12px">
-      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${(m.content||'').replace(/</g,'&lt;')}</div>
+      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${chatRenderContent(m.content)}</div>
       <div style="font-size:9px;color:var(--text3);margin-top:3px;text-align:right">${t}</div>
     </div>`;
   }).join('') || '<div style="margin:auto;color:var(--text3);font-size:12px">Sem mensagens</div>';
