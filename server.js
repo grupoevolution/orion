@@ -2439,23 +2439,53 @@ app.get('/api/wa/media/:id', async (req, res) => {
     } catch(e) { res.status(500).end(); }
 });
 
+// ⭐ 29/07: testa um token AVULSO (não salva) — gere um novo na Meta e valide aqui antes do deploy.
+app.post('/api/wa/test-token', authMiddleware, async (req, res) => {
+    const tk = String(req.body?.token || '').trim();
+    if (!tk) return res.status(400).json({ success: false, error: 'Cole o token' });
+    const call = async (path) => {
+        try {
+            const r = await axios.get(`${GRAPH_BASE}/${path}`, { headers: { Authorization: `Bearer ${tk}` }, timeout: 20000 });
+            return { ok: true, data: r.data };
+        } catch(e) { return { ok: false, erro: e.response?.data || { message: e.message } }; }
+    };
+    const me = await call('me?fields=id,name');
+    const numero = WABA_PHONE_NUMBER_ID ? await call(`${WABA_PHONE_NUMBER_ID}?fields=display_phone_number,verified_name,status,quality_rating,health_status`) : null;
+    const conta = WABA_ID ? await call(`${WABA_ID}?fields=id,name,account_review_status,business_verification_status`) : null;
+    res.json({ success: true, token_prefixo: tk.substring(0, 12) + '…' + tk.slice(-6) + ` (${tk.length} caracteres)`, me, numero, conta });
+});
+
 // ⭐ 29/07: SAÚDE NA META — pergunta pra própria Meta por que não dá pra enviar.
 // health_status é o campo oficial que lista o que está bloqueando (verificação, review, pagamento...)
 app.get('/api/wa/health', authMiddleware, async (req, res) => {
     const out = { success: true, erros: [] };
     try {
         if (!isWabaConfigured()) return res.json({ success: false, error: 'WABA_TOKEN / WABA_PHONE_NUMBER_ID não configurados' });
+        const detalhe = (e) => {
+            const err = e.response?.data?.error;
+            if (!err) return e.message;
+            const p = [err.message];
+            if (err.type) p.push('tipo ' + err.type);
+            if (err.code != null) p.push('código ' + err.code);
+            if (err.error_subcode != null) p.push('subcódigo ' + err.error_subcode);
+            if (err.error_data?.details) p.push(err.error_data.details);
+            if (err.error_user_title) p.push(err.error_user_title);
+            if (err.error_user_msg) p.push(err.error_user_msg);
+            if (err.fbtrace_id) p.push('fbtrace ' + err.fbtrace_id);
+            return p.join(' · ');
+        };
         try {
             out.numero = await waRequest('get', `${WABA_PHONE_NUMBER_ID}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,name_status,status,platform_type,messaging_limit_tier,health_status`);
-        } catch(e) { out.erros.push('Número: ' + (e.response?.data?.error?.message || e.message)); }
+        } catch(e) { out.erros.push('Número: ' + detalhe(e)); out.erro_bruto_numero = e.response?.data || null; }
         if (WABA_ID) {
             try {
                 out.conta = await waRequest('get', `${WABA_ID}?fields=id,name,account_review_status,business_verification_status,country,currency,timezone_id,health_status`);
-            } catch(e) { out.erros.push('Conta (WABA): ' + (e.response?.data?.error?.message || e.message)); }
+            } catch(e) { out.erros.push('Conta (WABA): ' + detalhe(e)); out.erro_bruto_conta = e.response?.data || null; }
         }
         try {
             out.token = await waRequest('get', 'me?fields=id,name');
-        } catch(e) { out.erros.push('Token: ' + (e.response?.data?.error?.message || e.message)); }
+        } catch(e) { out.erros.push('Token: ' + detalhe(e)); out.erro_bruto_token = e.response?.data || null; }
+        out.token_prefixo = WABA_TOKEN ? (WABA_TOKEN.substring(0, 12) + '…' + WABA_TOKEN.slice(-6) + ` (${WABA_TOKEN.length} caracteres)`) : 'ausente';
         // Interpretação amigável
         const hs = out.numero?.health_status || out.conta?.health_status;
         const dicas = [];

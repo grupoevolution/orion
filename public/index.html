@@ -666,6 +666,10 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
             <button class="btn btn-g btn-sm" onclick="waDiagnose()">🔍 Diagnóstico do canal</button>
             <button class="btn btn-sm" style="background:#3b82f6;color:#fff;font-weight:700" onclick="waHealth()">🩺 Perguntar pra Meta o que está bloqueando</button>
           </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px;padding-top:12px;border-top:1px solid var(--border)">
+            <div class="fe-row" style="flex:1;min-width:280px;margin:0"><label class="fe-lbl">Testar um token novo (cole aqui — NÃO salva, só testa)</label><input class="fe-inp" id="tk-test" placeholder="EAA..." autocomplete="off"></div>
+            <button class="btn btn-sm" style="background:#8b5cf6;color:#fff;font-weight:700" onclick="waTestToken()">🔑 Testar token</button>
+          </div>
           <pre id="sim-out" style="display:none;background:#000;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;color:#cbd5e1;max-height:340px;overflow:auto;white-space:pre-wrap;font-family:var(--mono)"></pre>
         </div>
       </div>
@@ -3060,13 +3064,33 @@ async function waSimulate(){
   simOut((r.trace||[]).map(t=>'• '+t).join('\n') + (r.error?('\n\n❌ '+r.error):''));
   if(r.started) showToast('Funil disparado! Confira seu WhatsApp', 'success');
 }
+async function waTestToken(){
+  const tokenNovo = document.getElementById('tk-test').value.trim();
+  if(!tokenNovo){ showToast('Cole o token primeiro', 'error'); return; }
+  simOut('Testando o token na Meta...');
+  const d = await api('/api/wa/test-token', { method:'POST', body: JSON.stringify({ token: tokenNovo }) });
+  if(!d.success){ simOut('Erro: '+(d.error||'')); return; }
+  const L = ['=== TESTE DO TOKEN COLADO ===', 'Token: ' + d.token_prefixo, ''];
+  const bloco = (nome, r) => {
+    if(!r){ L.push(nome + ': (não testado — falta ID no ambiente)'); return; }
+    if(r.ok){ L.push('✅ ' + nome + ': OK → ' + JSON.stringify(r.data)); }
+    else L.push('❌ ' + nome + ': ' + JSON.stringify(r.erro?.error || r.erro));
+  };
+  bloco('Token (/me)', d.me);
+  bloco('Número', d.numero);
+  bloco('Conta (WABA)', d.conta);
+  L.push('');
+  L.push(d.me?.ok ? '➡️ Token VÁLIDO. Se aqui deu OK, cole ele no EasyPanel como WABA_TOKEN e faça deploy.' : '➡️ Token recusado — veja o motivo acima (se disser "API access blocked" também aqui, o bloqueio é do APP/conta, não do token).');
+  simOut(L.join('\n'));
+}
 async function waHealth(){
   simOut('Consultando a Meta...');
   const d = await api('/api/wa/health');
   if(!d.success){ simOut('Erro: '+(d.error||JSON.stringify(d))); return; }
   const L = ['=== O QUE A META RESPONDEU ==='];
   (d.resumo||[]).forEach(x=>L.push(x));
-  if(!(d.resumo||[]).length) L.push('(a Meta não retornou health_status — veja os dados brutos abaixo)');
+  if(!(d.resumo||[]).length) L.push('(a Meta não retornou health_status — veja os detalhes abaixo)');
+  if(d.token_prefixo) L.push('Token em uso: ' + d.token_prefixo);
   L.push('');
   if(d.token) L.push('TOKEN válido — usuário: ' + (d.token.name||d.token.id));
   if(d.numero){
@@ -3085,7 +3109,7 @@ async function waHealth(){
   (d.erros||[]).forEach(e=>L.push('❌ ' + e));
   L.push('');
   L.push('--- dados brutos ---');
-  L.push(JSON.stringify({numero:d.numero, conta:d.conta}, null, 2));
+  L.push(JSON.stringify({numero:d.numero, conta:d.conta, erro_token:d.erro_bruto_token, erro_numero:d.erro_bruto_numero, erro_conta:d.erro_bruto_conta}, null, 2));
   simOut(L.join('\n'));
 }
 async function waDiagnose(){
