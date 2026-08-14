@@ -2317,7 +2317,9 @@ async function loadInstances() {
     if (nEl) {
       const nums = r.numbers || [];
       nEl.innerHTML = nums.length ? nums.map(n => {
-        const q = MN_WA_QUALITY[(n.quality_rating||'UNKNOWN').toUpperCase()] || MN_WA_QUALITY.UNKNOWN;
+        const st = String(n.status||'').toUpperCase();
+        const banned = st && st !== 'CONNECTED';
+        const q = banned ? [('🚫 ' + (st === 'BANNED' ? 'Banido' : st) + ' — fora da rotação'), '#ef4444'] : (MN_WA_QUALITY[(n.quality_rating||'UNKNOWN').toUpperCase()] || MN_WA_QUALITY.UNKNOWN);
         return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
           <div style="width:9px;height:9px;border-radius:50%;background:${q[1]};box-shadow:0 0 6px ${q[1]};flex-shrink:0"></div>
           <div style="flex:1;min-width:0">

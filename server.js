@@ -2153,9 +2153,10 @@ async function waRequest(method, path, payload = null) {
 // (ex: { type:'text', text:{...} }). Retorna o wamid ou lança erro descritivo.
 async function waSendMessage(to, message, meta = {}) {
     if (!isWabaConfigured()) throw new Error('API oficial não configurada (WABA_TOKEN/WABA_PHONE_NUMBER_ID ausentes)');
-    const phoneNumberId = meta.phoneNumberId || WABA_PHONE_NUMBER_ID;
     const toPhone = String(to || '').replace(/\D/g, '');
     if (!toPhone) throw new Error('Destinatário inválido');
+    // ⭐ 13/08: rotação — sem phoneNumberId explícito, escolhe pelo rodízio/sticky do cliente
+    const phoneNumberId = meta.phoneNumberId || waPickSender(normalizePhoneKey(toPhone)) || WABA_PHONE_NUMBER_ID;
     const payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to: toPhone, ...message };
     try {
         const data = await waRequest('post', `${phoneNumberId}/messages`, payload);
@@ -2235,17 +2236,72 @@ function isWaWindowOpen(phoneKey) {
     } catch(e) { return false; }
 }
 
-// ===== Sincroniza os números da WABA (qualidade e limite vêm da Meta) =====
+// ===== Sincroniza os números da WABA (qualidade, limite e STATUS vêm da Meta) =====
+// ⭐ 13/08: agora traz também o campo `status` (CONNECTED, BANNED, RESTRICTED, FLAGGED...).
+// Antes um número BANIDO continuava aparecendo como "verde saudável" porque a Meta mantém a
+// quality_rating antiga mesmo depois do banimento — o status é quem conta a verdade.
 async function waSyncNumbers() {
     if (!WABA_TOKEN || !WABA_ID) throw new Error('WABA_TOKEN/WABA_ID ausentes');
-    const data = await waRequest('get', `${WABA_ID}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier`);
+    const data = await waRequest('get', `${WABA_ID}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,status`);
     const rows = data?.data || [];
-    const up = db.getDb().prepare(`INSERT INTO official_numbers (phone_number_id, display_number, verified_name, quality_rating, messaging_limit, updated_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
+    const dbh = db.getDb();
+    const up = dbh.prepare(`INSERT INTO official_numbers (phone_number_id, display_number, verified_name, quality_rating, messaging_limit, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(phone_number_id) DO UPDATE SET display_number = excluded.display_number, verified_name = excluded.verified_name,
-            quality_rating = excluded.quality_rating, messaging_limit = excluded.messaging_limit, updated_at = datetime('now')`);
-    for (const n of rows) up.run(n.id, n.display_phone_number || null, n.verified_name || null, n.quality_rating || null, n.messaging_limit_tier || null);
+            quality_rating = excluded.quality_rating, messaging_limit = excluded.messaging_limit, status = excluded.status, updated_at = datetime('now')`);
+    for (const n of rows) {
+        const prev = dbh.prepare('SELECT status FROM official_numbers WHERE phone_number_id = ?').get(n.id);
+        up.run(n.id, n.display_phone_number || null, n.verified_name || null, n.quality_rating || null, n.messaging_limit_tier || null, n.status || null);
+        const st = String(n.status || '').toUpperCase();
+        if (st && st !== 'CONNECTED' && prev?.status !== n.status) {
+            addLog('WA_NUMBER_STATUS', `🚫 Número ${n.display_phone_number || n.id} está ${st} na Meta — fora da rotação de envio`, {});
+            try { await sendPushNotification('Número oficial com problema', `${n.display_phone_number || n.id} está ${st} na Meta. Ele saiu da rotação de envio — confira o painel.`, 'info'); } catch(e) {}
+        }
+    }
     return rows;
+}
+
+// ⭐ 13/08: sync automático a cada 30 min — banimento/queda de qualidade aparece sozinho
+// no painel (e dispara push), sem depender de clicar em "Sincronizar com a Meta"
+setInterval(() => {
+    if (WABA_TOKEN && WABA_ID) waSyncNumbers().catch(() => {});
+}, 30 * 60 * 1000);
+
+// ===== ⭐ 13/08: ROTAÇÃO DE NÚMEROS =====
+// Regras: 1) cliente que já conversa com um número continua NELE (sticky — a resposta dele chega
+// naquele número); 2) lead NOVO entra em rodízio (round-robin) entre os números saudáveis
+// (active=1 e status CONNECTED); 3) número banido/restrito sai da rotação automaticamente.
+function waHealthyNumbers() {
+    try {
+        return db.getDb().prepare(`SELECT phone_number_id FROM official_numbers
+            WHERE active = 1 AND (status IS NULL OR UPPER(status) = 'CONNECTED') ORDER BY phone_number_id`).all();
+    } catch(e) { return []; }
+}
+function waBindSender(phoneKey, phoneNumberId) {
+    if (!phoneKey || !phoneNumberId) return;
+    try {
+        db.getDb().prepare(`INSERT INTO wa_sender_map (phone_key, phone_number_id, updated_at) VALUES (?, ?, datetime('now'))
+            ON CONFLICT(phone_key) DO UPDATE SET phone_number_id = excluded.phone_number_id, updated_at = datetime('now')`)
+        .run(phoneKey, phoneNumberId);
+    } catch(e) {}
+}
+function waPickSender(phoneKey) {
+    const healthy = waHealthyNumbers().map(r => r.phone_number_id);
+    if (!healthy.length) return WABA_PHONE_NUMBER_ID; // sem sync ainda — usa o padrão do ambiente
+    // Sticky: se o cliente já tem número atribuído e ele segue saudável, mantém
+    if (phoneKey) {
+        try {
+            const cur = db.getDb().prepare('SELECT phone_number_id FROM wa_sender_map WHERE phone_key = ?').get(phoneKey);
+            if (cur && healthy.includes(cur.phone_number_id)) return cur.phone_number_id;
+        } catch(e) {}
+    }
+    // Rodízio: próximo número da fila
+    let idx = parseInt(db.getSetting('WA_ROTATION_IDX') || '0');
+    if (isNaN(idx) || idx < 0) idx = 0;
+    const chosen = healthy[idx % healthy.length];
+    try { db.setSetting('WA_ROTATION_IDX', String((idx + 1) % healthy.length)); } catch(e) {}
+    if (phoneKey) waBindSender(phoneKey, chosen);
+    return chosen;
 }
 
 // ============ WEBHOOK DA META (mensagens recebidas + status + qualidade) ============
@@ -2291,6 +2347,8 @@ app.post('/webhook/meta', async (req, res) => {
                         const referral = msg.referral ? JSON.stringify(msg.referral) : null; // anúncio Click-to-WhatsApp
 
                         touchWaWindow(phoneKey, fromPhone, referral, contactName || null);
+                        // ⭐ 13/08: cliente respondeu NESTE número — gruda ele aqui (rotação sticky)
+                        try { waBindSender(phoneKey, value.metadata?.phone_number_id); } catch(e) {}
                         try {
                             db.getDb().prepare(`INSERT OR REPLACE INTO wa_messages (wamid, phone_number_id, phone_key, to_phone, direction, msg_type, status)
                                 VALUES (?, ?, ?, ?, 'in', ?, 'received')`)

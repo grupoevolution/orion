@@ -375,6 +375,7 @@ function initDatabase() {
             role TEXT DEFAULT 'transacional',
             quality_rating TEXT,
             messaging_limit TEXT,
+            status TEXT,
             active INTEGER DEFAULT 1,
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT
@@ -406,7 +407,18 @@ function initDatabase() {
             last_referral_json TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_wa_messages_phone ON wa_messages(phone_key, created_at);
+
+        -- ⭐ 13/08: rotação de números — cada cliente fica "grudado" no número que atendeu ele,
+        -- e leads novos são distribuídos em rodízio entre os números saudáveis
+        CREATE TABLE IF NOT EXISTS wa_sender_map (
+            phone_key TEXT PRIMARY KEY,
+            phone_number_id TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
     `);
+    // ⭐ 13/08: status real do número na Meta (CONNECTED, BANNED, RESTRICTED...) — antes só a
+    // qualidade era sincronizada e um número BANIDO continuava aparecendo como "verde saudável"
+    try { db.exec("ALTER TABLE official_numbers ADD COLUMN status TEXT"); } catch(e) { /* já existe */ }
 
     // Tabela de páginas PIX únicas por cliente
     db.exec(`
