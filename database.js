@@ -424,6 +424,16 @@ function initDatabase() {
     try { db.exec("ALTER TABLE official_numbers ADD COLUMN waba_id TEXT"); } catch(e) { /* já existe */ }
     try { db.exec("ALTER TABLE official_numbers ADD COLUMN token TEXT"); } catch(e) { /* já existe */ }
 
+    // ⭐ 14/08: FUNIS DESVINCULADOS DE PRODUTO — todos os funis passam a viver no "produto" GLOBAL
+    // (funil fixo por TIPO de evento: PIX, APROVADA, ABANDONO...). Roda uma vez só.
+    try {
+        const jaMigrou = db.prepare("SELECT value FROM system_settings WHERE key = 'FUNNELS_GLOBAL_MIGRATED'").get();
+        if (!jaMigrou) {
+            db.prepare("UPDATE funnels SET product_id = 'GLOBAL'").run();
+            db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('FUNNELS_GLOBAL_MIGRATED', '1', datetime('now'))").run();
+        }
+    } catch(e) { /* nunca deve travar o boot */ }
+
     // Tabela de páginas PIX únicas por cliente
     db.exec(`
         -- ⭐ FIX 11/05: Log de disparos de START_TRIGGER (palavra-chave do anúncio → WhatsApp)

@@ -367,10 +367,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M5 3l14 9-14 9V3z"/></svg>
         <span>Gatilhos de Início</span>
       </button>
-      <button class="nav-item" onclick="showPage('products',this)">
-        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-width="2" d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
-        <span>Produtos</span>
-      </button>
+      <!-- ⭐ 14/08: aba Produtos removida — funis agora são fixos por TIPO de evento, sem produto -->
       <button class="nav-item" onclick="showPage('instances',this)">
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="10" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="17" width="20" height="4" rx="1" stroke-width="2"/></svg>
         <span>Canal Oficial</span>
@@ -1512,11 +1509,7 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
       <input class="fe-inp" id="cf-name" placeholder="Atendimento Gabriela - Direto">
     </div>
     <div class="fe-row">
-      <label class="fe-lbl">Produto / Categoria</label>
-      <select class="fe-sel" id="cf-product"></select>
-    </div>
-    <div class="fe-row">
-      <label class="fe-lbl">Tipo do Funil</label>
+      <label class="fe-lbl">Tipo do Funil (é o TIPO que decide quando ele dispara — vale pra qualquer produto)</label>
       <select class="fe-sel" id="cf-type">
         <option value="DIRETO">DIRETO (Atendimento sem pagamento)</option>
         <option value="PIX">PIX (Pagamento pendente)</option>
@@ -2085,10 +2078,7 @@ async function deleteFunnelFromModal(){
 }
 
 async function openCreateFunnelModal(){
-  const prodSel = document.getElementById('cf-product');
-  const products = (await api('/api/products')).data || [];
-  if(!products.length){ showToast('Crie um produto primeiro','error'); return; }
-  prodSel.innerHTML = products.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.id)})</option>`).join('');
+  // ⭐ 14/08: funil não pertence mais a produto — tudo vai pro GLOBAL (fixo por tipo)
   document.getElementById('cf-id').value = '';
   document.getElementById('cf-name').value = '';
   document.getElementById('cf-type').value = 'DIRETO';
@@ -2098,9 +2088,9 @@ async function openCreateFunnelModal(){
 async function saveCreateFunnel(){
   const id = document.getElementById('cf-id').value.trim().toUpperCase().replace(/\s+/g,'_').replace(/[^A-Z0-9_]/g,'');
   const name = document.getElementById('cf-name').value.trim();
-  const product_id = document.getElementById('cf-product').value;
+  const product_id = 'GLOBAL'; // ⭐ 14/08: funil fixo por tipo — sem vínculo com produto
   const type = document.getElementById('cf-type').value;
-  if(!id || !name || !product_id){ showToast('Preencha todos os campos','error'); return; }
+  if(!id || !name){ showToast('Preencha todos os campos','error'); return; }
   const r = await api('/api/funnels/create', { method: 'POST', body: JSON.stringify({ id, name, product_id, type }) });
   if(r.success){
     showToast(`Funil "${name}" criado!`,'success');
@@ -2951,7 +2941,7 @@ async function loadInstances(){
     <div class="mc mc-purple"><div class="mc-lbl">Números na conta</div><div class="mc-val" style="font-size:16px">${(r.numbers||[]).length}</div><div class="mc-sub">sincronizados da Meta</div></div>`;
   const nEl = document.getElementById('wa-numbers');
   if(!(r.numbers||[]).length){
-    nEl.innerHTML = '<div style="color:var(--text3);font-size:12px">Nenhum número sincronizado ainda — clica em "Sincronizar com a Meta" (precisa de WABA_TOKEN e WABA_ID no ambiente)</div>';
+    nEl.innerHTML = '<div style="color:var(--text3);font-size:12px">Nenhum número cadastrado ainda — clica em "＋ Adicionar número" e cola o Phone Number ID, o WABA ID e o token (pega os 3 no WhatsApp Manager da Meta)</div>';
   } else {
     nEl.innerHTML = r.numbers.map(n=>{
       const st = String(n.status||'').toUpperCase();

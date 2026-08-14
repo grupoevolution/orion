@@ -45,39 +45,40 @@ const pushSubscriptions = new Map();
 
 // ============ CONFIGURAÇÕES ============
 // ⭐ 22/07: WHATSAPP CLOUD API OFICIAL (Meta) — canal novo pós-Evolution.
-// WABA_TOKEN: token permanente do system user (whatsapp_business_messaging + management)
-// WABA_ID: ID da conta WhatsApp Business (pra listar números e templates)
-// WABA_PHONE_NUMBER_ID: ID do número padrão de envio (não é o telefone — é o ID que a Meta gera)
+// ⭐ 14/08: as variáveis WABA_TOKEN / WABA_ID / WABA_PHONE_NUMBER_ID do ambiente foram
+// DESATIVADAS de vez — número, WABA e token agora vivem SÓ no painel (tabela official_numbers).
 // META_WEBHOOK_VERIFY_TOKEN: string secreta que você define e repete na tela de webhook da Meta
-const WABA_TOKEN = process.env.WABA_TOKEN || '';
-const WABA_ID = process.env.WABA_ID || '';
-const WABA_PHONE_NUMBER_ID = process.env.WABA_PHONE_NUMBER_ID || '';
+const WABA_TOKEN = '';           // legado — ambiente ignorado
+const WABA_ID = '';              // legado — ambiente ignorado
+const WABA_PHONE_NUMBER_ID = ''; // legado — ambiente ignorado
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 const META_WEBHOOK_VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || '';
 // META_GRAPH_BASE_URL: só pra testes locais (aponta pro mock) — em produção fica vazio
 const GRAPH_BASE = process.env.META_GRAPH_BASE_URL || `https://graph.facebook.com/${META_GRAPH_VERSION}`;
-// ⭐ 14/08: configurado = chaves no ambiente OU pelo menos 1 número cadastrado no painel com token
+// Configurado = pelo menos 1 número cadastrado no painel com token
 function isWabaConfigured() {
-    if (WABA_TOKEN && WABA_PHONE_NUMBER_ID) return true;
     try { return !!db.getDb().prepare("SELECT 1 FROM official_numbers WHERE token IS NOT NULL AND token != '' LIMIT 1").get(); } catch(e) { return false; }
 }
-// Token certo pra falar com a Meta em nome de um número (painel primeiro, ambiente como fallback)
+// Token do número (cada número do painel tem o seu)
 function waTokenFor(phoneNumberId) {
     try {
         const row = db.getDb().prepare('SELECT token FROM official_numbers WHERE phone_number_id = ?').get(String(phoneNumberId || ''));
         if (row?.token) return row.token;
     } catch(e) {}
-    return WABA_TOKEN;
+    return '';
 }
-// Todas as contas (WABA + token) conhecidas: as dos números do painel + a do ambiente
+// Todas as contas (WABA + token) conhecidas — vindas dos números do painel
 function waAccounts() {
     const map = new Map();
     try {
         db.getDb().prepare("SELECT DISTINCT waba_id, token FROM official_numbers WHERE waba_id IS NOT NULL AND waba_id != '' AND token IS NOT NULL AND token != ''").all()
             .forEach(r => map.set(r.waba_id, r.token));
     } catch(e) {}
-    if (WABA_ID && WABA_TOKEN && !map.has(WABA_ID)) map.set(WABA_ID, WABA_TOKEN);
     return [...map.entries()].map(([waba_id, token]) => ({ waba_id, token }));
+}
+// Primeiro número ativo do painel (pra diagnóstico/health quando nenhum é especificado)
+function waFirstNumber() {
+    try { return db.getDb().prepare("SELECT * FROM official_numbers WHERE token IS NOT NULL AND token != '' ORDER BY active DESC, created_at LIMIT 1").get() || null; } catch(e) { return null; }
 }
 // ⭐ FIX 04/05: parseInt("7m") = NaN → setTimeout(fn, NaN) dispara em 0ms (sem espera dos 7min).
 // ⭐ FIX 11/05: editável no admin via settings.PIX_TIMEOUT_MS. Fallback mantido em 7min pra
@@ -1293,7 +1294,7 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
     if (!isWabaConfigured()) {
         if (Date.now() - _wabaNotConfiguredAlertAt > 10 * 60 * 1000) {
             _wabaNotConfiguredAlertAt = Date.now();
-            try { await sendPushNotification('Envios parados — API oficial', 'WABA_TOKEN / WABA_PHONE_NUMBER_ID não configurados no EasyPanel. Nenhuma mensagem sai até configurar.', 'info'); } catch(e) {}
+            try { await sendPushNotification('Envios parados — API oficial', 'Nenhum número cadastrado no painel. Cadastre em Canal Oficial → ＋ Adicionar número. Nenhuma mensagem sai até lá.', 'info'); } catch(e) {}
         }
         addLog('WA_NOT_CONFIGURED', `⚠️ API oficial não configurada — passo não enviado`, { phoneKey });
         return { success: false, error: 'WABA_NOT_CONFIGURED' };
@@ -2174,11 +2175,12 @@ async function waRequest(method, path, payload = null, token = null) {
 // Envia uma mensagem pelo número oficial. `message` é o objeto no formato da Meta
 // (ex: { type:'text', text:{...} }). Retorna o wamid ou lança erro descritivo.
 async function waSendMessage(to, message, meta = {}) {
-    if (!isWabaConfigured()) throw new Error('API oficial não configurada (cadastre um número no painel ou WABA_TOKEN/WABA_PHONE_NUMBER_ID no ambiente)');
+    if (!isWabaConfigured()) throw new Error('API oficial não configurada — cadastre um número no painel (Canal Oficial → ＋ Adicionar número)');
     const toPhone = String(to || '').replace(/\D/g, '');
     if (!toPhone) throw new Error('Destinatário inválido');
     // ⭐ 13/08: rotação — sem phoneNumberId explícito, escolhe pelo rodízio/sticky do cliente
-    const phoneNumberId = meta.phoneNumberId || waPickSender(normalizePhoneKey(toPhone)) || WABA_PHONE_NUMBER_ID;
+    const phoneNumberId = meta.phoneNumberId || waPickSender(normalizePhoneKey(toPhone));
+    if (!phoneNumberId) throw new Error('Nenhum número saudável na rotação — todos banidos/desativados. Cadastre ou reative um número no painel.');
     const payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to: toPhone, ...message };
     try {
         const data = await waRequest('post', `${phoneNumberId}/messages`, payload, waTokenFor(phoneNumberId));
@@ -2322,10 +2324,9 @@ setInterval(() => {
 // (active=1 e status CONNECTED); 3) número banido/restrito sai da rotação automaticamente.
 function waHealthyNumbers() {
     try {
-        // Sem token próprio o número só entra se existir token no ambiente (fallback legado)
-        const tokenOk = WABA_TOKEN ? '1=1' : "(token IS NOT NULL AND token != '')";
         return db.getDb().prepare(`SELECT phone_number_id FROM official_numbers
-            WHERE active = 1 AND (status IS NULL OR UPPER(status) = 'CONNECTED') AND ${tokenOk} ORDER BY phone_number_id`).all();
+            WHERE active = 1 AND (status IS NULL OR UPPER(status) = 'CONNECTED')
+            AND token IS NOT NULL AND token != '' ORDER BY phone_number_id`).all();
     } catch(e) { return []; }
 }
 function waBindSender(phoneKey, phoneNumberId) {
@@ -2338,7 +2339,7 @@ function waBindSender(phoneKey, phoneNumberId) {
 }
 function waPickSender(phoneKey) {
     const healthy = waHealthyNumbers().map(r => r.phone_number_id);
-    if (!healthy.length) return WABA_PHONE_NUMBER_ID; // sem sync ainda — usa o padrão do ambiente
+    if (!healthy.length) return null; // nenhum número utilizável no painel
     // Sticky: se o cliente já tem número atribuído e ele segue saudável, mantém
     if (phoneKey) {
         try {
@@ -2512,9 +2513,9 @@ app.get('/api/wa/status', authMiddleware, async (req, res) => {
         res.json({
             success: true,
             configured: isWabaConfigured(),
-            has_waba_id: !!WABA_ID,
+            has_waba_id: waAccounts().length > 0,
             has_verify_token: !!META_WEBHOOK_VERIFY_TOKEN,
-            default_phone_number_id: WABA_PHONE_NUMBER_ID || null,
+            accounts: waAccounts().length,
             graph_version: META_GRAPH_VERSION,
             numbers
         });
@@ -2640,7 +2641,12 @@ app.post('/api/wa/test-token', authMiddleware, async (req, res) => {
 app.get('/api/wa/health', authMiddleware, async (req, res) => {
     const out = { success: true, erros: [] };
     try {
-        if (!isWabaConfigured()) return res.json({ success: false, error: 'WABA_TOKEN / WABA_PHONE_NUMBER_ID não configurados' });
+        // ⭐ 14/08: usa o número do painel (?id=<phone_number_id> pra escolher um específico)
+        const alvo = req.query.id
+            ? db.getDb().prepare('SELECT * FROM official_numbers WHERE phone_number_id = ?').get(String(req.query.id))
+            : waFirstNumber();
+        if (!alvo || !alvo.token) return res.json({ success: false, error: 'Nenhum número cadastrado no painel — use "＋ Adicionar número" na aba Canal Oficial' });
+        const HEALTH_PNID = alvo.phone_number_id, HEALTH_WABA = alvo.waba_id, HEALTH_TOKEN = alvo.token;
         const detalhe = (e) => {
             const err = e.response?.data?.error;
             if (!err) return e.message;
@@ -2655,17 +2661,17 @@ app.get('/api/wa/health', authMiddleware, async (req, res) => {
             return p.join(' · ');
         };
         try {
-            out.numero = await waRequest('get', `${WABA_PHONE_NUMBER_ID}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,name_status,status,platform_type,messaging_limit_tier,health_status`);
+            out.numero = await waRequest('get', `${HEALTH_PNID}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,name_status,status,platform_type,messaging_limit_tier,health_status`, null, HEALTH_TOKEN);
         } catch(e) { out.erros.push('Número: ' + detalhe(e)); out.erro_bruto_numero = e.response?.data || null; }
-        if (WABA_ID) {
+        if (HEALTH_WABA) {
             try {
-                out.conta = await waRequest('get', `${WABA_ID}?fields=id,name,account_review_status,business_verification_status,country,currency,timezone_id,health_status`);
+                out.conta = await waRequest('get', `${HEALTH_WABA}?fields=id,name,account_review_status,business_verification_status,country,currency,timezone_id,health_status`, null, HEALTH_TOKEN);
             } catch(e) { out.erros.push('Conta (WABA): ' + detalhe(e)); out.erro_bruto_conta = e.response?.data || null; }
         }
         try {
-            out.token = await waRequest('get', 'me?fields=id,name');
+            out.token = await waRequest('get', 'me?fields=id,name', null, HEALTH_TOKEN);
         } catch(e) { out.erros.push('Token: ' + detalhe(e)); out.erro_bruto_token = e.response?.data || null; }
-        out.token_prefixo = WABA_TOKEN ? (WABA_TOKEN.substring(0, 12) + '…' + WABA_TOKEN.slice(-6) + ` (${WABA_TOKEN.length} caracteres)`) : 'ausente';
+        out.token_prefixo = HEALTH_TOKEN.substring(0, 12) + '…' + HEALTH_TOKEN.slice(-6) + ` (${HEALTH_TOKEN.length} caracteres)`;
         // Interpretação amigável
         const hs = out.numero?.health_status || out.conta?.health_status;
         const dicas = [];
@@ -2710,7 +2716,7 @@ app.get('/api/wa/diagnose', authMiddleware, (req, res) => {
             .map(l => ({ type: l.type, message: String(l.message).substring(0, 160), at: l.timestamp || l.time }));
         res.json({
             success: true,
-            canal: { configurado: isWabaConfigured(), waba_id: !!WABA_ID, verify_token: !!META_WEBHOOK_VERIFY_TOKEN },
+            canal: { configurado: isWabaConfigured(), contas: waAccounts().length, verify_token: !!META_WEBHOOK_VERIFY_TOKEN },
             envio_automatico: isAutoSendEnabled(),
             ultima_mensagem_recebida: lastIn || null,
             ultima_mensagem_enviada: lastOut || null,
@@ -2927,8 +2933,12 @@ app.post('/api/wa/register', authMiddleware, async (req, res) => {
     try {
         const pin = String(req.body?.pin || '').replace(/\D/g, '');
         if (pin.length !== 6) return res.status(400).json({ success: false, error: 'PIN precisa ter exatamente 6 dígitos' });
-        if (!isWabaConfigured()) return res.status(400).json({ success: false, error: 'WABA_TOKEN / WABA_PHONE_NUMBER_ID não configurados' });
-        const data = await waRequest('post', `${WABA_PHONE_NUMBER_ID}/register`, { messaging_product: 'whatsapp', pin });
+        // ⭐ 14/08: registra o número do painel (body.phone_number_id escolhe qual; senão o primeiro)
+        const alvo = req.body?.phone_number_id
+            ? db.getDb().prepare('SELECT * FROM official_numbers WHERE phone_number_id = ?').get(String(req.body.phone_number_id))
+            : waFirstNumber();
+        if (!alvo || !alvo.token) return res.status(400).json({ success: false, error: 'Nenhum número cadastrado no painel' });
+        const data = await waRequest('post', `${alvo.phone_number_id}/register`, { messaging_product: 'whatsapp', pin }, alvo.token);
         addLog('WA_REGISTER', `✅ Número oficial REGISTRADO na API (PIN definido)`);
         try { await waSyncNumbers(); } catch(e) {}
         res.json({ success: true, data });
@@ -2993,11 +3003,11 @@ app.post('/webhook/kirvano', async (req, res) => {
         // Lista completa de produtos pra resumo do pedido na página PIX (principal primeiro)
         const productsForSummary = extractProductsForSummary(data.products);
         const mainProduct = (data.products || []).find(p => !p.is_order_bump) || null;
-        const mainOfferId = mainProduct?.offer_id;
-        const productDb = mainOfferId ? db.getProductByOfferId(mainOfferId) : null;
-        const productId = productDb?.id || 'GRUPO_VIP';
-        // ⭐ 22/07: produto não cadastrado usa o NOME REAL vindo do webhook (antes tudo virava "GRUPO VIP")
-        const productName = productDb?.name || mainProduct?.name || 'GRUPO VIP';
+        // ⭐ 14/08: PRODUTO DESVINCULADO — não existe mais cadastro de produto. Todo evento cai
+        // nos funis fixos por tipo (GLOBAL_PIX, GLOBAL_APROVADA, GLOBAL_ABANDONO...). O nome
+        // REAL do produto vem do webhook e entra na mensagem via {PRODUTO}.
+        const productId = 'GLOBAL';
+        const productName = mapProductName(mainProduct?.name || 'seu produto');
 
         // VALOR BRUTO: o que o cliente pagou (fiscal.total_value é o mais confiável)
         const amount = parseFloat(data.fiscal?.total_value) ||
@@ -3242,9 +3252,9 @@ app.post('/webhook/perfectpay', async (req, res) => {
         // ⭐ FIX 10/05: lista de produtos pra resumo da página PIX (extractProductsForSummary aceita formato Kirvano-like)
         const ppProducts = Array.isArray(data.products) ? data.products : (data.plan?.name ? [{ name: data.plan.name, price: String(saleAmount), is_order_bump: false }] : []);
         const ppProductsForSummary = extractProductsForSummary(ppProducts);
-        const productDb = data.plan?.code ? db.getProductByOfferId(data.plan.code) : null;
-        const productId = productDb?.id || 'GRUPO_VIP';
-        const productName = productDb?.name || data.plan?.name || 'GRUPO VIP';
+        // ⭐ 14/08: produto desvinculado — funil fixo por tipo (mesma regra do webhook Kirvano)
+        const productId = 'GLOBAL';
+        const productName = mapProductName(data.plan?.name || 'seu produto');
         const orderCode = data.code || data.sale_id || `PP_${Date.now()}`;
         // UTMs — PerfectPay tem várias variações
         const utmSource = data.utm_source || data.marketing_utm_source || data.tracking?.utm_source || null;
@@ -5041,7 +5051,7 @@ app.listen(PORT, async () => {
     console.log(`🌌 ORION v${APP_VERSION} — Automação WhatsApp (Cloud API oficial da Meta)`);
     console.log('='.repeat(60));
     console.log(`✅ Porta: ${PORT}`);
-    console.log(`${isWabaConfigured() ? '✅' : '⚠️ '} API oficial: ${isWabaConfigured() ? 'configurada (número ' + WABA_PHONE_NUMBER_ID + ')' : 'AGUARDANDO WABA_TOKEN / WABA_PHONE_NUMBER_ID no ambiente'}`);
+    console.log(`${isWabaConfigured() ? '✅' : '⚠️ '} API oficial: ${isWabaConfigured() ? 'configurada (números gerenciados pelo painel)' : 'AGUARDANDO cadastro de número no painel (Canal Oficial → ＋ Adicionar número)'}`);
     console.log(`${META_WEBHOOK_VERIFY_TOKEN ? '✅' : '⚠️ '} Webhook da Meta: ${META_WEBHOOK_VERIFY_TOKEN ? 'token de verificação definido' : 'defina META_WEBHOOK_VERIFY_TOKEN'}`);
     if (process.env.APP_URL) console.log(`✅ PIX pages ativas → ${process.env.APP_URL}/pix/:token`);
     if (PIX_DOMAIN) console.log(`✅ Isolamento de domínio PIX → ${PIX_DOMAIN}`);
@@ -5049,8 +5059,8 @@ app.listen(PORT, async () => {
     console.log('='.repeat(60));
     restorePendingConversations();
     restorePendingPixTimeouts();
-    // Sincroniza números oficiais da WABA (qualidade/limite) no boot, se configurado
-    if (WABA_TOKEN && WABA_ID) {
+    // Sincroniza números oficiais (qualidade/limite/status) no boot, se houver conta no painel
+    if (waAccounts().length) {
         waSyncNumbers().then(rows => console.log(`📱 ${rows.length} número(s) oficial(is) sincronizado(s) da Meta`)).catch(e => console.log('Sync números oficiais:', e.message));
     }
 });
