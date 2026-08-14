@@ -419,6 +419,10 @@ function initDatabase() {
     // ⭐ 13/08: status real do número na Meta (CONNECTED, BANNED, RESTRICTED...) — antes só a
     // qualidade era sincronizada e um número BANIDO continuava aparecendo como "verde saudável"
     try { db.exec("ALTER TABLE official_numbers ADD COLUMN status TEXT"); } catch(e) { /* já existe */ }
+    // ⭐ 14/08: números gerenciados PELO PAINEL — cada número guarda seu próprio WABA ID e token,
+    // permitindo números de BMs diferentes na mesma rotação (o ambiente vira só fallback)
+    try { db.exec("ALTER TABLE official_numbers ADD COLUMN waba_id TEXT"); } catch(e) { /* já existe */ }
+    try { db.exec("ALTER TABLE official_numbers ADD COLUMN token TEXT"); } catch(e) { /* já existe */ }
 
     // Tabela de páginas PIX únicas por cliente
     db.exec(`

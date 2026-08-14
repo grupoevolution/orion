@@ -56,7 +56,29 @@ const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 const META_WEBHOOK_VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || '';
 // META_GRAPH_BASE_URL: só pra testes locais (aponta pro mock) — em produção fica vazio
 const GRAPH_BASE = process.env.META_GRAPH_BASE_URL || `https://graph.facebook.com/${META_GRAPH_VERSION}`;
-function isWabaConfigured() { return !!(WABA_TOKEN && WABA_PHONE_NUMBER_ID); }
+// ⭐ 14/08: configurado = chaves no ambiente OU pelo menos 1 número cadastrado no painel com token
+function isWabaConfigured() {
+    if (WABA_TOKEN && WABA_PHONE_NUMBER_ID) return true;
+    try { return !!db.getDb().prepare("SELECT 1 FROM official_numbers WHERE token IS NOT NULL AND token != '' LIMIT 1").get(); } catch(e) { return false; }
+}
+// Token certo pra falar com a Meta em nome de um número (painel primeiro, ambiente como fallback)
+function waTokenFor(phoneNumberId) {
+    try {
+        const row = db.getDb().prepare('SELECT token FROM official_numbers WHERE phone_number_id = ?').get(String(phoneNumberId || ''));
+        if (row?.token) return row.token;
+    } catch(e) {}
+    return WABA_TOKEN;
+}
+// Todas as contas (WABA + token) conhecidas: as dos números do painel + a do ambiente
+function waAccounts() {
+    const map = new Map();
+    try {
+        db.getDb().prepare("SELECT DISTINCT waba_id, token FROM official_numbers WHERE waba_id IS NOT NULL AND waba_id != '' AND token IS NOT NULL AND token != ''").all()
+            .forEach(r => map.set(r.waba_id, r.token));
+    } catch(e) {}
+    if (WABA_ID && WABA_TOKEN && !map.has(WABA_ID)) map.set(WABA_ID, WABA_TOKEN);
+    return [...map.entries()].map(([waba_id, token]) => ({ waba_id, token }));
+}
 // ⭐ FIX 04/05: parseInt("7m") = NaN → setTimeout(fn, NaN) dispara em 0ms (sem espera dos 7min).
 // ⭐ FIX 11/05: editável no admin via settings.PIX_TIMEOUT_MS. Fallback mantido em 7min pra
 //              retrocompat (NÃO mudar comportamento sem o Iago trocar no admin manualmente).
@@ -2141,9 +2163,9 @@ app.get('/api/events-public', (req, res) => {
 // Toda mensagem enviada fica em wa_messages (status atualizado pelos webhooks da Meta:
 // sent → delivered → read; failed com o erro; pricing diz se foi cobrada e a categoria).
 
-async function waRequest(method, path, payload = null) {
+async function waRequest(method, path, payload = null, token = null) {
     const url = `${GRAPH_BASE}/${path}`;
-    const config = { method, url, headers: { Authorization: `Bearer ${WABA_TOKEN}` }, timeout: 30000 };
+    const config = { method, url, headers: { Authorization: `Bearer ${token || WABA_TOKEN}` }, timeout: 30000 };
     if (payload) { config.data = payload; config.headers['Content-Type'] = 'application/json'; }
     const resp = await axios(config);
     return resp.data;
@@ -2152,14 +2174,14 @@ async function waRequest(method, path, payload = null) {
 // Envia uma mensagem pelo número oficial. `message` é o objeto no formato da Meta
 // (ex: { type:'text', text:{...} }). Retorna o wamid ou lança erro descritivo.
 async function waSendMessage(to, message, meta = {}) {
-    if (!isWabaConfigured()) throw new Error('API oficial não configurada (WABA_TOKEN/WABA_PHONE_NUMBER_ID ausentes)');
+    if (!isWabaConfigured()) throw new Error('API oficial não configurada (cadastre um número no painel ou WABA_TOKEN/WABA_PHONE_NUMBER_ID no ambiente)');
     const toPhone = String(to || '').replace(/\D/g, '');
     if (!toPhone) throw new Error('Destinatário inválido');
     // ⭐ 13/08: rotação — sem phoneNumberId explícito, escolhe pelo rodízio/sticky do cliente
     const phoneNumberId = meta.phoneNumberId || waPickSender(normalizePhoneKey(toPhone)) || WABA_PHONE_NUMBER_ID;
     const payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to: toPhone, ...message };
     try {
-        const data = await waRequest('post', `${phoneNumberId}/messages`, payload);
+        const data = await waRequest('post', `${phoneNumberId}/messages`, payload, waTokenFor(phoneNumberId));
         const wamid = data?.messages?.[0]?.id || null;
         if (wamid) {
             try {
@@ -2240,31 +2262,58 @@ function isWaWindowOpen(phoneKey) {
 // ⭐ 13/08: agora traz também o campo `status` (CONNECTED, BANNED, RESTRICTED, FLAGGED...).
 // Antes um número BANIDO continuava aparecendo como "verde saudável" porque a Meta mantém a
 // quality_rating antiga mesmo depois do banimento — o status é quem conta a verdade.
+// ⭐ 14/08: sincroniza TODAS as contas (cada número do painel pode ser de uma BM diferente).
+// Conta que dá erro na Meta (ex: WABA desativada por política) marca os números dela como
+// CONTA_DESATIVADA — antes o erro passava batido e o número seguia "verde saudável".
 async function waSyncNumbers() {
-    if (!WABA_TOKEN || !WABA_ID) throw new Error('WABA_TOKEN/WABA_ID ausentes');
-    const data = await waRequest('get', `${WABA_ID}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,status`);
-    const rows = data?.data || [];
+    const accounts = waAccounts();
+    if (!accounts.length) throw new Error('Nenhuma conta configurada — cadastre um número no painel (com WABA ID e token)');
     const dbh = db.getDb();
-    const up = dbh.prepare(`INSERT INTO official_numbers (phone_number_id, display_number, verified_name, quality_rating, messaging_limit, status, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    const up = dbh.prepare(`INSERT INTO official_numbers (phone_number_id, display_number, verified_name, quality_rating, messaging_limit, status, waba_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(phone_number_id) DO UPDATE SET display_number = excluded.display_number, verified_name = excluded.verified_name,
-            quality_rating = excluded.quality_rating, messaging_limit = excluded.messaging_limit, status = excluded.status, updated_at = datetime('now')`);
-    for (const n of rows) {
-        const prev = dbh.prepare('SELECT status FROM official_numbers WHERE phone_number_id = ?').get(n.id);
-        up.run(n.id, n.display_phone_number || null, n.verified_name || null, n.quality_rating || null, n.messaging_limit_tier || null, n.status || null);
-        const st = String(n.status || '').toUpperCase();
-        if (st && st !== 'CONNECTED' && prev?.status !== n.status) {
-            addLog('WA_NUMBER_STATUS', `🚫 Número ${n.display_phone_number || n.id} está ${st} na Meta — fora da rotação de envio`, {});
-            try { await sendPushNotification('Número oficial com problema', `${n.display_phone_number || n.id} está ${st} na Meta. Ele saiu da rotação de envio — confira o painel.`, 'info'); } catch(e) {}
+            quality_rating = excluded.quality_rating, messaging_limit = excluded.messaging_limit, status = excluded.status,
+            waba_id = COALESCE(official_numbers.waba_id, excluded.waba_id), updated_at = datetime('now')`);
+    const all = [];
+    const errors = [];
+    for (const acc of accounts) {
+        let rows = [];
+        try {
+            // Checa a saúde da CONTA primeiro — WABA desativada derruba todos os números dela
+            let contaRuim = null;
+            try {
+                const conta = await waRequest('get', `${acc.waba_id}?fields=id,account_review_status`, null, acc.token);
+                const rev = String(conta?.account_review_status || '').toUpperCase();
+                if (rev && !['APPROVED', 'PENDING'].includes(rev)) contaRuim = rev;
+            } catch(e) { /* campo pode não existir em todas as contas — segue */ }
+            const data = await waRequest('get', `${acc.waba_id}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,status`, null, acc.token);
+            rows = data?.data || [];
+            for (const n of rows) {
+                const statusFinal = contaRuim ? ('CONTA_' + contaRuim) : (n.status || null);
+                const prev = dbh.prepare('SELECT status FROM official_numbers WHERE phone_number_id = ?').get(n.id);
+                up.run(n.id, n.display_phone_number || null, n.verified_name || null, n.quality_rating || null, n.messaging_limit_tier || null, statusFinal, acc.waba_id);
+                const st = String(statusFinal || '').toUpperCase();
+                if (st && st !== 'CONNECTED' && prev?.status !== statusFinal) {
+                    addLog('WA_NUMBER_STATUS', `🚫 Número ${n.display_phone_number || n.id} está ${st} na Meta — fora da rotação de envio`, {});
+                    try { await sendPushNotification('Número oficial com problema', `${n.display_phone_number || n.id} está ${st} na Meta. Ele saiu da rotação de envio — confira o painel.`, 'info'); } catch(e) {}
+                }
+            }
+            all.push(...rows);
+        } catch(e) {
+            const msg = e.response?.data?.error?.message || e.message;
+            errors.push(`WABA ${acc.waba_id}: ${msg}`);
+            addLog('WA_SYNC_ERR', `⚠️ Sync falhou na WABA ${acc.waba_id}: ${msg}`);
+            try { dbh.prepare("UPDATE official_numbers SET status = 'ERRO_NA_CONTA', updated_at = datetime('now') WHERE waba_id = ?").run(acc.waba_id); } catch(e2) {}
         }
     }
-    return rows;
+    if (!all.length && errors.length) throw new Error(errors.join(' · '));
+    return all;
 }
 
 // ⭐ 13/08: sync automático a cada 30 min — banimento/queda de qualidade aparece sozinho
 // no painel (e dispara push), sem depender de clicar em "Sincronizar com a Meta"
 setInterval(() => {
-    if (WABA_TOKEN && WABA_ID) waSyncNumbers().catch(() => {});
+    if (waAccounts().length) waSyncNumbers().catch(() => {});
 }, 30 * 60 * 1000);
 
 // ===== ⭐ 13/08: ROTAÇÃO DE NÚMEROS =====
@@ -2273,8 +2322,10 @@ setInterval(() => {
 // (active=1 e status CONNECTED); 3) número banido/restrito sai da rotação automaticamente.
 function waHealthyNumbers() {
     try {
+        // Sem token próprio o número só entra se existir token no ambiente (fallback legado)
+        const tokenOk = WABA_TOKEN ? '1=1' : "(token IS NOT NULL AND token != '')";
         return db.getDb().prepare(`SELECT phone_number_id FROM official_numbers
-            WHERE active = 1 AND (status IS NULL OR UPPER(status) = 'CONNECTED') ORDER BY phone_number_id`).all();
+            WHERE active = 1 AND (status IS NULL OR UPPER(status) = 'CONNECTED') AND ${tokenOk} ORDER BY phone_number_id`).all();
     } catch(e) { return []; }
 }
 function waBindSender(phoneKey, phoneNumberId) {
@@ -2456,6 +2507,8 @@ app.get('/api/wa/status', authMiddleware, async (req, res) => {
     try {
         let numbers = [];
         try { numbers = db.getDb().prepare('SELECT * FROM official_numbers ORDER BY created_at').all(); } catch(e) {}
+        // Token NUNCA volta pro navegador — só a informação de que existe
+        numbers = numbers.map(n => ({ ...n, token: undefined, has_token: !!n.token }));
         res.json({
             success: true,
             configured: isWabaConfigured(),
@@ -2473,13 +2526,77 @@ app.post('/api/wa/sync-numbers', authMiddleware, async (req, res) => {
     catch(e) { res.status(500).json({ success: false, error: e.response?.data?.error?.message || e.message }); }
 });
 
-// Lista os templates da WABA com status de aprovação e categoria
+// Lista os templates de TODAS as contas configuradas (⭐ 14/08: multi-BM)
 app.get('/api/wa/templates', authMiddleware, async (req, res) => {
     try {
-        if (!WABA_ID) return res.status(400).json({ success: false, error: 'WABA_ID não configurado' });
-        const data = await waRequest('get', `${WABA_ID}/message_templates?fields=name,status,category,language,components&limit=100`);
-        res.json({ success: true, templates: data?.data || [] });
+        const accounts = waAccounts();
+        if (!accounts.length) return res.status(400).json({ success: false, error: 'Nenhuma conta configurada — cadastre um número no painel' });
+        const templates = [];
+        const errs = [];
+        for (const acc of accounts) {
+            try {
+                const data = await waRequest('get', `${acc.waba_id}/message_templates?fields=name,status,category,language,components&limit=100`, null, acc.token);
+                (data?.data || []).forEach(t => templates.push({ ...t, waba_id: acc.waba_id }));
+            } catch(e) { errs.push(e.response?.data?.error?.message || e.message); }
+        }
+        if (!templates.length && errs.length) return res.status(500).json({ success: false, error: errs.join(' · ') });
+        res.json({ success: true, templates });
     } catch(e) { res.status(500).json({ success: false, error: e.response?.data?.error?.message || e.message }); }
+});
+
+// ===== ⭐ 14/08: GESTÃO DE NÚMEROS PELO PAINEL (sem mexer no ambiente do EasyPanel) =====
+// Adicionar: valida o token na hora buscando os dados do número direto na Meta
+app.post('/api/wa/numbers', authMiddleware, async (req, res) => {
+    try {
+        const phoneNumberId = String(req.body?.phone_number_id || '').trim();
+        const wabaId = String(req.body?.waba_id || '').trim();
+        const token = String(req.body?.token || '').trim();
+        const label = String(req.body?.label || '').trim() || null;
+        if (!phoneNumberId || !wabaId || !token) return res.status(400).json({ success: false, error: 'Preencha Phone Number ID, WABA ID e Token' });
+        // Valida o trio direto na Meta antes de salvar
+        let info;
+        try {
+            info = await waRequest('get', `${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier,status`, null, token);
+        } catch(e) {
+            const msg = e.response?.data?.error?.message || e.message;
+            return res.status(400).json({ success: false, error: 'A Meta recusou esses dados: ' + msg });
+        }
+        db.getDb().prepare(`INSERT INTO official_numbers (phone_number_id, display_number, verified_name, label, quality_rating, messaging_limit, status, waba_id, token, active, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
+            ON CONFLICT(phone_number_id) DO UPDATE SET display_number = excluded.display_number, verified_name = excluded.verified_name,
+                label = COALESCE(excluded.label, official_numbers.label), quality_rating = excluded.quality_rating,
+                messaging_limit = excluded.messaging_limit, status = excluded.status, waba_id = excluded.waba_id,
+                token = excluded.token, active = 1, updated_at = datetime('now')`)
+        .run(phoneNumberId, info.display_phone_number || null, info.verified_name || null, label,
+             info.quality_rating || null, info.messaging_limit_tier || null, info.status || null, wabaId, token);
+        addLog('WA_NUMBER_ADD', `➕ Número ${info.display_phone_number || phoneNumberId} cadastrado pelo painel (WABA ${wabaId})`);
+        res.json({ success: true, number: { phone_number_id: phoneNumberId, display_number: info.display_phone_number, status: info.status } });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Excluir: some da rotação e da lista (clientes grudados nele são redistribuídos no próximo envio)
+app.delete('/api/wa/numbers/:id', authMiddleware, (req, res) => {
+    try {
+        const id = String(req.params.id || '');
+        const row = db.getDb().prepare('SELECT display_number FROM official_numbers WHERE phone_number_id = ?').get(id);
+        db.getDb().prepare('DELETE FROM official_numbers WHERE phone_number_id = ?').run(id);
+        try { db.getDb().prepare('DELETE FROM wa_sender_map WHERE phone_number_id = ?').run(id); } catch(e) {}
+        addLog('WA_NUMBER_DEL', `🗑️ Número ${row?.display_number || id} removido do painel`);
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Ativar/desativar manualmente (desativado sai da rotação na hora, sem excluir)
+app.post('/api/wa/numbers/:id/toggle', authMiddleware, (req, res) => {
+    try {
+        const id = String(req.params.id || '');
+        const row = db.getDb().prepare('SELECT active, display_number FROM official_numbers WHERE phone_number_id = ?').get(id);
+        if (!row) return res.status(404).json({ success: false, error: 'Número não encontrado' });
+        const novo = row.active ? 0 : 1;
+        db.getDb().prepare("UPDATE official_numbers SET active = ?, updated_at = datetime('now') WHERE phone_number_id = ?").run(novo, id);
+        addLog('WA_NUMBER_TOGGLE', `${novo ? '▶️' : '⏸️'} Número ${row.display_number || id} ${novo ? 'ativado' : 'desativado'} manualmente`);
+        res.json({ success: true, active: novo });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // Proxy de mídia recebida: a Meta exige o token pra baixar — o chat usa esta rota.
@@ -2488,9 +2605,14 @@ app.get('/api/wa/media/:id', async (req, res) => {
     try {
         const t = req.query.t || String(req.headers.authorization || '').replace('Bearer ', '');
         try { jwt.verify(t, JWT_SECRET); } catch { return res.status(401).end(); }
-        const info = await waRequest('get', `${req.params.id}`);
+        // ⭐ 14/08: mídia pode ter chegado em qualquer conta — tenta o token de cada uma
+        const tokens = [...new Set([WABA_TOKEN, ...waAccounts().map(a => a.token)].filter(Boolean))];
+        let info = null, tokenUsado = null;
+        for (const tk of tokens) {
+            try { info = await waRequest('get', `${req.params.id}`, null, tk); tokenUsado = tk; break; } catch(e) {}
+        }
         if (!info?.url) return res.status(404).end();
-        const media = await axios.get(info.url, { headers: { Authorization: `Bearer ${WABA_TOKEN}` }, responseType: 'stream', timeout: 30000 });
+        const media = await axios.get(info.url, { headers: { Authorization: `Bearer ${tokenUsado}` }, responseType: 'stream', timeout: 30000 });
         res.setHeader('Content-Type', media.headers['content-type'] || 'application/octet-stream');
         res.setHeader('Cache-Control', 'private, max-age=3600');
         media.data.pipe(res);

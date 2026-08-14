@@ -647,8 +647,11 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
         <div id="wa-status-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:16px"></div>
       </div>
       <div class="section" style="margin-top:16px">
-        <div class="sh"><div><div class="sh-title">Números</div><div class="sh-sub">Qualidade e limite diário direto da Meta — qualidade caindo dispara aviso no celular</div></div>
-          <button class="btn btn-g btn-sm" onclick="waSyncNumbersUI()">Sincronizar com a Meta</button></div>
+        <div class="sh"><div><div class="sh-title">Números</div><div class="sh-sub">Cadastre números de qualquer BM aqui no painel — cada um com seu token. A rotação alterna os leads entre os números saudáveis</div></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-p btn-sm" onclick="document.getElementById('modal-wa-number').classList.add('open')">＋ Adicionar número</button>
+            <button class="btn btn-g btn-sm" onclick="waSyncNumbersUI()">Sincronizar com a Meta</button>
+          </div></div>
         <div id="wa-numbers" style="padding:16px"></div>
       </div>
       <div class="section" style="margin-top:16px">
@@ -1365,6 +1368,22 @@ body.dark .toast.info{background:rgba(59,130,246,.18);border-color:rgba(59,130,2
 </div>
 
 <!-- MODAL PRODUTO -->
+<!-- ⭐ 14/08: MODAL ADICIONAR NÚMERO OFICIAL (multi-BM, token por número) -->
+<div class="modal-overlay" id="modal-wa-number">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-t">＋ Adicionar número oficial</div>
+    <div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">Pega esses 3 dados no painel da Meta (WhatsApp Manager → API Setup). Pode ser de qualquer BM — cada número guarda seu próprio token.</div>
+    <div class="fe-row"><label class="fe-lbl">Apelido (opcional — só pra você identificar)</label><input class="fe-inp" id="wan-label" placeholder="Chip 1 — BM Principal"></div>
+    <div class="fe-row"><label class="fe-lbl">Phone Number ID</label><input class="fe-inp" id="wan-pnid" placeholder="120423503944..." style="font-family:monospace"></div>
+    <div class="fe-row"><label class="fe-lbl">WABA ID (ID da conta do WhatsApp Business)</label><input class="fe-inp" id="wan-waba" placeholder="102290129340..." style="font-family:monospace"></div>
+    <div class="fe-row"><label class="fe-lbl">Token permanente (system user)</label><textarea class="fe-ta" id="wan-token" placeholder="EAAG..." style="min-height:70px;font-family:monospace;font-size:11px"></textarea></div>
+    <div class="modal-f">
+      <button class="btn btn-g" onclick="closeModal('modal-wa-number')">Cancelar</button>
+      <button class="btn btn-p" id="wan-save" onclick="waAddNumber()">Validar na Meta e salvar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-product">
   <div class="modal">
     <div class="modal-t">Novo Produto</div>
@@ -2927,7 +2946,7 @@ async function loadInstances(){
   const r = await api('/api/wa/status');
   if(!r.success) return;
   document.getElementById('wa-status-cards').innerHTML = `
-    <div class="mc ${r.configured?'mc-green':'mc-red'}"><div class="mc-lbl">API oficial</div><div class="mc-val" style="font-size:16px">${r.configured?'Conectada':'Aguardando chaves'}</div><div class="mc-sub">${r.configured?('número padrão '+(r.default_phone_number_id||'')):'preencha WABA_TOKEN e WABA_PHONE_NUMBER_ID no EasyPanel'}</div></div>
+    <div class="mc ${r.configured?'mc-green':'mc-red'}"><div class="mc-lbl">API oficial</div><div class="mc-val" style="font-size:16px">${r.configured?'Conectada':'Aguardando chaves'}</div><div class="mc-sub">${r.configured?((r.numbers||[]).length+' número(s) na rotação'):'cadastre um número em "＋ Adicionar número" abaixo'}</div></div>
     <div class="mc mc-teal"><div class="mc-lbl">Webhook</div><div class="mc-val" style="font-size:16px">${r.has_verify_token?'Pronto':'Sem token'}</div><div class="mc-sub">/webhook/meta</div></div>
     <div class="mc mc-purple"><div class="mc-lbl">Números na conta</div><div class="mc-val" style="font-size:16px">${(r.numbers||[]).length}</div><div class="mc-sub">sincronizados da Meta</div></div>`;
   const nEl = document.getElementById('wa-numbers');
@@ -2937,18 +2956,57 @@ async function loadInstances(){
     nEl.innerHTML = r.numbers.map(n=>{
       const st = String(n.status||'').toUpperCase();
       const banned = st && st !== 'CONNECTED';
+      const inactive = !n.active;
       const q = banned ? [WA_STATUS_LABEL[st]||st,'#ef4444'] : (WA_QUALITY_LABEL[(n.quality_rating||'UNKNOWN').toUpperCase()] || WA_QUALITY_LABEL.UNKNOWN);
-      return `<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid ${banned?'#ef4444':'var(--border)'};border-radius:10px;margin-bottom:8px;flex-wrap:wrap;${banned?'opacity:.75':''}">
-        <div style="width:10px;height:10px;border-radius:50%;background:${q[1]};box-shadow:0 0 8px ${q[1]}"></div>
-        <div style="flex:1;min-width:180px"><div style="font-weight:700">${n.display_number||n.phone_number_id}</div><div style="font-size:11px;color:var(--text3)">${n.verified_name||''} · ID ${n.phone_number_id}</div></div>
-        ${banned
-          ? `<div style="font-size:12px;color:#ef4444;font-weight:700">🚫 ${q[0]} — fora da rotação</div>`
-          : `<div style="font-size:12px;color:${q[1]};font-weight:600">Qualidade: ${q[0]}</div>`}
+      const dot = inactive ? '#64748b' : q[1];
+      return `<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid ${banned?'#ef4444':'var(--border)'};border-radius:10px;margin-bottom:8px;flex-wrap:wrap;${(banned||inactive)?'opacity:.7':''}">
+        <div style="width:10px;height:10px;border-radius:50%;background:${dot};box-shadow:0 0 8px ${dot}"></div>
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:700">${n.display_number||n.phone_number_id} ${n.label?`<span style="font-size:11px;color:var(--text3);font-weight:400">· ${n.label}</span>`:''}</div>
+          <div style="font-size:11px;color:var(--text3)">${n.verified_name||''} · ID ${n.phone_number_id}${n.waba_id?' · WABA '+n.waba_id:''}${n.has_token?' · 🔑 token próprio':''}</div>
+        </div>
+        ${inactive
+          ? `<div style="font-size:12px;color:#94a3b8;font-weight:700">⏸️ Desativado manualmente</div>`
+          : banned
+            ? `<div style="font-size:12px;color:#ef4444;font-weight:700">🚫 ${q[0]} — fora da rotação</div>`
+            : `<div style="font-size:12px;color:${q[1]};font-weight:600">Qualidade: ${q[0]}</div>`}
         <div style="font-size:12px;color:var(--text2)">Limite: ${waLimitLabel(n.messaging_limit)}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-g btn-sm" onclick="waToggleNumber('${n.phone_number_id}')">${n.active?'Desativar':'Ativar'}</button>
+          <button class="btn btn-g btn-sm" style="color:#ef4444" onclick="waDeleteNumber('${n.phone_number_id}','${(n.display_number||n.phone_number_id).replace(/'/g,'')}')">🗑️</button>
+        </div>
       </div>`;
     }).join('');
   }
   waLoadTemplates();
+}
+// ⭐ 14/08: gestão de números pelo painel (multi-BM)
+async function waAddNumber(){
+  const label = document.getElementById('wan-label').value.trim();
+  const pnid = document.getElementById('wan-pnid').value.trim();
+  const waba = document.getElementById('wan-waba').value.trim();
+  const tk = document.getElementById('wan-token').value.trim();
+  if(!pnid || !waba || !tk){ showToast('Preencha Phone Number ID, WABA ID e Token','error'); return; }
+  const btn = document.getElementById('wan-save'); btn.disabled = true; btn.textContent = 'Validando na Meta…';
+  const r = await api('/api/wa/numbers', { method:'POST', body: JSON.stringify({ label, phone_number_id: pnid, waba_id: waba, token: tk }) });
+  btn.disabled = false; btn.textContent = 'Validar na Meta e salvar';
+  if(r.success){
+    showToast(`✅ Número ${r.number.display_number||pnid} cadastrado e validado`,'success');
+    closeModal('modal-wa-number');
+    ['wan-label','wan-pnid','wan-waba','wan-token'].forEach(id=>document.getElementById(id).value='');
+    loadInstances();
+  } else showToast(r.error||'Erro ao cadastrar','error');
+}
+async function waToggleNumber(id){
+  const r = await api('/api/wa/numbers/'+encodeURIComponent(id)+'/toggle', { method:'POST' });
+  if(r.success){ showToast(r.active?'▶️ Número ativado — voltou pra rotação':'⏸️ Número desativado — fora da rotação','success'); loadInstances(); }
+  else showToast(r.error||'Erro','error');
+}
+async function waDeleteNumber(id, nome){
+  if(!confirm('Excluir o número '+nome+' do painel? Ele sai da rotação na hora. (Isso NÃO apaga nada na Meta — só aqui no Orion)')) return;
+  const r = await api('/api/wa/numbers/'+encodeURIComponent(id), { method:'DELETE' });
+  if(r.success){ showToast('🗑️ Número removido','success'); loadInstances(); }
+  else showToast(r.error||'Erro','error');
 }
 async function waSyncNumbersUI(){
   const r = await api('/api/wa/sync-numbers', { method:'POST' });
